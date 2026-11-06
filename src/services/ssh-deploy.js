@@ -6,7 +6,7 @@
 // only appended if not already present.
 
 const { Client: SshClient } = require('ssh2');
-const log = require('../utils/logger')('ssh-deploy');
+const { hostKeyOptions } = require('../utils/ssh-host-key');
 
 const CONNECT_TIMEOUT_MS = 20_000;
 const CMD_TIMEOUT_MS = 15_000;
@@ -41,13 +41,14 @@ function _connect(connection) {
     if (!connection.password && !connection.privateKey) {
       return reject(new Error('an initial password or existing private key is required to deploy'));
     }
+    const identity = hostKeyOptions(connection);
     const conn = new SshClient();
     const opts = {
+      ...identity,
       host: connection.host,
       port: parseInt(connection.port, 10) || 22,
       username: connection.user,
       readyTimeout: CONNECT_TIMEOUT_MS,
-      // One-shot deploy connection — we don't manage known_hosts here.
     };
     if (connection.privateKey) {
       opts.privateKey = connection.privateKey;
@@ -159,7 +160,7 @@ async function deployPublicKey({ targetType, connection, publicKey }) {
 
 /** Verify a freshly-deployed key works: connect with it and run `true`. */
 async function testKey({ connection, privateKey, passphrase }) {
-  const conn = await _connect({ host: connection.host, port: connection.port, user: connection.user, privateKey, passphrase });
+  const conn = await _connect({ host: connection.host, port: connection.port, user: connection.user, hostKeySha256: connection.hostKeySha256, privateKey, passphrase });
   try {
     const r = await _exec(conn, 'true');
     return { ok: r.code === 0 };
@@ -193,5 +194,3 @@ async function testConnection({ targetType, connection }) {
 }
 
 module.exports = { deployPublicKey, testKey, testConnection, _authorizedKeysPath, _internals: { _q, _friendly, _windowsKeysPath, _psEncode } };
-
-if (false) log.info();

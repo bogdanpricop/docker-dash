@@ -237,10 +237,16 @@ const SettingsPage = {
               <tbody>${channels.map(c => `
                 <tr>
                   <td style="text-align:left"><i class="${providerIcons[c.provider] || 'fas fa-bell'}" style="margin-right:8px;color:var(--accent)"></i><strong>${Utils.escapeHtml(c.name)}</strong></td>
-                  <td><span class="badge badge-info">${c.provider}</span></td>
+                  <td>
+                    <span class="badge badge-info">${Utils.escapeHtml(providers.find(p => p.id === c.provider)?.name || c.provider)}</span>
+                    ${providers.find(p => p.id === c.provider)?.settings === 'smtp'
+                      ? `<button type="button" class="btn btn-sm btn-secondary" data-action="smtp-nc">${i18n.t('pages.settings.notificationSmtpSettings')}</button>`
+                      : ''}
+                  </td>
                   <td>${c.is_active ? '<span class="text-green">Active</span>' : '<span class="text-muted">Inactive</span>'}</td>
                   <td>
                     <div class="action-btns">
+                      <button type="button" class="action-btn" data-action="edit-nc" data-id="${c.id}" title="${i18n.t('common.edit')}" aria-label="${i18n.t('common.edit')}"><i class="fas fa-edit" aria-hidden="true"></i></button>
                       <button class="action-btn" data-action="test-nc" data-id="${c.id}" title="Test"><i class="fas fa-paper-plane"></i></button>
                       <button class="action-btn danger" data-action="delete-nc" data-id="${c.id}" title="Delete"><i class="fas fa-trash"></i></button>
                     </div>
@@ -252,64 +258,16 @@ const SettingsPage = {
         </div>
       `;
 
-      el.querySelector('#nc-create')?.addEventListener('click', async () => {
-        const providerOptions = providers.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+      el.querySelector('#nc-create')?.addEventListener('click', () => this._openNotificationChannel(providers));
 
-        const result = await Modal.form(`
-          <div class="form-group">
-            <label>Name *</label>
-            <input type="text" id="nc-name" class="form-control" placeholder="e.g. Team Discord" required>
-          </div>
-          <div class="form-group">
-            <label>Provider *</label>
-            <select id="nc-provider" class="form-control">${providerOptions}</select>
-          </div>
-          <div id="nc-fields"></div>
-        `, {
-          title: i18n.t('pages.settings.addChannelTitle'),
-          width: '480px',
-          onSubmit: (content) => {
-            const name = content.querySelector('#nc-name').value.trim();
-            const provider = content.querySelector('#nc-provider').value;
-            if (!name) { Toast.warning(i18n.t('pages.settings.nameRequired')); return false; }
-            const config = {};
-            content.querySelectorAll('[data-config-key]').forEach(input => {
-              config[input.dataset.configKey] = input.value;
-            });
-            return { name, provider, config };
-          },
-          onOpen: (content) => {
-            const renderFields = () => {
-              const pid = content.querySelector('#nc-provider').value;
-              const prov = providers.find(p => p.id === pid);
-              const fieldsEl = content.querySelector('#nc-fields');
-              fieldsEl.innerHTML = (prov?.fields || []).map(f => `
-                <div class="form-group">
-                  <label>${f.label}${f.required ? ' *' : ''}</label>
-                  <input type="${f.type || 'text'}" data-config-key="${f.key}" class="form-control"
-                    placeholder="${f.placeholder || ''}" ${f.required ? 'required' : ''}>
-                </div>
-              `).join('');
-            };
-            content.querySelector('#nc-provider').addEventListener('change', renderFields);
-            renderFields();
-          },
-        });
-
-        if (result) {
-          try {
-            await Api.createNotificationChannel(result);
-            Toast.success(i18n.t('pages.settings.channelCreated'));
-            this._renderTab();
-          } catch (err) { Toast.error(err.message); }
-        }
-      });
-
-      el.addEventListener('click', async (e) => {
-        const btn = e.target.closest('[data-action]');
-        if (!btn) return;
+      el.querySelectorAll('[data-action]').forEach(btn => btn.addEventListener('click', async () => {
         const id = parseInt(btn.dataset.id);
-        if (btn.dataset.action === 'test-nc') {
+        if (btn.dataset.action === 'smtp-nc') {
+          await this._openNotificationSmtpSettings();
+        } else if (btn.dataset.action === 'edit-nc') {
+          const channel = channels.find(c => c.id === id);
+          if (channel) await this._openNotificationChannel(providers, channel);
+        } else if (btn.dataset.action === 'test-nc') {
           Toast.info(i18n.t('pages.settings.sendingTest'));
           try {
             const res = await Api.testNotificationChannel(id);
@@ -325,9 +283,186 @@ const SettingsPage = {
             this._renderTab();
           } catch (err) { Toast.error(err.message); }
         }
+      }));
+    } catch (err) {
+      el.innerHTML = `<div class="empty-msg">Error: ${Utils.escapeHtml(err.message)}</div>`;
+    }
+  },
+
+  async _openNotificationChannel(providers, channel = null) {
+    const esc = Utils.escapeHtml;
+    const t = key => i18n.t('pages.settings.' + key);
+    const options = providers.map(p => `<option value="${esc(p.id)}" ${p.id === channel?.provider ? 'selected' : ''}>${esc(p.name)}</option>`).join('');
+    const saved = await Modal.form(`
+      <div class="form-group">
+        <label for="nc-name">Name *</label>
+        <input type="text" id="nc-name" class="form-control" value="${esc(channel?.name || '')}" required>
+      </div>
+      <div class="form-group">
+        <label for="nc-provider">Provider *</label>
+        <select id="nc-provider" class="form-control" ${channel ? 'disabled' : ''}>${options}</select>
+      </div>
+      <div id="nc-fields"></div>
+    `, {
+      title: t(channel ? 'editChannelTitle' : 'addChannelTitle'),
+      width: '480px',
+      onMount: content => {
+        const select = content.querySelector('#nc-provider');
+        const fields = content.querySelector('#nc-fields');
+        const renderFields = () => {
+          const provider = providers.find(p => p.id === select.value);
+          fields.innerHTML = (provider?.fields || []).map(field => {
+            const secret = field.secret || field.type === 'password';
+            const stored = secret && channel?.configuredSecrets?.includes(field.key);
+            const value = secret ? '' : channel?.config?.[field.key];
+            const key = esc(field.key);
+            return `<div class="form-group">
+              <label for="nc-config-${key}">${esc(field.label)}${field.required ? ' *' : ''}</label>
+              <input id="nc-config-${key}" type="${esc(field.type || 'text')}" data-config-key="${key}"
+                class="form-control" value="${esc(Array.isArray(value) ? value.join(',') : value || '')}"
+                placeholder="${esc(stored ? t('channelSecretUnchanged') : field.placeholder || '')}"
+                ${secret ? 'data-secret autocomplete="new-password"' : ''}
+                ${field.type === 'email' ? 'multiple' : ''} ${field.required && !stored ? 'required' : ''}>
+              ${stored && !field.required ? `<label class="text-sm"><input type="checkbox" data-clear-secret="${key}"> ${esc(t('channelClearSecret'))}</label>` : ''}
+            </div>`;
+          }).join('') + (provider?.settings === 'smtp' ? `
+            <p class="text-sm text-muted">${esc(t('notificationSmtpHint'))}</p>
+            <button type="button" class="btn btn-sm btn-secondary" data-nc-smtp>${esc(t('notificationSmtpSettings'))}</button>` : '');
+          for (const clear of fields.querySelectorAll('[data-clear-secret]')) {
+            const input = fields.querySelector('#nc-config-' + CSS.escape(clear.dataset.clearSecret));
+            clear.addEventListener('change', () => { input.disabled = clear.checked; });
+          }
+          fields.querySelector('[data-nc-smtp]')?.addEventListener('click', () => this._openNotificationSmtpSettings(true));
+        };
+        select.addEventListener('change', renderFields);
+        renderFields();
+      },
+      onSubmit: async content => {
+        const name = content.querySelector('#nc-name').value.trim();
+        const provider = content.querySelector('#nc-provider').value;
+        if (!name) { Toast.warning(t('nameRequired')); return false; }
+        const config = {};
+        for (const input of content.querySelectorAll('[data-config-key]')) {
+          const key = input.dataset.configKey;
+          if (input.disabled) { config[key] = null; continue; }
+          if (input.type !== 'password') input.value = input.value.trim();
+          if (!input.reportValidity()) return false;
+          if (!channel || (input.hasAttribute('data-secret') ? input.value : input.value !== input.defaultValue)) {
+            config[key] = input.value;
+          }
+        }
+        const submit = content.querySelector('#modal-submit');
+        submit.disabled = true;
+        try {
+          if (channel) await Api.updateNotificationChannel(channel.id, { name, configPatch: config });
+          else await Api.createNotificationChannel({ name, provider, config });
+          return true;
+        } catch (err) {
+          Toast.error(err.message);
+          submit.disabled = false;
+          return false;
+        }
+      },
+    });
+    if (saved) {
+      Toast.success(t(channel ? 'channelUpdated' : 'channelCreated'));
+      await this._renderTab();
+    }
+  },
+
+  async _openNotificationSmtpSettings(nested = false) {
+    const esc = Utils.escapeHtml;
+    const t = key => esc(i18n.t('pages.settings.' + key));
+    const closeLabel = esc(i18n.t('common.close'));
+    const markup = `
+      <div class="modal-header">
+        <h3 id="nc-smtp-title">${t('notificationSmtpSettings')}</h3>
+        <button type="button" class="modal-close-btn" data-nc-smtp-close aria-label="${closeLabel}"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="modal-body" id="nc-smtp-body">${esc(i18n.t('common.loading'))}</div>`;
+    const close = () => nested ? Modal.closeSub() : Modal.close();
+    if (!nested) Modal.open(markup, { width: '550px' });
+    const content = nested ? Modal.openSub(markup, { width: '550px' }) : Modal._content;
+    content.closest('[role="dialog"]')?.setAttribute('aria-labelledby', 'nc-smtp-title');
+    content.querySelector('[data-nc-smtp-close]').addEventListener('click', close);
+    const body = content.querySelector('#nc-smtp-body');
+    try {
+      const { mode, server, external } = await Api.getNotificationSmtpSettings();
+      const cfg = external || {};
+      body.innerHTML = `
+        <p class="text-sm text-muted">${t('notificationSmtpScope')}</p>
+        <form id="nc-smtp-form">
+          <div class="form-group">
+            <label for="nc-smtp-mode">${t('notificationSmtpMode')}</label>
+            <select id="nc-smtp-mode" class="form-control">
+              <option value="server">${t('notificationSmtpServer')}</option>
+              <option value="external" ${mode === 'external' ? 'selected' : ''}>${t('notificationSmtpExternal')}</option>
+            </select>
+          </div>
+          <div id="nc-smtp-server">
+            <p class="text-sm"><strong>${t('notificationSmtpHost')}:</strong> ${esc(server.host || '—')} · <strong>${t('notificationSmtpPort')}:</strong> ${esc(server.port)}</p>
+            <p class="text-sm"><strong>${t('notificationSmtpFrom')}:</strong> ${esc(server.fromEmail || '—')}</p>
+            <p class="text-sm text-muted">${t('notificationSmtpServerHint')}</p>
+          </div>
+          <fieldset id="nc-smtp-external" style="border:0;margin:0;padding:0">
+            <div class="form-group"><label for="nc-smtp-host">${t('notificationSmtpHost')} *</label>
+              <input id="nc-smtp-host" class="form-control" value="${esc(cfg.host || '')}" placeholder="smtp.example.com" required></div>
+            <div class="form-group"><label for="nc-smtp-security">${t('notificationSmtpSecurity')}</label>
+              <select id="nc-smtp-security" class="form-control">
+                <option value="starttls">STARTTLS</option>
+                <option value="tls" ${cfg.security === 'tls' ? 'selected' : ''}>TLS</option>
+              </select></div>
+            <div class="form-group"><label for="nc-smtp-port">${t('notificationSmtpPort')} *</label>
+              <input id="nc-smtp-port" type="number" class="form-control" min="1" max="65535" value="${esc(cfg.port || 587)}" required></div>
+            <div class="form-group"><label for="nc-smtp-user">${t('notificationSmtpUsername')}</label>
+              <input id="nc-smtp-user" class="form-control" autocomplete="off" value="${esc(cfg.user || '')}"></div>
+            <div class="form-group"><label for="nc-smtp-password">${t('notificationSmtpPassword')}</label>
+              <input id="nc-smtp-password" type="password" class="form-control" autocomplete="new-password"
+                placeholder="${cfg.passwordConfigured ? t('channelSecretUnchanged') : ''}"></div>
+            <div class="form-group"><label for="nc-smtp-from">${t('notificationSmtpFrom')} *</label>
+              <input id="nc-smtp-from" type="email" class="form-control" value="${esc(cfg.fromEmail || '')}" required></div>
+            <div class="form-group"><label for="nc-smtp-from-name">${t('notificationSmtpFromName')}</label>
+              <input id="nc-smtp-from-name" class="form-control" value="${esc(cfg.fromName ?? server.fromName ?? '')}"></div>
+          </fieldset>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-nc-smtp-cancel>${esc(i18n.t('common.cancel'))}</button>
+            <button type="submit" class="btn btn-primary">${esc(i18n.t('common.save'))}</button>
+          </div>
+        </form>`;
+      const form = body.querySelector('#nc-smtp-form');
+      const input = key => form.querySelector('#nc-smtp-' + key);
+      const toggle = () => {
+        const externalMode = input('mode').value === 'external';
+        input('server').hidden = externalMode;
+        input('external').hidden = input('external').disabled = !externalMode;
+      };
+      input('mode').addEventListener('change', toggle);
+      input('security').addEventListener('change', () => {
+        if (['465', '587'].includes(input('port').value)) input('port').value = input('security').value === 'tls' ? '465' : '587';
+      });
+      form.querySelector('[data-nc-smtp-cancel]').addEventListener('click', close);
+      toggle();
+      form.addEventListener('submit', async event => {
+        event.preventDefault();
+        const data = { mode: input('mode').value };
+        if (data.mode === 'external') Object.assign(data, {
+          host: input('host').value, port: Number(input('port').value), security: input('security').value,
+          user: input('user').value, password: input('password').value,
+          fromEmail: input('from').value, fromName: input('from-name').value,
+        });
+        const submit = form.querySelector('[type="submit"]');
+        submit.disabled = true;
+        try {
+          await Api.saveNotificationSmtpSettings(data);
+          Toast.success(i18n.t('pages.settings.notificationSmtpSaved'));
+          close();
+        } catch (err) {
+          Toast.error(err.message);
+          submit.disabled = false;
+        }
       });
     } catch (err) {
-      el.innerHTML = `<div class="empty-msg">Error: ${err.message}</div>`;
+      body.textContent = err.message;
     }
   },
 
@@ -367,30 +502,9 @@ const SettingsPage = {
         </div>
       `;
 
-      el.querySelector('#secret-create').addEventListener('click', async () => {
-        const result = await Modal.form({
-          title: 'Add Secret',
-          fields: `
-            <div class="form-group"><label>Name</label><input type="text" id="sec-name" class="form-control" placeholder="MY_SECRET_KEY" pattern="[a-zA-Z0-9_-]+" required></div>
-            <div class="form-group"><label>Value</label><textarea id="sec-value" class="form-control" rows="3" required></textarea></div>
-            <div class="form-group"><label>Description (optional)</label><input type="text" id="sec-desc" class="form-control" placeholder="What is this secret for?"></div>
-          `,
-          onSubmit: (c) => ({
-            name: c.querySelector('#sec-name').value.trim(),
-            value: c.querySelector('#sec-value').value,
-            description: c.querySelector('#sec-desc').value.trim(),
-          }),
-        });
-        if (result && result.name) {
-          try {
-            await Api.post('/secrets', result);
-            Toast.success('Secret created');
-            this._renderTab();
-          } catch (err) { Toast.error(err.message); }
-        }
-      });
+      el.querySelector('#secret-create').addEventListener('click', () => this._openSecret());
 
-      el.addEventListener('click', async (e) => {
+      el.querySelector('.card').addEventListener('click', async (e) => {
         const btn = e.target.closest('[data-action]');
         if (!btn) return;
         const id = parseInt(btn.dataset.id);
@@ -402,27 +516,7 @@ const SettingsPage = {
             Toast.success('Secret value copied to clipboard');
           } catch (err) { Toast.error(err.message); }
         } else if (btn.dataset.action === 'edit-secret') {
-          const result = await Modal.form({
-            title: 'Edit Secret',
-            fields: `
-              <div class="form-group"><label>Name</label><input type="text" id="sec-name" class="form-control" value="${btn.dataset.name}" pattern="[a-zA-Z0-9_-]+" required></div>
-              <div class="form-group"><label>New Value (leave empty to keep current)</label><textarea id="sec-value" class="form-control" rows="3"></textarea></div>
-              <div class="form-group"><label>Description</label><input type="text" id="sec-desc" class="form-control" value="${btn.dataset.desc}"></div>
-            `,
-            onSubmit: (c) => {
-              const data = { name: c.querySelector('#sec-name').value.trim(), description: c.querySelector('#sec-desc').value.trim() };
-              const val = c.querySelector('#sec-value').value;
-              if (val) data.value = val;
-              return data;
-            },
-          });
-          if (result && result.name) {
-            try {
-              await Api.put('/secrets/' + id, result);
-              Toast.success('Secret updated');
-              this._renderTab();
-            } catch (err) { Toast.error(err.message); }
-          }
+          await this._openSecret({ id, name: btn.dataset.name, description: btn.dataset.desc });
         } else if (btn.dataset.action === 'delete-secret') {
           const ok = await Modal.confirm('Delete secret "' + btn.dataset.name + '"? This cannot be undone.', { danger: true });
           if (!ok) return;
@@ -434,7 +528,44 @@ const SettingsPage = {
         }
       });
     } catch (err) {
-      el.innerHTML = '<div class="empty-msg">Error: ' + err.message + '</div>';
+      el.innerHTML = `<div class="empty-msg">Error: ${Utils.escapeHtml(err.message)}</div>`;
+    }
+  },
+
+  async _openSecret(secret = null) {
+    const esc = Utils.escapeHtml;
+    const saved = await Modal.form(`
+      <div class="form-group"><label for="sec-name">Name</label>
+        <input type="text" id="sec-name" class="form-control" value="${esc(secret?.name || '')}" placeholder="MY_SECRET_KEY" pattern="[a-zA-Z0-9_\\-]+" required></div>
+      <div class="form-group"><label for="sec-value">${secret ? 'New Value (leave empty to keep current)' : 'Value'}</label>
+        <textarea id="sec-value" class="form-control" rows="3" autocomplete="off" spellcheck="false" ${secret ? '' : 'required'}></textarea></div>
+      <div class="form-group"><label for="sec-desc">Description (optional)</label>
+        <input type="text" id="sec-desc" class="form-control" value="${esc(secret?.description || '')}"></div>
+    `, {
+      title: secret ? 'Edit Secret' : 'Add Secret',
+      onSubmit: async content => {
+        const name = content.querySelector('#sec-name');
+        name.value = name.value.trim();
+        const value = content.querySelector('#sec-value');
+        if (!name.reportValidity() || !value.reportValidity()) return false;
+        const data = { name: name.value, description: content.querySelector('#sec-desc').value.trim() };
+        if (value.value) data.value = value.value;
+        const submit = content.querySelector('#modal-submit');
+        submit.disabled = true;
+        try {
+          if (secret) await Api.put('/secrets/' + secret.id, data);
+          else await Api.post('/secrets', data);
+          return true;
+        } catch (err) {
+          Toast.error(err.message);
+          submit.disabled = false;
+          return false;
+        }
+      },
+    });
+    if (saved) {
+      Toast.success(secret ? 'Secret updated' : 'Secret created');
+      await this._renderTab();
     }
   },
 
@@ -544,6 +675,9 @@ const SettingsPage = {
 
         <h4><i class="fas fa-users"></i> ${i18n.t('pages.settings.help.usersTitle')}</h4>
         <p>${i18n.t('pages.settings.help.usersBody')}</p>
+        <p>${i18n.t('pages.settings.help.oidcGroupsBody')}</p>
+        <p>${i18n.t('pages.settings.help.oidcTransportBody')}</p>
+        <p>${i18n.t('pages.settings.help.apiKeySecurityBody')}</p>
 
         <h4><i class="fas fa-bell"></i> ${i18n.t('pages.settings.help.webhooksTitle')}</h4>
         <p>${i18n.t('pages.settings.help.webhooksBody')}</p>

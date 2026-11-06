@@ -153,17 +153,19 @@ nomad alloc status <alloc-id>
 
 ## Step 5 — Register Nomad in docker-dash
 
-Nomad dev agent has ACL disabled by default. Simplest possible registration:
+The plaintext dev agent above is not eligible for a remote Docker Dash connection.
+Before registration, configure HTTPS with a valid server certificate and an
+appropriate ACL policy. See the [Nomad TLS configuration guide](https://developer.hashicorp.com/nomad/docs/configuration/tls).
+Keep this dev experiment isolated until that migration is complete.
 
 - Sidebar → **Hosts** → **Non-Docker host (alpha)** → **Nomad**
 - Name: `homelab-nomad`
-- Endpoint: `http://192.168.13.25:4646` (**http**, not https, for dev)
-- ACL token: leave empty
-- CA certificate: leave empty
-- Skip TLS verification: doesn't matter (http)
-- Submit
+- Endpoint: the HTTPS address of the configured agent, matching its certificate
+- ACL token: a scoped token when ACL is enabled
+- Provider CA certificate: the verified issuing CA, if private
+- Test connection, then submit
 
-Sidebar → **Nomad (alpha)** appears.
+Docker Dash refuses HTTP endpoints and TLS-verification bypasses.
 
 ## Verification checklist
 

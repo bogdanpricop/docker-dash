@@ -8,6 +8,7 @@ const App = {
   _currentPage: null,
   _currentPageName: null,
   _uiMode: 'standard',
+  _composeSimpleMode: false,
 
   // Page registry
   _pages: {
@@ -20,6 +21,7 @@ const App = {
     security:   () => SecurityPage,
     posture:    () => PosturePage,
     blueprints: () => BlueprintsPage,
+    procedures: () => ProceduresPage,
     copilot:    () => CopilotPage,
     system:     () => SystemPage,
     firewall:   () => FirewallPage,
@@ -35,6 +37,7 @@ const App = {
     profile:    () => ProfilePage,
     notifications: () => NotificationsPage,
     stacks:     () => StacksPage,
+    'compose-catalog': () => ComposeCatalogPage,
     swarm:      () => SwarmPage,
     'incus-instances': () => IncusInstancesPage,
     'proxmox-resources': () => ProxmoxResourcesPage,
@@ -42,6 +45,18 @@ const App = {
     'kubernetes-resources': () => KubernetesResourcesPage,
     'nomad-jobs': () => NomadJobsPage,
     'vsphere-resources': () => VSphereResourcesPage,
+    'xen-resources': () => XenResourcesPage,
+    'virtual-machines': () => VirtualMachinesPage,
+    'high-availability': () => HighAvailabilityPage,
+    'storage-posture': () => StoragePosturePage,
+    'network-posture': () => NetworkPosturePage,
+    'provider-security-posture': () => ProviderSecurityPosturePage,
+    'placement-advisor': () => PlacementAdvisorPage,
+    'recovery-points': () => RecoveryPointsPage,
+    'backup-policies': () => BackupPoliciesPage,
+    'disaster-recovery': () => DisasterRecoveryPage,
+    'virtualization-catalog': () => VirtualizationCatalogPage,
+    activity: () => ActivityCenterPage,
     'api-playground': () => ApiPlaygroundPage,
     'multi-host':     () => MultiHostPage,
     'logs':           () => LogsPage,
@@ -51,6 +66,12 @@ const App = {
     'sample-feature': () => SampleFeaturePage,
     'registry-browse': () => RegistryBrowsePage,
     onboarding:       () => OnboardingPage,
+    governance:       () => GovernancePage,
+    'governance-controls': () => GovernanceControlsPage,
+    'self-service': () => SelfServicePage,
+    'edge-platform': () => EdgePlatformPage,
+    'workstation-fleet': () => WorkstationFleetPage,
+    diagnostics: () => DiagnosticsPage,
   },
 
   async init() {
@@ -182,9 +203,14 @@ const App = {
     if (!section || !btn) return;
 
     try {
-      const result = await fetch('/api/auth/oidc/enabled').then(r => r.json());
+      const [result, federation] = await Promise.all([
+        fetch('/api/auth/oidc/enabled').then(r => r.json()).catch(() => ({ enabled: false })),
+        fetch('/api/identity-federation/realms').then(r => r.json()).catch(() => ({ realms: [] })),
+      ]);
+      const hasFederation = Boolean(federation.realms?.length);
+      section.classList.toggle('hidden', !result.enabled && !hasFederation);
+      btn.classList.toggle('hidden', !result.enabled);
       if (result.enabled) {
-        section.classList.remove('hidden');
         // Remove old listener by cloning
         const newBtn = btn.cloneNode(true);
         btn.parentNode.replaceChild(newBtn, btn);
@@ -204,8 +230,35 @@ const App = {
             newBtn.innerHTML = '<i class="fas fa-shield-alt"></i> Sign in with SSO';
           }
         });
-      } else {
-        section.classList.add('hidden');
+      }
+      const federated = document.getElementById('federated-login');
+      const federatedBtn = document.getElementById('federated-login-btn');
+      const email = document.getElementById('federated-email');
+      const error = document.getElementById('federated-error');
+      federated?.classList.toggle('hidden', !hasFederation);
+      if (hasFederation && federatedBtn && email) {
+        const replacement = federatedBtn.cloneNode(true);
+        federatedBtn.parentNode.replaceChild(replacement, federatedBtn);
+        const route = async () => {
+          error?.classList.add('hidden');
+          replacement.disabled = true;
+          try {
+            const response = await fetch(`/api/identity-federation/resolve?email=${encodeURIComponent(email.value.trim())}`);
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload.error || 'No identity provider found');
+            const loginUrl = payload.realm.login_url || payload.realm.loginUrl;
+            if (loginUrl === '/api/auth/oidc/login') {
+              const native = await fetch(loginUrl).then(item => item.json());
+              if (!native.url) throw new Error('Identity provider did not return a login URL');
+              window.location.href = native.url;
+            } else window.location.href = loginUrl;
+          } catch (err) {
+            if (error) { error.textContent = err.message; error.classList.remove('hidden'); }
+            replacement.disabled = false;
+          }
+        };
+        replacement.addEventListener('click', route);
+        email.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); route(); } });
       }
     } catch {
       section.classList.add('hidden');
@@ -524,6 +577,10 @@ const App = {
     // Update static UI labels
     this._updateStaticUI();
 
+    // `?mode=simple` is a Compose-first layout preference. It is independent
+    // of density and survives future sessions in a small same-site cookie.
+    this._initComposeSimpleMode();
+
     // Start router
     this._initRouter();
 
@@ -788,6 +845,10 @@ const App = {
     this._updateUiModeIcon(icon);
 
     btn.addEventListener('click', () => {
+      if (this._composeSimpleMode) {
+        this._setComposeSimpleMode(false);
+        return;
+      }
       const next = this._uiMode === 'standard' ? 'enterprise' : 'standard';
       this._uiMode = next;
       if (next === 'enterprise') {
@@ -805,6 +866,11 @@ const App = {
 
   _updateUiModeIcon(icon) {
     if (!icon) return;
+    if (this._composeSimpleMode) {
+      icon.className = 'fas fa-expand-alt';
+      icon.title = i18n.t('nav.showAll');
+      return;
+    }
     icon.className = this._uiMode === 'enterprise' ? 'fas fa-building' : 'fas fa-rocket';
     icon.title = this._uiMode === 'enterprise' ? 'Switch to Standard mode' : 'Switch to Enterprise mode';
   },
@@ -923,29 +989,39 @@ const App = {
     const nav = document.querySelector('.sidebar-nav');
     if (!nav) return;
 
-    if (mode === 'enterprise') {
-      // Save the original HTML so we can restore it perfectly
-      if (!this._standardNavHTML) {
-        this._standardNavHTML = nav.innerHTML;
-      }
+    // Always derive alternate layouts from the original standard navigation,
+    // never from a previously grouped layout.
+    if (!this._standardNavHTML) this._standardNavHTML = nav.innerHTML;
+    nav.innerHTML = this._standardNavHTML;
 
+    const navItems = {};
+    nav.querySelectorAll('.nav-item').forEach(item => {
+      const page = item.getAttribute('data-page');
+      if (page) navItems[page] = item.outerHTML;
+    });
+
+    if (this._composeSimpleMode) {
+      const essentials = ['dashboard', 'stacks', 'containers', 'images'];
+      const essentialSet = new Set(essentials);
+      const moreItems = Object.keys(navItems).filter(page => !essentialSet.has(page));
+      nav.innerHTML = essentials.map(page => navItems[page] || '').join('') + `
+        <details class="nav-simple-more">
+          <summary><i class="fas fa-ellipsis-h"></i><span>${i18n.t('nav.more')}</span></summary>
+          <div>${moreItems.map(page => navItems[page]).join('')}</div>
+        </details>
+        <button type="button" class="nav-simple-show-all" id="simple-show-all"><i class="fas fa-expand-alt"></i><span>${i18n.t('nav.showAll')}</span></button>`;
+      nav.querySelector('#simple-show-all')?.addEventListener('click', () => this._setComposeSimpleMode(false));
+    } else if (mode === 'enterprise') {
       // Enterprise grouping (ESXi-inspired)
       const enterpriseGroups = [
         { label: null,          items: ['dashboard'] },
-        { label: 'Compute',     items: ['multi-host', 'containers', 'stacks', 'swarm'] },
+        { label: 'Compute',     items: ['multi-host', 'containers', 'stacks', 'compose-catalog', 'swarm'] },
         { label: 'Storage',     items: ['images', 'volumes'] },
         { label: 'Networking',  items: ['networks', 'firewall', 'dependency-map'] },
         { label: 'Monitor',     items: ['insights', 'alerts', 'cost-optimizer', 'security', 'logs', 'timeline'] },
-        { label: 'Operations',  items: ['system', 'workflows'] },
-        { label: 'Admin',       items: ['hosts', 'onboarding', 'settings', 'compare', 'api-playground', 'howto', 'about', 'whatsnew'] },
+        { label: 'Operations',  items: ['system', 'procedures', 'workflows'] },
+        { label: 'Admin',       items: ['hosts', 'onboarding', 'governance', 'self-service', 'governance-controls', 'edge-platform', 'workstation-fleet', 'settings', 'compare', 'api-playground', 'howto', 'about', 'whatsnew'] },
       ];
-
-      // Collect all existing nav items by data-page
-      const navItems = {};
-      nav.querySelectorAll('.nav-item').forEach(item => {
-        const page = item.getAttribute('data-page');
-        if (page) navItems[page] = item.outerHTML;
-      });
 
       // Build enterprise nav HTML
       let html = '';
@@ -962,11 +1038,6 @@ const App = {
       });
 
       nav.innerHTML = html;
-    } else {
-      // Restore standard sidebar
-      if (this._standardNavHTML) {
-        nav.innerHTML = this._standardNavHTML;
-      }
     }
 
     // Re-apply active state and re-translate nav item labels
@@ -977,8 +1048,15 @@ const App = {
       item.classList.toggle('active', item.getAttribute('data-page') === currentPage);
       const page = item.getAttribute('data-page');
       const span = item.querySelector('span');
-      if (span && page) span.textContent = i18n.t('nav.' + page);
+      const key = 'nav.' + page;
+      const label = page ? i18n.t(key) : key;
+      // Keep the human-readable label from index.html when a locale has not
+      // caught up yet. Showing `nav.some-page` makes the primary navigation
+      // look broken and is less useful than the documented English fallback.
+      if (span && page && label !== key) span.textContent = label;
     });
+    const simpleMore = nav.querySelector('.nav-simple-more');
+    if (simpleMore?.querySelector('.nav-item.active')) simpleMore.open = true;
     // Re-translate section labels in the current mode
     nav.querySelectorAll('.nav-section-label span').forEach(span => {
       const section = span.closest('[data-enterprise-section]');
@@ -989,6 +1067,35 @@ const App = {
         span.textContent = (raw === 'nav.' + key) ? label : raw;
       }
     });
+  },
+
+  _initComposeSimpleMode() {
+    const requested = new URLSearchParams(location.search).get('mode');
+    const saved = document.cookie.split(';').map(part => part.trim())
+      .find(part => part.startsWith('dd_simple_mode='))?.split('=')[1];
+    this._composeSimpleMode = requested === 'simple'
+      ? true
+      : requested === 'full' ? false : saved === '1';
+    if (requested === 'simple' || requested === 'full') {
+      document.cookie = `dd_simple_mode=${this._composeSimpleMode ? '1' : '0'}; Path=/; Max-Age=31536000; SameSite=Lax`;
+    }
+    this._updateUiModeIcon(document.getElementById('uimode-icon'));
+  },
+
+  _setComposeSimpleMode(enabled) {
+    this._composeSimpleMode = !!enabled;
+    document.cookie = `dd_simple_mode=${enabled ? '1' : '0'}; Path=/; Max-Age=31536000; SameSite=Lax`;
+    if (!enabled) {
+      const url = new URL(location.href);
+      if (url.searchParams.get('mode') === 'simple') {
+        url.searchParams.delete('mode');
+        history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+      }
+    }
+    this._updateUiModeIcon(document.getElementById('uimode-icon'));
+    this._renderSidebarForMode(this._uiMode);
+    this._refreshCapabilities();
+    TaskBar._updateVisibility();
   },
 
   async _syncUserPreferences() {
@@ -1128,7 +1235,9 @@ const App = {
     document.querySelectorAll('.nav-item[data-page]').forEach(item => {
       const page = item.dataset.page;
       const span = item.querySelector('span');
-      if (span && page) span.textContent = i18n.t('nav.' + page);
+      const key = 'nav.' + page;
+      const label = page ? i18n.t(key) : key;
+      if (span && page && label !== key) span.textContent = label;
     });
     // Sidebar section labels — handle both standard and enterprise modes
     document.querySelectorAll('.nav-section-label').forEach(label => {
@@ -1333,10 +1442,16 @@ const App = {
 
   async _initHostSelector() {
     try {
-      const hosts = await Api.getHosts();
+      const [hosts, groups] = await Promise.all([
+        Api.getHosts(), Api.listHostGroups().catch(() => []),
+      ]);
       const selector = document.getElementById('host-selector');
       const select = document.getElementById('host-select');
-      if (!selector || !select) return;
+      const toggle = document.getElementById('host-tree-toggle');
+      const panel = document.getElementById('host-tree-panel');
+      const search = document.getElementById('host-tree-search');
+      const tree = document.getElementById('host-tree');
+      if (!selector || !select || !toggle || !panel || !search || !tree) return;
 
       // ACL filtering may remove a host saved in localStorage. Move to the
       // first visible host instead of leaving every subsequent API call on a
@@ -1347,6 +1462,7 @@ const App = {
         Api.setHost(hosts[0].isDefault ? 0 : hosts[0].id);
       }
       this._hostSelectorHosts = hosts;
+      this._hostSelectorGroups = groups;
 
       if (hosts.length <= 1) {
         selector.style.display = 'none';
@@ -1363,46 +1479,121 @@ const App = {
         return `<option value="${h.id}" ${Api.getHostId() === h.id || (Api.getHostId() === 0 && h.isDefault) ? 'selected' : ''}>${status} ${Utils.escapeHtml(h.name)}${envTag}</option>`;
       }).join('');
 
+      const current = hosts.find(h => Api.getHostId() === h.id
+        || (Api.getHostId() === 0 && h.isDefault)) || hosts[0];
+      document.getElementById('host-tree-current-name').textContent = current?.name || 'Host';
+      const statusEl = document.getElementById('host-tree-current-status');
+      statusEl.className = `host-tree-status ${current?.healthy === true ? 'online' : current?.healthy === false ? 'offline' : 'pending'}`;
+      this._renderHostTree('');
+
       if (!select._bound) {
         select._bound = true;
         select.addEventListener('change', () => {
-          const id = parseInt(select.value) || 0;
-          Api.setHost(id);
-          if (this._currentPage?.destroy) this._currentPage.destroy();
-          // v8.9.13-alpha.1 — selecting a host opens the page that host type
-          // belongs to. A Docker page can't render an ESXi/Incus/etc. host,
-          // so jump to that daemon's dedicated page; and a non-Docker page
-          // can't render a Docker host, so jump back to the dashboard.
-          const host = (this._hostSelectorHosts || []).find(h => h.id === id);
-          const dt = (host && host.daemonType) || 'docker';
-          const daemonPage = {
-            vsphere: '#/vsphere-resources',
-            incus: '#/incus-instances', lxd: '#/incus-instances',
-            proxmox: '#/proxmox-resources',
-            kubernetes: '#/kubernetes-resources',
-            nomad: '#/nomad-jobs',
-          }[dt];
-          const nonDockerPages = ['#/vsphere-resources', '#/incus-instances',
-            '#/proxmox-resources', '#/kubernetes-resources', '#/nomad-jobs', '#/migration-vm'];
-          if (daemonPage) {
-            if (location.hash === daemonPage) this._route();
-            else location.hash = daemonPage;   // hashchange -> _route()
-          } else if (nonDockerPages.includes(location.hash)) {
-            location.hash = '#/dashboard';      // Docker host but on a non-Docker page
-          } else {
-            this._route();                      // Docker host, Docker page -> refresh
+          this._activateHost(Number(select.value));
+        });
+      }
+
+      if (!toggle._bound) {
+        toggle._bound = true;
+        toggle.addEventListener('click', () => {
+          const willOpen = panel.classList.contains('hidden');
+          panel.classList.toggle('hidden', !willOpen);
+          toggle.setAttribute('aria-expanded', String(willOpen));
+          if (willOpen) setTimeout(() => search.focus(), 0);
+        });
+        search.addEventListener('input', () => this._renderHostTree(search.value));
+        tree.addEventListener('click', event => {
+          const item = event.target.closest('[data-host-tree-id]');
+          if (!item) return;
+          panel.classList.add('hidden');
+          toggle.setAttribute('aria-expanded', 'false');
+          this._activateHost(Number(item.dataset.hostTreeId));
+        });
+        document.addEventListener('click', event => {
+          if (!selector.contains(event.target)) {
+            panel.classList.add('hidden');
+            toggle.setAttribute('aria-expanded', 'false');
+          }
+        });
+        selector.addEventListener('keydown', event => {
+          if (event.key === 'Escape') {
+            panel.classList.add('hidden');
+            toggle.setAttribute('aria-expanded', 'false');
+            toggle.focus();
           }
         });
       }
 
       // Listen for external host changes
-      window.addEventListener('hostChanged', () => {
-        this._initHostSelector();
-      });
+      if (!this._hostChangedSelectorBound) {
+        this._hostChangedSelectorBound = true;
+        window.addEventListener('hostChanged', () => this._initHostSelector());
+      }
     } catch {
       // Multi-host not available or error — hide selector
       const selector = document.getElementById('host-selector');
       if (selector) selector.style.display = 'none';
+    }
+  },
+
+  _renderHostTree(query = '') {
+    const tree = document.getElementById('host-tree');
+    if (!tree) return;
+    const hosts = this._hostSelectorHosts || [];
+    const groups = this._hostSelectorGroups || [];
+    const q = String(query || '').trim().toLowerCase();
+    const matches = host => !q || Number.isFinite(this._fuzzyScore(
+      `${host.name} ${host.environment || ''} ${host.daemonType || ''}`, q
+    ));
+    const item = host => {
+      const selected = Api.getHostId() === host.id || (Api.getHostId() === 0 && host.isDefault);
+      const status = host.healthy === true ? 'online' : host.healthy === false ? 'offline' : 'pending';
+      return `<button type="button" class="host-tree-item" role="treeitem" data-host-tree-id="${host.id}" aria-current="${selected}">
+        <span class="host-tree-status ${status}" aria-label="${status}"></span>
+        <span class="host-tree-item-name">${Utils.escapeHtml(host.name)}</span>
+        <span class="host-tree-env">${Utils.escapeHtml(host.environment || '')}</span>
+      </button>`;
+    };
+    const visibleIds = new Set(hosts.map(host => host.id));
+    const assigned = new Set();
+    const sections = [];
+    for (const group of groups) {
+      const members = (group.member_host_ids || [])
+        .filter(id => visibleIds.has(id))
+        .map(id => hosts.find(host => host.id === id))
+        .filter(host => host && matches(host));
+      if (!members.length) continue;
+      (group.member_host_ids || []).forEach(id => assigned.add(id));
+      const color = /^#[0-9a-f]{3,8}$/i.test(group.color || '') ? group.color : 'var(--accent)';
+      sections.push(`<details class="host-tree-group" open><summary><i class="fas ${Utils.escapeHtml(group.icon || 'fa-server')}" style="color:${color};margin-right:5px"></i>${Utils.escapeHtml(group.name)} (${members.length})</summary><div class="host-tree-items" role="group">${members.map(item).join('')}</div></details>`);
+    }
+    const ungrouped = hosts.filter(host => !assigned.has(host.id) && matches(host));
+    if (ungrouped.length) sections.push(`<details class="host-tree-group" open><summary>Ungrouped (${ungrouped.length})</summary><div class="host-tree-items" role="group">${ungrouped.map(item).join('')}</div></details>`);
+    tree.innerHTML = sections.join('') || '<div class="text-muted text-sm" style="padding:8px">No matching hosts</div>';
+  },
+
+  _activateHost(id) {
+    const host = (this._hostSelectorHosts || []).find(item => item.id === id);
+    if (!host) return;
+    Api.setHost(host.isDefault ? 0 : id);
+    window.dispatchEvent(new CustomEvent('hostChanged', { detail: { hostId: id } }));
+    if (this._currentPage?.destroy) this._currentPage.destroy();
+    const dt = host.daemonType || 'docker';
+    const daemonPage = {
+      vsphere: '#/vsphere-resources', incus: '#/incus-instances', lxd: '#/incus-instances',
+      proxmox: '#/proxmox-resources', kubernetes: '#/kubernetes-resources', nomad: '#/nomad-jobs',
+      xen: '#/xen-resources',
+    }[dt];
+    const nonDockerPages = ['#/vsphere-resources', '#/incus-instances', '#/proxmox-resources',
+      '#/kubernetes-resources', '#/nomad-jobs', '#/xen-resources', '#/migration-vm',
+      '#/virtual-machines', '#/virtualization-catalog', '#/high-availability', '#/storage-posture', '#/network-posture', '#/placement-advisor', '#/recovery-points', '#/backup-policies', '#/disaster-recovery', '#/activity'];
+    if (daemonPage) {
+      if (location.hash === daemonPage) this._route();
+      else location.hash = daemonPage;
+    } else if (nonDockerPages.includes(location.hash)) {
+      location.hash = '#/dashboard';
+    } else {
+      this._route();
     }
   },
 
@@ -1489,6 +1680,21 @@ const App = {
         el.style.display = visible ? '' : 'none';
       });
     } catch { /* /api/hosts is best-effort — leave fleet-daemon items visible */ }
+
+    // The experience manifest refines configured-daemon gating with permitted,
+    // active endpoint health and keeps a human-readable reason on every item.
+    try {
+      const manifest = await Api.getExperienceNavigation();
+      this._experienceNavigation = manifest;
+      (manifest.pages || []).forEach(decision => {
+        const el = document.querySelector(`.nav-item[data-page="${decision.page}"]`);
+        if (!el) return;
+        el.dataset.availabilityReason = decision.reason || '';
+        el.title = decision.reason || '';
+        el.setAttribute('aria-disabled', decision.available ? 'false' : 'true');
+        el.style.display = decision.available ? '' : 'none';
+      });
+    } catch { /* navigation remains usable when the manifest is unavailable */ }
   },
 
   // ─── Version Watcher (v8.7.43) ─────────────────
@@ -1596,6 +1802,11 @@ const App = {
       this._currentPageName = pageName;
       await page.render(container, params);
 
+      // Every routed page carries a "?" button explaining what it does. Injected
+      // here rather than repeated in 50 render methods; pages that hand-rolled
+      // their own are left alone. See components/page-help.js.
+      try { PageHelp.mount(pageName, container); } catch { /* help must never break a page */ }
+
       // Enhance accessibility: add ARIA roles to tabs and icon-only buttons
       document.querySelectorAll('.tabs').forEach(t => {
         t.setAttribute('role', 'tablist');
@@ -1665,6 +1876,18 @@ const App = {
       sidebar.classList.add('collapsed');
     }
 
+    // Delegation keeps working when standard/simple/enterprise layouts replace
+    // the navigation markup after initialization.
+    if (!sidebar._mobileNavBound) {
+      sidebar._mobileNavBound = true;
+      sidebar.addEventListener('click', event => {
+        if (!event.target.closest('.nav-item') || window.innerWidth > 768) return;
+        sidebar.classList.remove('mobile-open');
+        const overlay = document.getElementById('sidebar-overlay');
+        if (overlay) overlay.style.display = 'none';
+      });
+    }
+
     // Mobile: add hamburger header + overlay
     if (window.innerWidth <= 768) {
       if (!document.querySelector('.mobile-header')) {
@@ -1685,13 +1908,6 @@ const App = {
         overlay.addEventListener('click', () => {
           sidebar.classList.remove('mobile-open');
           overlay.style.display = 'none';
-        });
-        // Close sidebar on nav click
-        sidebar.querySelectorAll('.nav-item').forEach(item => {
-          item.addEventListener('click', () => {
-            sidebar.classList.remove('mobile-open');
-            overlay.style.display = 'none';
-          });
         });
       }
     }
@@ -1876,15 +2092,33 @@ const App = {
       { icon: 'fa-info-circle', label: i18n.t('nav.about'), action: () => this.navigate('/about'), section: 'nav' },
       { icon: 'fa-cog', label: i18n.t('nav.settings'), action: () => this.navigate('/settings'), section: 'nav' },
       { icon: 'fa-user-circle', label: i18n.t('nav.profile'), action: () => this.navigate('/profile'), section: 'nav' },
-      { icon: 'fa-bell', label: 'Notifications', action: () => this.navigate('/notifications'), section: 'nav' },
-      { icon: 'fa-layer-group', label: 'Stacks', action: () => this.navigate('/stacks'), section: 'nav' },
-      { icon: 'fa-flask', label: 'API Playground', action: () => this.navigate('/api-playground'), section: 'nav' },
-      { icon: 'fa-dollar-sign', label: 'Cost Optimizer', action: () => this.navigate('/cost-optimizer'), section: 'nav' },
-      { icon: 'fa-project-diagram', label: 'Dependency Map', action: () => this.navigate('/dependency-map'), section: 'nav' },
-      { icon: 'fa-book', label: 'How-To Guides', action: () => this.navigate('/howto'), section: 'nav' },
-      { icon: 'fa-history', label: 'Event Timeline', action: () => this.navigate('/timeline'), section: 'nav' },
-      { icon: 'fa-file-alt', label: 'Log Explorer', action: () => this.navigate('/logs'), section: 'nav' },
-      { icon: 'fa-globe', label: 'Multi-Host Overview', action: () => this.navigate('/multi-host'), section: 'nav' },
+      { icon: 'fa-bell', label: i18n.t('nav.notifications'), action: () => this.navigate('/notifications'), section: 'nav' },
+      { icon: 'fa-layer-group', label: i18n.t('nav.stacks'), action: () => this.navigate('/stacks'), section: 'nav' },
+      { icon: 'fa-flask', label: i18n.t('nav.api-playground'), action: () => this.navigate('/api-playground'), section: 'nav' },
+      { icon: 'fa-dollar-sign', label: i18n.t('nav.cost-optimizer'), action: () => this.navigate('/cost-optimizer'), section: 'nav' },
+      { icon: 'fa-project-diagram', label: i18n.t('nav.dependency-map'), action: () => this.navigate('/dependency-map'), section: 'nav' },
+      { icon: 'fa-book', label: i18n.t('nav.howto'), action: () => this.navigate('/howto'), section: 'nav' },
+      { icon: 'fa-history', label: i18n.t('nav.timeline'), action: () => this.navigate('/timeline'), section: 'nav' },
+      { icon: 'fa-file-alt', label: i18n.t('nav.logs'), action: () => this.navigate('/logs'), section: 'nav' },
+      { icon: 'fa-globe', label: i18n.t('nav.multi-host'), action: () => this.navigate('/multi-host'), section: 'nav' },
+      { icon: 'fa-desktop', label: i18n.t('nav.virtual-machines'), action: () => this.navigate('/virtual-machines'), section: 'nav' },
+      { icon: 'fa-shield-alt', label: i18n.t('nav.high-availability'), action: () => this.navigate('/high-availability'), section: 'nav' },
+      { icon: 'fa-database', label: i18n.t('nav.storage-posture'), action: () => this.navigate('/storage-posture'), section: 'nav' },
+      { icon: 'fa-network-wired', label: i18n.t('nav.network-posture'), action: () => this.navigate('/network-posture'), section: 'nav' },
+      { icon: 'fa-shield-alt', label: i18n.t('nav.provider-security-posture'), action: () => this.navigate('/provider-security-posture'), section: 'nav' },
+      { icon: 'fa-balance-scale', label: i18n.t('nav.placement-advisor'), action: () => this.navigate('/placement-advisor'), section: 'nav' },
+      { icon: 'fa-box-archive', label: i18n.t('nav.recovery-points'), action: () => this.navigate('/recovery-points'), section: 'nav' },
+      { icon: 'fa-calendar-check', label: i18n.t('nav.backup-policies'), action: () => this.navigate('/backup-policies'), section: 'nav' },
+      { icon: 'fa-house-medical-circle-check', label: i18n.t('nav.disaster-recovery'), action: () => this.navigate('/disaster-recovery'), section: 'nav' },
+      { icon: 'fa-images', label: i18n.t('nav.virtualization-catalog'), action: () => this.navigate('/virtualization-catalog'), section: 'nav' },
+      { icon: 'fa-cubes', label: i18n.t('nav.compose-catalog'), action: () => this.navigate('/compose-catalog'), section: 'nav' },
+      { icon: 'fa-tasks', label: i18n.t('nav.activity'), action: () => this.navigate('/activity'), section: 'nav' },
+      { icon: 'fa-cloud', label: i18n.t('nav.xen-resources'), action: () => this.navigate('/xen-resources'), section: 'nav' },
+      { icon: 'fa-building-shield', label: i18n.t('nav.governance'), action: () => this.navigate('/governance'), section: 'nav' },
+      { icon: 'fa-store', label: i18n.t('nav.self-service'), action: () => this.navigate('/self-service'), section: 'nav' },
+      { icon: 'fa-shield-halved', label: i18n.t('nav.governance-controls'), action: () => this.navigate('/governance-controls'), section: 'nav' },
+      { icon: 'fa-tower-broadcast', label: i18n.t('nav.edge-platform'), action: () => this.navigate('/edge-platform'), section: 'nav' },
+      { icon: 'fa-laptop-code', label: i18n.t('nav.workstation-fleet'), action: () => this.navigate('/workstation-fleet'), section: 'nav' },
       // Docker tools
       { icon: 'fa-terminal', label: 'docker run → Compose', action: () => { this.navigate('/system'); setTimeout(() => document.querySelector('[data-tab="tools"]')?.click(), 300); }, section: 'tools' },
       { icon: 'fa-tags', label: 'Reverse Proxy Labels (Traefik/Caddy)', action: () => { this.navigate('/system'); setTimeout(() => document.querySelector('[data-tab="tools"]')?.click(), 300); }, section: 'tools' },
@@ -1916,6 +2150,13 @@ const App = {
       { icon: 'fa-download', label: i18n.t('pages.system.checkUpdates'), action: () => { this.navigate('/system'); }, section: 'action' },
       { icon: 'fa-sign-out-alt', label: 'Logout', action: () => this._logout(), section: 'action' },
     ];
+    for (const host of (this._hostSelectorHosts || [])) {
+      cmds.push({
+        icon: 'fa-server', label: `Host: ${host.name}`,
+        searchText: `${host.name} ${host.environment || ''} ${host.daemonType || ''}`,
+        action: () => this._activateHost(host.id), section: 'host',
+      });
+    }
     return cmds;
   },
 
@@ -2078,7 +2319,11 @@ const App = {
     let commands = this._getCommands();
     if (query) {
       const q = query.toLowerCase();
-      commands = commands.filter(c => c.label.toLowerCase().includes(q));
+      commands = commands
+        .map(command => ({ command, score: this._fuzzyScore(command.searchText || command.label, q) }))
+        .filter(result => Number.isFinite(result.score))
+        .sort((a, b) => a.score - b.score)
+        .map(result => result.command);
     }
 
     // Build static commands section HTML
@@ -2127,8 +2372,11 @@ const App = {
       clearTimeout(this._cmdSearchTimer);
       this._cmdSearchTimer = setTimeout(async () => {
         try {
-          const data = await Api.globalSearch(query);
-          const hits = data.results || [];
+          const [data, selfService] = await Promise.all([
+            Api.globalSearch(query),
+            Api.searchSelfServicePalette(query).catch(() => ({ results: [] })),
+          ]);
+          const hits = [...(data.results || []), ...(selfService.results || [])];
           const sec = document.getElementById('cmd-search-section');
           if (!sec) return;
 
@@ -2141,8 +2389,8 @@ const App = {
             return;
           }
 
-          const typeIcons = { container: 'fa-cube', image: 'fa-layer-group', volume: 'fa-database', network: 'fa-network-wired', 'git-stack': 'fa-git-alt', audit: 'fa-clipboard-list' };
-          const typeColors = { container: 'var(--accent)', image: 'var(--green)', volume: 'var(--yellow)', network: 'var(--purple, #a855f7)', 'git-stack': 'var(--orange, #f97316)', audit: 'var(--text-dim)' };
+          const typeIcons = { host: 'fa-server', container: 'fa-cube', image: 'fa-layer-group', volume: 'fa-database', network: 'fa-network-wired', 'virtual-machine': 'fa-desktop', 'git-stack': 'fa-git-alt', audit: 'fa-clipboard-list', catalog: 'fa-store', project: 'fa-diagram-project', request: 'fa-timeline' };
+          const typeColors = { host: 'var(--accent)', container: 'var(--accent)', image: 'var(--green)', volume: 'var(--yellow)', network: 'var(--purple, #a855f7)', 'virtual-machine': 'var(--cyan, #06b6d4)', 'git-stack': 'var(--orange, #f97316)', audit: 'var(--text-dim)', catalog: 'var(--green)', project: 'var(--accent)', request: 'var(--yellow)' };
 
           // Group by type
           const grouped = {};
@@ -2153,7 +2401,9 @@ const App = {
             icon: typeIcons[r.type] || 'fa-circle',
             label: r.name || r.id,
             action: () => {
-              if (r.url) {
+              if (r.type === 'host') {
+                this._activateHost(Number(r.host_id || r.id));
+              } else if (r.url) {
                 if (r.url.startsWith('#')) location.hash = r.url;
                 else App.navigate(r.url);
               }
@@ -2172,7 +2422,7 @@ const App = {
               html += `<div class="cmd-palette-item ${isSelected ? 'selected' : ''}" data-idx="${globalIdx}" style="display:flex;align-items:center;gap:8px;padding:7px 12px">
                 <i class="fas ${icon}" style="color:${color};width:14px;text-align:center;flex-shrink:0"></i>
                 <span class="cmd-label" style="flex:1">${Utils.escapeHtml(r.name || r.id)}</span>
-                <span style="font-size:10px;color:var(--text-dim);white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis">${Utils.escapeHtml(r.detail || '')}</span>
+                <span style="font-size:10px;color:${r.action?.available === false ? 'var(--yellow)' : 'var(--text-dim)'};white-space:nowrap;max-width:260px;overflow:hidden;text-overflow:ellipsis">${r.action?.available === false ? '<i class="fas fa-lock" style="margin-right:4px"></i>' : ''}${Utils.escapeHtml(r.action?.available === false ? r.action.reason : (r.detail || ''))}</span>
               </div>`;
               globalIdx++;
             });
@@ -2209,6 +2459,23 @@ const App = {
   _highlightCmd(items) {
     items.forEach((el, i) => el.classList.toggle('selected', i === this._cmdSelectedIdx));
     items[this._cmdSelectedIdx]?.scrollIntoView({ block: 'nearest' });
+  },
+
+  _fuzzyScore(value, query) {
+    const text = String(value || '').toLowerCase();
+    const q = String(query || '').toLowerCase().trim();
+    if (!q) return 0;
+    const direct = text.indexOf(q);
+    if (direct >= 0) return direct;
+    let cursor = 0;
+    let gapPenalty = 0;
+    for (const char of q) {
+      const found = text.indexOf(char, cursor);
+      if (found < 0) return Infinity;
+      gapPenalty += found - cursor;
+      cursor = found + 1;
+    }
+    return 100 + gapPenalty + (text.length - q.length) / 100;
   },
 
   _closeCommandPalette() {

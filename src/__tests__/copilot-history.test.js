@@ -9,6 +9,11 @@ process.env.ENCRYPTION_KEY = 'test-encryption-key-for-jest-32chars';
 process.env.DB_PATH = ':memory:';
 
 jest.mock('../services/copilot/llm', () => ({ chat: jest.fn() }));
+// History tests retain the real DB-backed context assembly but must not probe
+// the workstation's Docker daemon, firewall or network on each question.
+jest.mock('../services/posture', () => ({
+  scan: jest.fn().mockResolvedValue({ global: { score: 100, grade: 'A', counts: {} }, hosts: [], findings: [] }),
+}));
 
 const llm = require('../services/copilot/llm');
 const copilot = require('../services/copilot');

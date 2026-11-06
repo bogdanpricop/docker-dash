@@ -35,6 +35,8 @@ i18n.register('ko', 'KR', "한국어", {
     inactive: "비활성",
     enabled: "활성화됨",
     disabled: "비활성화됨",
+    yes: "예",
+    no: "아니요",
     test: "테스트",
     prune: "정리",
     unlimited: "무제한",
@@ -84,6 +86,7 @@ i18n.register('ko', 'KR', "한국어", {
     "registry-browse": "레지스트리",
     onboarding: "환경 설정",
     posture: "보안 태세",
+    procedures: "절차",
     blueprints: "Reconciler",
     copilot: "Copilot",
     "incus-instances": "Incus / LXD (알파)",
@@ -91,7 +94,25 @@ i18n.register('ko', 'KR', "한국어", {
     "migration-vm": "VM 마이그레이션 (알파)",
     "kubernetes-resources": "Kubernetes (알파)",
     "nomad-jobs": "Nomad (알파)",
-    "vsphere-resources": "vSphere / ESXi (알파)"
+    "vsphere-resources": "vSphere / ESXi (알파)",
+    "virtual-machines": "가상 머신",
+    "high-availability": "고가용성",
+    "storage-posture": "스토리지 상태",
+    "network-posture": "네트워크 상태",
+    "provider-security-posture": "공급자 보안",
+    "placement-advisor": "배치 어드바이저",
+    "recovery-points": "복구 지점",
+    "backup-policies": "백업 정책",
+    "disaster-recovery": "재해 복구",
+    "virtualization-catalog": "VM 카탈로그",
+    activity: "활동 센터",
+    "xen-resources": "Xen / XCP-ng",
+    governance: "거버넌스",
+    "self-service": "셀프 서비스",
+    "governance-controls": "ID 및 정책",
+    "edge-platform": "엣지 및 오프라인 환경",
+    "workstation-fleet": "워크스테이션 플릿",
+    "compose-catalog": "Compose 카탈로그"
   },
   login: {
     title: "Docker Dash",
@@ -1930,5 +1951,12 @@ i18n.register('ko', 'KR', "한국어", {
     checkFailed: "확인 실패",
     upToDate: "최신 버전을 사용 중입니다",
     refreshed: "업데이트 확인을 새로고침했습니다"
-  }
+  },
+  selfService: {
+    title: '인프라 셀프서비스', requestQuota: '할당량 요청', acknowledge: '확인', pause: '알림 일시 중지',
+    tabs: { catalog: '카탈로그', project: '프로젝트', requests: '요청', incidents: '인시던트', guidance: '가이드' },
+    actions: { start: '시작', shutdown: '종료', reboot: '재부팅', snapshot: '스냅샷', console: '콘솔' },
+    providers: { proxmox: 'Proxmox VE', vsphere: 'VMware vSphere', xen: 'Xen' },
+    safety: { confirm: '모든 인프라 변경에는 별도의 보호된 확인이 필요합니다.', mobile: '안전한 모바일 보기:' },
+  },
 });

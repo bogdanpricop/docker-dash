@@ -41,49 +41,9 @@ const SettingsPageLogforwarding = {
         </div>
       `;
 
-      el.querySelector('#lf-create').addEventListener('click', async () => {
-        const result = await Modal.form({
-          title: 'Add Log Forwarder',
-          fields: `
-            <div class="form-group"><label>Name</label><input type="text" id="lf-name" class="form-control" required></div>
-            <div class="form-group"><label>Type</label>
-              <select id="lf-type" class="form-control">
-                <option value="loki">Grafana Loki</option>
-                <option value="elasticsearch">Elasticsearch</option>
-                <option value="http">HTTP Webhook</option>
-                <option value="syslog">Syslog</option>
-              </select>
-            </div>
-            <div id="lf-config-fields">
-              <div class="form-group"><label>URL</label><input type="url" id="lf-url" class="form-control" placeholder="http://loki:3100" required></div>
-            </div>
-            <div class="form-group"><label>Custom Headers (JSON, optional)</label><input type="text" id="lf-headers" class="form-control" placeholder='{"X-Token": "abc"}'></div>
-          `,
-          onSubmit: (c) => {
-            const type = c.querySelector('#lf-type').value;
-            const cfg = {};
-            if (type === 'syslog') {
-              cfg.host = c.querySelector('#lf-url').value.trim();
-              cfg.port = parseInt(c.querySelector('#lf-headers').value) || 514;
-              cfg.protocol = 'udp';
-            } else {
-              cfg.url = c.querySelector('#lf-url').value.trim();
-              try { cfg.headers = JSON.parse(c.querySelector('#lf-headers').value || '{}'); } catch { cfg.headers = {}; }
-              if (type === 'elasticsearch') cfg.index = 'docker-dash-logs';
-            }
-            return { name: c.querySelector('#lf-name').value.trim(), type, config: cfg };
-          },
-        });
-        if (result && result.name) {
-          try {
-            await Api.post('/log-forwarders', result);
-            Toast.success('Log forwarder created');
-            this._renderTab();
-          } catch (err) { Toast.error(err.message); }
-        }
-      });
+      el.querySelector('#lf-create').addEventListener('click', () => this._openLogForwarder());
 
-      el.addEventListener('click', async (e) => {
+      el.querySelector('.card').addEventListener('click', async (e) => {
         const btn = e.target.closest('[data-action]');
         if (!btn) return;
         const id = parseInt(btn.dataset.id);
@@ -102,35 +62,7 @@ const SettingsPageLogforwarding = {
           } catch (err) { Toast.error('Test failed: ' + err.message); }
         } else if (btn.dataset.action === 'edit-lf') {
           try {
-            const fw = await Api.get('/log-forwarders/' + id);
-            const isSyslog = fw.type === 'syslog';
-            const result = await Modal.form({
-              title: 'Edit Log Forwarder',
-              fields: `
-                <div class="form-group"><label>Name</label><input type="text" id="lf-name" class="form-control" value="${Utils.escapeHtml(fw.name)}" required></div>
-                <div class="form-group"><label>Type</label><input type="text" class="form-control" value="${fw.type}" disabled></div>
-                <div class="form-group"><label>${isSyslog ? 'Host' : 'URL'}</label><input type="text" id="lf-url" class="form-control" value="${Utils.escapeHtml(isSyslog ? (fw.config.host || '') : (fw.config.url || ''))}" required></div>
-                <div class="form-group"><label>${isSyslog ? 'Port' : 'Headers (JSON)'}</label><input type="text" id="lf-extra" class="form-control" value="${Utils.escapeHtml(isSyslog ? String(fw.config.port || 514) : JSON.stringify(fw.config.headers || {}))}"></div>
-              `,
-              onSubmit: (c) => {
-                const cfg = {};
-                if (isSyslog) {
-                  cfg.host = c.querySelector('#lf-url').value.trim();
-                  cfg.port = parseInt(c.querySelector('#lf-extra').value) || 514;
-                  cfg.protocol = fw.config.protocol || 'udp';
-                } else {
-                  cfg.url = c.querySelector('#lf-url').value.trim();
-                  try { cfg.headers = JSON.parse(c.querySelector('#lf-extra').value || '{}'); } catch { cfg.headers = {}; }
-                  if (fw.type === 'elasticsearch') cfg.index = fw.config.index || 'docker-dash-logs';
-                }
-                return { name: c.querySelector('#lf-name').value.trim(), config: cfg };
-              },
-            });
-            if (result && result.name) {
-              await Api.put('/log-forwarders/' + id, result);
-              Toast.success('Forwarder updated');
-              this._renderTab();
-            }
+            await this._openLogForwarder(await Api.get('/log-forwarders/' + id));
           } catch (err) { Toast.error(err.message); }
         } else if (btn.dataset.action === 'delete-lf') {
           const ok = await Modal.confirm('Delete forwarder "' + btn.dataset.name + '"?', { danger: true });
@@ -143,7 +75,86 @@ const SettingsPageLogforwarding = {
         }
       });
     } catch (err) {
-      el.innerHTML = '<div class="empty-msg">Error: ' + err.message + '</div>';
+      el.innerHTML = '<div class="empty-msg">Error: ' + Utils.escapeHtml(err.message) + '</div>';
+    }
+  },
+
+  async _openLogForwarder(forwarder = null) {
+    const esc = Utils.escapeHtml;
+    const types = { loki: 'Grafana Loki', elasticsearch: 'Elasticsearch', http: 'HTTP Webhook', syslog: 'Syslog' };
+    const cfg = forwarder?.config || {};
+    const options = Object.entries(types).map(([value, label]) =>
+      `<option value="${value}" ${value === forwarder?.type ? 'selected' : ''}>${label}</option>`).join('');
+    const saved = await Modal.form(`
+      <div class="form-group"><label for="lf-name">Name</label>
+        <input id="lf-name" class="form-control" value="${esc(forwarder?.name || '')}" required></div>
+      <div class="form-group"><label for="lf-type">Type</label>
+        <select id="lf-type" class="form-control" ${forwarder ? 'disabled' : ''}>${options}</select></div>
+      <div id="lf-config-fields"></div>
+    `, {
+      title: forwarder ? 'Edit Log Forwarder' : 'Add Log Forwarder',
+      onMount: content => {
+        const type = content.querySelector('#lf-type');
+        const fields = content.querySelector('#lf-config-fields');
+        const render = () => {
+          fields.innerHTML = type.value === 'syslog' ? `
+            <div class="form-group"><label for="lf-host">Host</label>
+              <input id="lf-host" class="form-control" value="${esc(cfg.host || '')}" placeholder="syslog.example.com" required></div>
+            <div class="form-group"><label for="lf-port">Port</label>
+              <input id="lf-port" type="number" class="form-control" min="1" max="65535" value="${esc(cfg.port || 514)}" required></div>
+            <div class="form-group"><label for="lf-protocol">Protocol</label>
+              <select id="lf-protocol" class="form-control"><option value="udp">UDP</option>
+                <option value="tcp" ${cfg.protocol === 'tcp' ? 'selected' : ''}>TCP</option></select></div>
+          ` : `
+            <div class="form-group"><label for="lf-url">URL</label>
+              <input id="lf-url" type="url" class="form-control" value="${esc(cfg.url || '')}" placeholder="${type.value === 'loki' ? 'http://loki:3100' : 'https://logs.example.com'}" required></div>
+            <div class="form-group"><label for="lf-headers">Custom Headers (JSON, optional)</label>
+              <input id="lf-headers" class="form-control" autocomplete="off" value="${esc(cfg.headers ? JSON.stringify(cfg.headers) : '')}" placeholder='{"X-Token":"…"}'></div>
+          `;
+        };
+        type.addEventListener('change', render);
+        render();
+      },
+      onSubmit: async content => {
+        const field = id => content.querySelector('#lf-' + id);
+        const name = field('name');
+        const type = field('type').value;
+        const destination = field(type === 'syslog' ? 'host' : 'url');
+        name.value = name.value.trim();
+        destination.value = destination.value.trim();
+        if (!name.reportValidity() || !destination.reportValidity()) return false;
+        const config = { ...cfg };
+        if (type === 'syslog') {
+          if (!field('port').reportValidity()) return false;
+          Object.assign(config, { host: destination.value, port: field('port').valueAsNumber, protocol: field('protocol').value });
+        } else {
+          if (!/^https?:\/\//i.test(destination.value)) { Toast.error('Enter an HTTP or HTTPS URL'); return false; }
+          try {
+            config.headers = JSON.parse(field('headers').value.trim() || '{}');
+            if (!config.headers || Array.isArray(config.headers) || typeof config.headers !== 'object') throw new Error();
+          } catch {
+            Toast.error('Custom headers must be a JSON object');
+            return false;
+          }
+          config.url = destination.value;
+          if (type === 'elasticsearch') config.index ||= 'docker-dash-logs';
+        }
+        const submit = content.querySelector('#modal-submit');
+        submit.disabled = true;
+        try {
+          if (forwarder) await Api.put('/log-forwarders/' + forwarder.id, { name: name.value, config });
+          else await Api.post('/log-forwarders', { name: name.value, type, config });
+          return true;
+        } catch (err) {
+          Toast.error(err.message);
+          submit.disabled = false;
+          return false;
+        }
+      },
+    });
+    if (saved) {
+      Toast.success(forwarder ? 'Forwarder updated' : 'Log forwarder created');
+      await this._renderTab();
     }
   },
 

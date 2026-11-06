@@ -1,0 +1,23 @@
+{
+  "date": "2026-09-20",
+  "results": [
+    {
+      "host": "192.168.13.20",
+      "user": "localadmin-a",
+      "trustedSource": "existing current-user known_hosts",
+      "hostKeySha256": "4e4f020f23e3bd904ceace25303c45335e2ba0e8b88472971535f49fffc357f9",
+      "verifiedConnection": true,
+      "wrongKeyRejected": true,
+      "command": "whoami (read-only)"
+    },
+    {
+      "host": "89.37.212.66",
+      "user": "root",
+      "trustedSource": "existing current-user known_hosts",
+      "hostKeySha256": "b333b0d9e0a1b0d1054a4bf6ea54e334afffd4f38ad60f76f933d7dd3b294451",
+      "verifiedConnection": true,
+      "wrongKeyRejected": true,
+      "command": "whoami (read-only)"
+    }
+  ]
+}

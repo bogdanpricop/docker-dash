@@ -129,7 +129,7 @@ Then in docker-dash:
 - Transport: **HTTPS**
 - Endpoint: `https://192.168.13.23:8443`
 - Paste `dd-incus.crt` and `dd-incus.key`
-- Skip TLS verification: ☑
+- Provider CA certificate: verified issuer CA or self-signed server certificate, obtained through a trusted management channel. The certificate must match the endpoint host; TLS verification is mandatory.
 
 ## Verification checklist
 

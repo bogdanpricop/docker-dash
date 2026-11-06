@@ -1,0 +1,38 @@
+[
+  {
+    "file": "wget-request-target.patch",
+    "url": "https://lists.busybox.net/pipermail/busybox/2026-June/092347.html",
+    "cve": "CVE-2025-60876",
+    "sha256": "07101903fbcd902e2a5559c181fd65966f8984b8c32f2603316f8e6cc72e726a"
+  },
+  {
+    "file": "awk-sub-uaf.patch",
+    "url": "https://lists.busybox.net/pipermail/busybox/2026-June/092352.html",
+    "cve": "CVE-2026-38753",
+    "sha256": "744e2d821611f6e9cedd0570200594d42376c28d999e75f2152e74f192fb6343"
+  },
+  {
+    "file": "ash-ifs-cleanup.patch",
+    "url": "https://github.com/vda-linux/busybox_mirror/commit/a448b6d5b21e5b21249391389b6f0551d9bea136.patch",
+    "cve": "CVE-2026-38754",
+    "sha256": "76193a331c1b43d583a45a607013687a2608240bcbe92a9af67f0ea749271f71"
+  },
+  {
+    "file": "ash-recursion-limit.patch",
+    "url": "https://lists.busybox.net/pipermail/busybox/2026-June/092354.html",
+    "cve": "CVE-2026-38755",
+    "sha256": "467613365c18524a107ea17586220ab327e6b8140a47990df73fc3e5d0d0f973"
+  },
+  {
+    "file": "awk-wordmatch-test-skip.patch",
+    "url": "https://git.busybox.net/busybox/commit/?id=244c0a01eece537e9d7e8318a5c320a836cc604b",
+    "cve": null,
+    "sha256": "3c1bb891789eaa8cae6c19df15455e72bf7ab9c43c65bba453493ebc551e2ec0"
+  },
+  {
+    "file": "no-cbq.patch",
+    "url": "https://raw.githubusercontent.com/docker-library/busybox/master/.patches/no-cbq.patch",
+    "cve": null,
+    "sha256": "8451446ee0c7128f3eaca0322f113dadc11d1c05f616f6543a77908648f50785"
+  }
+]

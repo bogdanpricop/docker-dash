@@ -26,12 +26,14 @@ app.use('/api/containers', require('../routes/containers'));
 app.use('/api/teams', require('../routes/teams'));
 app.use('/api/host-groups', require('../routes/host-groups'));
 app.use('/api/host-permissions', require('../routes/host-permissions'));
+app.use('/api/git', require('../routes/git'));
 
 let adminToken;
 let viewerToken;
 let viewerId;
 let visibleHostId;
 let hiddenHostId;
+let noAccessHostId;
 let defaultHostId;
 
 beforeAll(async () => {
@@ -55,6 +57,9 @@ beforeAll(async () => {
   ).run().lastInsertRowid);
   hiddenHostId = Number(db.prepare(
     "INSERT INTO docker_hosts (name, connection_type, host, port) VALUES ('acl-hidden', 'tcp', '127.0.0.1', 12377)"
+  ).run().lastInsertRowid);
+  noAccessHostId = Number(db.prepare(
+    "INSERT INTO docker_hosts (name, connection_type, host, port) VALUES ('acl-none', 'tcp', '127.0.0.1', 12378)"
   ).run().lastInsertRowid);
 
   permissions.setLegacyDefault(false);
@@ -116,13 +121,16 @@ describe('host-list and resource-route enforcement', () => {
 });
 
 describe('Teams & Access administration API', () => {
-  test('non-admins cannot enumerate access-control configuration', async () => {
+  test('non-admins only receive ACL-filtered group metadata', async () => {
     await request(app).get('/api/teams')
       .set('Authorization', `Bearer ${viewerToken}`)
       .expect(403);
-    await request(app).get('/api/host-groups')
+    const groups = await request(app).get('/api/host-groups')
       .set('Authorization', `Bearer ${viewerToken}`)
-      .expect(403);
+      .expect(200);
+    for (const group of groups.body) {
+      expect(group.member_host_ids).not.toContain(hiddenHostId);
+    }
     await request(app).get(`/api/host-permissions?hostId=${visibleHostId}`)
       .set('Authorization', `Bearer ${viewerToken}`)
       .expect(403);
@@ -177,5 +185,35 @@ describe('method-aware middleware', () => {
     expect(invoke('POST')).toMatchObject({ status: 403, next: false });
     permissions.grant({ hostId: hiddenHostId, userId: viewerId, permission: 'operate' }, null);
     expect(invoke('POST').next).toBe(true);
+  });
+});
+
+describe('Git Compose file route enforcement', () => {
+  const gitService = require('../services/git');
+
+  test('requires authentication and stack view access before reading a file', async () => {
+    const getStack = jest.spyOn(gitService, 'getStack');
+    const readComposeFile = jest.spyOn(gitService, 'readComposeFile')
+      .mockReturnValue({ path: 'compose.yml', content: 'services: {}\n' });
+    try {
+      getStack.mockReturnValue({ id: 41, target_host_ids: [visibleHostId] });
+      await request(app).get('/api/git/stacks/41/file?path=compose.yml').expect(401);
+
+      const allowed = await request(app).get('/api/git/stacks/41/file?path=compose.yml')
+        .set('Authorization', `Bearer ${viewerToken}`)
+        .expect(200);
+      expect(allowed.body).toEqual({ path: 'compose.yml', content: 'services: {}\n' });
+      expect(readComposeFile).toHaveBeenCalledWith(41, 'compose.yml');
+
+      readComposeFile.mockClear();
+      getStack.mockReturnValue({ id: 42, target_host_ids: [noAccessHostId] });
+      await request(app).get('/api/git/stacks/42/file?path=compose.yml')
+        .set('Authorization', `Bearer ${viewerToken}`)
+        .expect(403);
+      expect(readComposeFile).not.toHaveBeenCalled();
+    } finally {
+      getStack.mockRestore();
+      readComposeFile.mockRestore();
+    }
   });
 });

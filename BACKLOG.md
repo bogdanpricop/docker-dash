@@ -1,6 +1,18 @@
 # Docker Dash — Known Backlog
 
-**Last updated:** 2026-05-05 · Post-v8.2.0 release (pCloud + off-site archives)
+**Reviewed:** 2026-09-19. The entries below are historical v8.2-era decisions.
+Current provider/market-research work is tracked in [the active plan](docs/planning/remaining-market-research-implementation-plan.md).
+See [the September audit](docs/audits/2026-09-19-project-security.md) for current findings.
+
+**Closed in the audit working tree (pending release):** dependency refresh,
+self-hosted browser library refresh with reproducibility checks, LDAP login flow,
+LDAP credential encryption, exact group authorization, verified outbound TLS,
+CSRF boundary fixes, retention digest protection and truthful CI failure reporting.
+Dockerode 5 and frontend self-hosting were already present before this audit;
+the deferred entries below no longer describe those components' current state.
+
+**Still open:** provider roadmap/canaries, Cloudflare live-test credentials,
+untagged registry enumeration/cleanup, and real infrastructure validation.
 
 This is the single source of truth for deferred work. Each item lists WHY it's deferred (not just WHAT), so future contributors don't waste cycles rediscovering the rationale.
 

@@ -163,6 +163,13 @@ describe('validateTemplateSpec', () => {
     }
   });
 
+  it('REJECTS inline secret assignments hidden inside otherwise unknown template fields', () => {
+    expect(() => templates.validateTemplateSpec({ ignored: {
+      environment: ['DATABASE_PASSWORD=must-not-pass-admission'],
+    } })).toThrow(expect.objectContaining({ code: 'SECRET_REFERENCE_ADMISSION_FAILED', status: 422,
+      details: expect.objectContaining({ documentStored: false, networkCallsStarted: 0 }) }));
+  });
+
   it('REJECTS unknown module keys and unknown nomenclature kinds', () => {
     expect(() => templates.validateTemplateSpec({ modules: ['not-a-module'] })).toThrow(/unknown module key/);
     expect(() => templates.validateTemplateSpec({ nomenclatures: [{ kind: 'bogus', code: 'a', label: 'A' }] })).toThrow(/unknown nomenclature kind/);

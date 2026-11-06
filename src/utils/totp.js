@@ -84,16 +84,24 @@ function generateTOTP(secret, timeMs) {
  * @returns {boolean}
  */
 function verifyTOTP(secret, code, window = 1) {
-  if (!code || code.length !== 6 || !/^\d{6}$/.test(code)) return false;
+  return matchTOTPCounter(secret, code, window) !== null;
+}
+
+// Authentication callers persist the matched counter to enforce single use.
+function matchTOTPCounter(secret, code, window = 1) {
+  if (typeof code !== 'string' || !/^\d{6}$/.test(code)) return null;
+  if (!Number.isInteger(window) || window < 0 || window > 10) return null;
 
   const secretBuffer = fromBase32(secret);
   const counter = Math.floor(Date.now() / 30000);
 
+  let matched = null;
   for (let i = -window; i <= window; i++) {
+    if (counter + i < 0) continue;
     const expected = generateCode(secretBuffer, counter + i);
-    if (timingSafeEqual(expected, code)) return true;
+    if (timingSafeEqual(expected, code)) matched = counter + i;
   }
-  return false;
+  return matched;
 }
 
 /**
@@ -141,6 +149,7 @@ module.exports = {
   generateSecret,
   generateTOTP,
   verifyTOTP,
+  matchTOTPCounter,
   generateOtpauthURI,
   generateRecoveryCodes,
   toBase32,

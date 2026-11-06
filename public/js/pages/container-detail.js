@@ -302,6 +302,10 @@ const ContainersPageDetail = {
     }
   },
 
+  _replacementNotice(result) {
+    if (result.cleanupRequired) Toast.warning(i18n.t('common.replacementCleanup', { operation: result.operationId }));
+  },
+
   async _updateContainer(id, image) {
     const ok = await Modal.confirm(
       `Pull latest image for <strong>${Utils.escapeHtml(image)}</strong> and recreate this container with the same configuration?`,
@@ -313,6 +317,7 @@ const ContainersPageDetail = {
     try {
       const result = await Api.updateContainer(id);
       Toast.success(`Container updated via ${result.method}`);
+      this._replacementNotice(result);
       // Reload detail or go back to list
       if (result.newId) {
         this._detailId = result.newId;
@@ -452,7 +457,7 @@ const ContainersPageDetail = {
 
   async _safeUpdateContainer(id, name, image) {
     const ok = await Modal.confirm(
-      `<strong>Safe Update</strong>: Pull latest <code>${Utils.escapeHtml(image)}</code>, scan for vulnerabilities with Trivy, and only swap if no critical CVEs are found.<br><br>This is safer than a regular update.`,
+      `<strong>Safe Update</strong>: Pull latest <code>${Utils.escapeHtml(image)}</code> and scan that exact image with both Trivy and Grype. Critical, High or Unknown findings in either report block the update. Missing or failed scans also block it.`,
       { confirmText: 'Safe Update', danger: false }
     );
     if (!ok) return;
@@ -461,6 +466,7 @@ const ContainersPageDetail = {
     try {
       const result = await Api.safeUpdateContainer(id);
       if (result.ok) {
+        this._replacementNotice(result);
         Toast.success(`Safe update complete. Scan: ${result.scan?.critical || 0} critical, ${result.scan?.high || 0} high`);
         if (result.newId) this._detailId = result.newId;
         await this._loadDetail();
@@ -818,9 +824,16 @@ const ContainersPageDetail = {
       const info = this._detailData || {};
       const name = info.name || id.substring(0, 12);
       const isRunning = info.state === 'running';
+      // v8.94.0 — show the equivalent docker command before a destructive action.
+      // Returns '' if unavailable, so the dialog degrades to exactly what it was.
+      const cliHtml = await CliPreview.html('container.remove', { name, force: true });
       const ok = await Modal.confirm(
-        `Remove container "${name}"? This action cannot be undone.`,
-        { danger: true, confirmText: i18n.t('common.remove'), typeToConfirm: isRunning ? name : undefined }
+        `<p>${Utils.escapeHtml(`Remove container "${name}"? This action cannot be undone.`)}</p>${cliHtml}`,
+        {
+          danger: true, html: true, confirmText: i18n.t('common.remove'),
+          typeToConfirm: isRunning ? name : undefined,
+          onMount: (root) => CliPreview.mount(root),
+        }
       );
       if (!ok) return;
       try {
@@ -1044,7 +1057,7 @@ const ContainersPageDetail = {
         </div>
         <div class="card-body">
           <p class="text-sm text-muted" style="margin-bottom:16px">
-            Deploy updates through a staged pipeline: Pull &rarr; Scan &rarr; Swap &rarr; Verify &rarr; Notify.
+            Safe Deploy requires verified Trivy and Grype reports before swapping. Critical, High, Unknown or unavailable results block deployment. Quick Deploy skips scanning and verification.
             Safe deploy runs all stages. Quick deploy skips scan and verify.
           </p>
           <div id="pipeline-active" class="hidden">
@@ -1315,6 +1328,10 @@ const ContainersPageDetail = {
     // Load and display container metadata card
     this._loadMetaCard(el, info.name);
 
+    // v8.94.0 — isolation card. Loaded after render, like the meta card: the
+    // info tab is the default view and must not wait on a daemon round trip.
+    this._loadIsolationCard(el);
+
     // Wire sandbox buttons
     if (isSandbox) {
       el.querySelector('#sb-extend-btn')?.addEventListener('click', async () => {
@@ -1334,6 +1351,61 @@ const ContainersPageDetail = {
         } catch (err) { Toast.error(err.message); }
       });
     }
+  },
+
+  // v8.94.0 — isolation posture. Shows which OCI runtime actually backs this
+  // container and, when it can reach past that runtime, exactly how. The reach
+  // list is informational here; the posture page raises a finding only where the
+  // host has a sandboxed runtime the container isn't using.
+  async _loadIsolationCard(el) {
+    let r;
+    try { r = await Api.getContainerIsolation(this._detailId); }
+    catch { return; } // the info tab is more important than the assessment
+    if (!r || !r.runtime) return;
+
+    const sev = { critical: 'var(--red)', high: 'var(--red)', medium: 'var(--yellow)', low: 'var(--text-muted)' };
+    // v8.95.0 — three classes, ordered. Wasm was previously reported as SHARED
+    // KERNEL, the exact opposite of the truth.
+    const cls = r.isolationClass || (r.sandboxed ? 'sandboxed' : 'standard');
+    const badgeFor = {
+      wasm: `<span class="badge badge-success">${Utils.escapeHtml(i18n.t('pages.containers.isolationWasm'))}</span>`,
+      sandboxed: `<span class="badge badge-success">${Utils.escapeHtml(i18n.t('pages.containers.isolationSandboxed'))}</span>`,
+      standard: `<span class="badge badge-info">${Utils.escapeHtml(i18n.t('pages.containers.isolationSharedKernel'))}</span>`,
+      unknown: `<span class="badge badge-info">${Utils.escapeHtml(i18n.t('pages.containers.isolationSharedKernel'))}</span>`,
+    };
+    const badge = badgeFor[cls] || badgeFor.standard;
+    // Said only for Wasm, and deliberately: we can see the runtime, never the
+    // WASI grants, so the copy states both.
+    const classNote = cls === 'wasm'
+      ? `<p class="text-sm" style="margin:10px 0 0;color:var(--text-muted)">${Utils.escapeHtml(i18n.t('pages.containers.isolationWasmNote'))}</p>`
+      : '';
+
+    const signals = (r.signals || []).map(s => `
+      <li style="color:${sev[s.severity] || 'var(--text-muted)'}">
+        <i class="fas fa-circle" style="font-size:6px;vertical-align:middle;margin-right:6px"></i>${Utils.escapeHtml(s.label)}
+      </li>`).join('');
+
+    const body = signals
+      ? `<p class="text-sm" style="margin:10px 0 4px;color:var(--text-muted)">${Utils.escapeHtml(i18n.t('pages.containers.isolationReach'))}</p>
+         <ul class="text-sm" style="margin:0;padding-left:18px;line-height:1.7">${signals}</ul>
+         ${r.actionable ? `<p class="text-sm" style="margin:10px 0 0;color:var(--yellow)">
+            <i class="fas fa-lightbulb"></i> ${Utils.escapeHtml(i18n.t('pages.containers.isolationSuggest', { runtime: (r.upgradeOptions || r.sandboxOptions || [])[0] }))}
+          </p>` : ''}`
+      : `<p class="text-sm" style="margin:10px 0 0;color:var(--text-muted)">${Utils.escapeHtml(i18n.t('pages.containers.isolationClean'))}</p>`;
+
+    const card = document.createElement('div');
+    card.className = 'card mt-md';
+    card.innerHTML = `
+      <div class="card-header"><h3>${Utils.escapeHtml(i18n.t('pages.containers.isolation'))}</h3></div>
+      <div class="card-body">
+        <table class="info-table">
+          <tr><td>${Utils.escapeHtml(i18n.t('pages.containers.runtime'))}</td>
+              <td><span class="mono">${Utils.escapeHtml(r.runtime)}</span> ${badge}</td></tr>
+        </table>
+        ${body}
+        ${classNote}
+      </div>`;
+    el.appendChild(card);
   },
 
   async _loadMetaCard(el, containerName) {
@@ -1588,14 +1660,16 @@ const ContainersPageDetail = {
   },
 
   _startLogFollow() {
+    if (this._logFollowing) this._stopLogFollow();
     this._logFollowing = true;
     WS.send('logs:subscribe', { containerId: this._detailId, tail: 50, hostId: Api.getHostId() });
 
     this._logDataHandler = WS.on('logs:data', (msg) => {
-      if (msg.data?.containerId !== this._detailId) return;
+      const data = msg.data || msg;
+      if (data.containerId !== this._detailId) return;
       const el = document.getElementById('log-output');
       if (!el) return;
-      const lines = msg.data.lines || [];
+      const lines = data.lines || [];
       for (const line of lines) {
         let cls = '';
         if (/\b(error|fatal|panic|exception|fail)\b/i.test(line)) cls = 'log-error';
@@ -1616,10 +1690,17 @@ const ContainersPageDetail = {
     });
 
     this._logEndHandler = WS.on('logs:end', (msg) => {
-      if (msg.data?.containerId !== this._detailId) return;
+      const data = msg.data || msg;
+      if (data.containerId !== this._detailId) return;
       const el = document.getElementById('log-output');
       if (el) el.innerHTML += '\n<span class="log-line log-warn">[Stream ended — container may have stopped]</span>';
       this._logFollowing = false;
+    });
+    this._logErrorHandler = WS.on('logs:error', (msg) => {
+      const data = msg.data || msg;
+      if (data.containerId && data.containerId !== this._detailId) return;
+      const el = document.getElementById('log-output');
+      if (el) el.innerHTML += `\n<span class="log-line log-error">${Utils.escapeHtml(data.error || 'Log stream failed')}</span>`;
     });
   },
 
@@ -1628,6 +1709,7 @@ const ContainersPageDetail = {
     WS.send('logs:unsubscribe', {});
     if (this._logDataHandler) { this._logDataHandler(); this._logDataHandler = null; }
     if (this._logEndHandler) { this._logEndHandler(); this._logEndHandler = null; }
+    if (this._logErrorHandler) { this._logErrorHandler(); this._logErrorHandler = null; }
   },
 
   // ─── Terminal Tab (exec) ────────────────────
@@ -1658,11 +1740,30 @@ const ContainersPageDetail = {
         </button>
         <span class="text-dim text-sm" id="term-status">${i18n.t('pages.containers.notConnected')}</span>
       </div>
+      <div id="term-access-warning" class="alert alert-danger" style="display:none;margin-bottom:10px"></div>
       <div id="terminal-container" class="terminal-container" style="height:calc(100vh - 300px)"></div>
     `;
 
     el.querySelector('#term-connect').addEventListener('click', () => this._startExec());
     el.querySelector('#term-disconnect').addEventListener('click', () => this._stopExec());
+
+    // Friendly preflight only; the WebSocket start gate remains authoritative
+    // and closes the race if an administrator locks access after this request.
+    Api.getTerminalAccess(Api.getHostId()).then(access => {
+      if (!access.effective?.locked) return;
+      const button = el.querySelector('#term-connect');
+      const status = el.querySelector('#term-status');
+      const warning = el.querySelector('#term-access-warning');
+      if (button) button.disabled = true;
+      if (status) {
+        status.textContent = 'Locked by administrator';
+        status.style.color = 'var(--red)';
+      }
+      if (warning) {
+        warning.style.display = '';
+        warning.innerHTML = `<i class="fas fa-lock"></i> ${Utils.escapeHtml(access.effective.reason || 'Terminal access is currently locked')}`;
+      }
+    }).catch(() => { /* WebSocket gate still fails closed when needed */ });
   },
 
   _startExec() {
@@ -2711,14 +2812,14 @@ const ContainersPageDetail = {
         const isCurrent = e.image_id === data.currentImageId;
         return `<tr${isCurrent ? ' style="opacity:0.5"' : ''}>
           <td class="mono text-sm">${Utils.escapeHtml(e.image_name)}</td>
-          <td class="mono text-sm" title="${Utils.escapeHtml(e.image_id)}">${shortId}</td>
+          <td class="mono text-sm" title="${Utils.escapeHtml(e.image_id)}">${Utils.escapeHtml(shortId)}</td>
           <td class="text-sm">${date}</td>
-          <td><span class="badge badge-info">${e.action}</span></td>
-          <td class="text-sm">${e.deployed_by || '—'}</td>
+          <td><span class="badge badge-info">${Utils.escapeHtml(e.action)}</span></td>
+          <td class="text-sm">${Utils.escapeHtml(e.deployed_by || '—')}</td>
           <td>${isCurrent
             ? '<span class="badge badge-running">Current</span>'
             : e.imageAvailable
-              ? `<button class="btn btn-sm btn-warning rollback-btn" data-history-id="${e.id}"><i class="fas fa-undo"></i> Rollback</button>`
+              ? `<button class="btn btn-sm btn-warning rollback-btn" data-history-id="${Utils.escapeHtml(String(e.id))}"><i class="fas fa-undo"></i> Rollback</button>`
               : '<span class="text-muted text-sm">Image pruned</span>'
           }</td>
         </tr>`;
@@ -2730,6 +2831,8 @@ const ContainersPageDetail = {
           <button class="modal-close-btn" id="modal-x"><i class="fas fa-times"></i></button>
         </div>
         <div class="modal-body">
+          <p class="text-sm text-muted">${Utils.escapeHtml(i18n.t('pages.containers.rollbackSnapshotHint'))}
+            <a href="#/howto/rollback-history" id="rollback-history-guide">${Utils.escapeHtml(i18n.t('pages.containers.rollbackSnapshotGuide'))}</a></p>
           <div class="text-sm text-muted" style="margin-bottom:12px">Current image: <span class="mono">${Utils.escapeHtml(data.currentImage)}</span></div>
           <table class="data-table compact">
             <thead><tr><th>Image</th><th>ID</th><th>Date</th><th>Action</th><th>By</th><th></th></tr></thead>
@@ -2744,6 +2847,8 @@ const ContainersPageDetail = {
       Modal._content.querySelector('#modal-x').addEventListener('click', () => Modal.close());
       Modal._content.querySelector('#modal-ok').addEventListener('click', () => Modal.close());
 
+      Modal._content.querySelector('#rollback-history-guide').addEventListener('click', () => Modal.close());
+
       Modal._content.querySelectorAll('.rollback-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
           const historyId = btn.dataset.historyId;
@@ -2753,6 +2858,8 @@ const ContainersPageDetail = {
             Toast.info('Rolling back...');
             const result = await Api.rollbackContainer(containerId, parseInt(historyId));
             Toast.success(`Rolled back to ${result.rolledBackTo || 'previous version'}`);
+            this._replacementNotice(result);
+            if (result.newId) this._detailId = result.newId;
             Modal.close();
             await this._loadDetail();
           } catch (err) {

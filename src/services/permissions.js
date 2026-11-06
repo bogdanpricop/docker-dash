@@ -30,6 +30,7 @@ function getEffectiveRole(userId, stackName, globalRole) {
     if (row) return row.permission;
   } catch (err) {
     log.error('Error checking stack permission', err);
+    return 'none';
   }
 
   // Fallback to global role mapping
@@ -44,7 +45,7 @@ function mapGlobalToPermission(role) {
     case 'admin': return 'admin';
     case 'operator': return 'operate';
     case 'viewer': return 'view';
-    default: return 'view';
+    default: return 'none';
   }
 }
 
@@ -52,7 +53,8 @@ function mapGlobalToPermission(role) {
  * Check if effective role has at least the required level
  */
 function hasPermission(effectiveRole, requiredLevel) {
-  return (ROLE_HIERARCHY[effectiveRole] || 0) >= (ROLE_HIERARCHY[requiredLevel] || 0);
+  return Object.hasOwn(ROLE_HIERARCHY, effectiveRole) && Object.hasOwn(ROLE_HIERARCHY, requiredLevel)
+    && ROLE_HIERARCHY[effectiveRole] >= ROLE_HIERARCHY[requiredLevel];
 }
 
 /**
@@ -137,15 +139,13 @@ function filterContainers(containers, userId, globalRole) {
     }
   } catch (err) {
     log.error('Error loading permissions for filter', err);
-    return containers; // fail open
+    return []; // Never expose restricted inventory when permission storage fails.
   }
 
   return containers.filter(c => {
     const stack = c.stack || c.Labels?.['com.docker.compose.project'] || '_standalone';
     const perm = perms[stack]; // undefined means use global role
-    if (perm === 'none') return false;
-    if (perm) return true; // view, operate, admin all can see
-    return true; // no per-stack override = use global (which is at least viewer)
+    return hasPermission(perm === undefined ? mapGlobalToPermission(globalRole) : perm, 'view');
   });
 }
 

@@ -27,6 +27,20 @@ describe('Permissions Service', () => {
   });
 
   // ─── seed helpers ─────────────────────────────────────────────────────────
+  test('database failure cannot grant access or expose inventory', () => {
+    const failure = jest.spyOn(db, 'prepare').mockImplementation(() => { throw new Error('test database failure'); });
+    try {
+      expect(perms.getEffectiveRole(11, 'restricted', 'operator')).toBe('none');
+      expect(perms.filterContainers([{ stack: 'restricted' }], 11, 'operator')).toEqual([]);
+    } finally { failure.mockRestore(); }
+  });
+
+  test('unknown permission names cannot satisfy an authorization check', () => {
+    expect(perms.hasPermission('admin', 'typo')).toBe(false);
+    expect(perms.hasPermission('toString', 'view')).toBe(false);
+    expect(perms.filterContainers([{ stack: 'unassigned' }], 11, 'unknown')).toEqual([]);
+  });
+
   function seedUser(id, username, role) {
     db.prepare(
       `INSERT OR IGNORE INTO users (id, username, password_hash, role) VALUES (?, ?, 'x', ?)`
@@ -63,9 +77,9 @@ describe('Permissions Service', () => {
     });
 
     it('maps unknown roles → view (safe default)', () => {
-      expect(perms.mapGlobalToPermission('unknown')).toBe('view');
-      expect(perms.mapGlobalToPermission('')).toBe('view');
-      expect(perms.mapGlobalToPermission(null)).toBe('view');
+      expect(perms.mapGlobalToPermission('unknown')).toBe('none');
+      expect(perms.mapGlobalToPermission('')).toBe('none');
+      expect(perms.mapGlobalToPermission(null)).toBe('none');
     });
   });
 

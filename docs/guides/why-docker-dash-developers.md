@@ -56,7 +56,9 @@ A good Docker UI fixes #1, #2, #5 visually — you no longer need to remember `d
 
 ### Docker Dash
 
-- **Everything Portainer Business paywalls, free, in the same package:** OIDC, LDAP, SSO via header, audit log with SHA-256 hash chain (compliance-friendly), three-tier RBAC, MFA with recovery codes, image scanning with Trivy / Grype / Docker Scout, CIS Docker Benchmark integrated.
+Docker Scout is temporarily excluded for security reasons; see [the explanation and return criteria](../audits/2026-09-20-scout-exclusion.md).
+
+- **Everything Portainer Business paywalls, free, in the same package:** OIDC, LDAP, SSO via header, audit log with SHA-256 hash chain (compliance-friendly), three-tier RBAC, MFA with recovery codes, image scanning with Trivy / Grype, CIS Docker Benchmark integrated.
 - **Multi-host through SSH tunnel** — no agent on the remote server. Add a new host with an SSH key, done.
 - **Compose stacks deploy from git repos:** connect a repo, pick a branch, deploy runs `docker compose up -d` with auto-pull webhooks. One-click rollback.
 - **Secrets Wizard** — paste a complete `.env`, get a hardened bash script that creates `*_FILE` entries with permissions `600`, owner `root:docker`, optionally with automatic SSH deployment. Plus a **Rotation Tracker** that nags you when secrets expire.

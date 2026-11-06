@@ -86,6 +86,7 @@ router.post('/attach-vsphere', requireAuth, requireRole('admin'), writeable, asy
   cfg.sshConfig = {
     host: sshConfig.host, port: parseInt(sshConfig.port, 10) || 22,
     user: sshConfig.user, privateKey: sshConfig.privateKey,
+    hostKeySha256: require('../utils/ssh-host-key').normalizeFingerprint(sshConfig.hostKeySha256),
   };
   db.prepare('UPDATE docker_hosts SET daemon_config = ?, updated_at = ? WHERE id = ?')
     .run(vsphere.encryptDaemonConfig(cfg), new Date().toISOString(), hostId);

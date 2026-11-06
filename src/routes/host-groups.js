@@ -8,11 +8,20 @@ const auditService = require('../services/audit');
 const { requireAuth, requireRole, writeable } = require('../middleware/auth');
 const { getClientIp } = require('../utils/helpers');
 const asyncHandler = require('../utils/asyncHandler');
+const hostPermissions = require('../services/host-permissions');
+const { getDb } = require('../db');
 
 const router = Router();
 
-router.get('/', requireAuth, requireRole('admin'), asyncHandler(async (_req, res) => {
-  res.json(svc.list());
+router.get('/', requireAuth, asyncHandler(async (req, res) => {
+  const isAdmin = req.user.role === 'admin'
+    || (Array.isArray(req.user.roles) && req.user.roles.includes('admin'));
+  const allHostIds = getDb().prepare('SELECT id FROM docker_hosts').all().map(row => row.id);
+  const visibleIds = new Set(hostPermissions.filterVisibleHosts(req.user.id, isAdmin, allHostIds));
+  res.json(svc.list().map(group => {
+    const memberHostIds = group.member_host_ids.filter(id => visibleIds.has(id));
+    return { ...group, member_host_ids: memberHostIds, member_count: memberHostIds.length };
+  }).filter(group => isAdmin || group.member_count > 0));
 }));
 
 router.get('/:id', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {

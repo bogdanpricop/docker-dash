@@ -292,7 +292,7 @@ const SystemPageSecrets = {
           + '<button class="btn btn-secondary" id="wz-copy-script"><i class="fas fa-copy"></i> Copy Script</button>'
           + '</div>'
           + '<div class="card" style="margin-top:16px;border-left:4px solid var(--accent)"><div class="card-header"><h3><i class="fas fa-bolt" style="margin-right:6px;color:var(--accent)"></i>Remote Deploy via SSH</h3></div><div class="card-body">'
-          + '<p class="text-sm text-muted" style="margin-bottom:10px">Upload + execute the script on a remote host via SSH (requires host with SSH config in Hosts → Add Host).</p>'
+          + '<p class="text-sm text-muted" style="margin-bottom:10px">' + Utils.escapeHtml(i18n.t('common.remoteSecretExecution')) + '</p>'
           + '<div class="form-row">'
           + '<div class="form-group" style="flex:1"><label>Target Host</label><select id="wz-remote-host" class="form-control"><option value="">— choose SSH host —</option>' + hostOpts + '</select></div>'
           + '<div class="form-group" style="flex:1"><label>Run as sudo</label><select id="wz-remote-sudo" class="form-control"><option value="1" selected>Yes (recommended)</option><option value="0">No</option></select></div>'
@@ -483,7 +483,7 @@ const SystemPageSecrets = {
             appName: state.appName, secretDir: state.secretDir,
             secretFiles: state.analysis.secretFiles, providerValues: state.providerValues,
           });
-          logEl.textContent += '[*] Uploading + executing on host ' + hostId + (useSudo ? ' (sudo)' : '') + '...\n';
+          logEl.textContent += '[*] Verifying + executing on host ' + hostId + (useSudo ? ' (sudo)' : '') + '...\n';
           const res = await Api.deploySecretsRemote({ hostId, appName: state.appName, secretDir: state.secretDir, script, useSudo });
           logEl.textContent += '\n' + (res.output || '') + '\n\n[' + (res.exitCode === 0 ? '✓ SUCCESS' : '✗ FAILED exit=' + res.exitCode) + ']';
           logEl.scrollTop = logEl.scrollHeight;

@@ -14,6 +14,7 @@ const { _oidcCacheInternals } = require('../routes/auth');
 const ISSUER = 'https://login.microsoftonline.com/test-tenant/v2.0';
 
 const DISCO_BODY = {
+  issuer: ISSUER,
   authorization_endpoint: `${ISSUER}/oauth2/v2.0/authorize`,
   token_endpoint: `${ISSUER}/oauth2/v2.0/token`,
   userinfo_endpoint: `https://graph.microsoft.com/oidc/userinfo`,

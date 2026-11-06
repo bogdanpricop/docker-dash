@@ -124,6 +124,17 @@ describe('AI service', () => {
       aiService.saveSettings({ model: 'claude-sonnet-4-6' }, 1);
       expect(aiService.getSettingsForApi().hasApiKey).toBe(true);
     });
+
+    it('does not carry a key or endpoint over to a different provider', () => {
+      aiService.saveSettings({
+        enabled: true, provider: 'anthropic', apiKey: 'old-key',
+        endpointUrl: 'https://old-proxy.example.test', model: 'claude-haiku-5-5',
+      }, 1);
+      expect(() => aiService.saveSettings({ provider: 'openai' }, 1)).toThrow(/require an API key/);
+      expect(aiService.getSettingsForApi().provider).toBe('anthropic');
+      aiService.saveSettings({ provider: 'openai', apiKey: 'new-key' }, 1);
+      expect(aiService.getSettingsForApi()).toMatchObject({ provider: 'openai', model: null, endpointUrl: null, hasApiKey: true });
+    });
   });
 
   describe('call — with MockAiProvider', () => {

@@ -1,0 +1,18 @@
+{
+  "date": "2026-09-20",
+  "suiteCount": 351,
+  "testsPassed": 4519,
+  "testsSkipped": 1,
+  "realLdapTransportTests": 25,
+  "transports": ["StartTLS", "LDAPS"],
+  "negativeCasesSendNoBind": true,
+  "plaintextReconnectBlocked": true,
+  "absoluteTlsHandshakeDeadlineMs": 5000,
+  "browserLanguages": ["en", "ro"],
+  "productionImage": "sha256:53b54c7d2d3aefee35fa536cfc68502e03d9e21f6ae77b4ac5797c07c6ca7126",
+  "productionSmokePassed": true,
+  "imageVulnerabilityScanForThisId": false,
+  "realActiveDirectoryTested": false,
+  "published": false,
+  "deployed": false
+}

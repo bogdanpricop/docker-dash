@@ -1,0 +1,186 @@
+{
+  "at": "2026-09-20T09:19:15.244Z",
+  "sourceBase": "10bedb4",
+  "deployed": false,
+  "existingCandidateIncludesFix": false,
+  "migration": 181,
+  "tests": {
+    "suites": 374,
+    "passed": 4982,
+    "skipped": 1,
+    "newTests": 24,
+    "lint": true,
+    "pageHelp": "60/60",
+    "fullLogSha256": "38a2f8d58c6e20369c44e57a67b8faa18950741679fc64d0f99f0843a839bf6e"
+  },
+  "regressions": {
+    "original": {
+      "failed": 2,
+      "logSha256": "2253704ac81053e6eca54882b5ee58a2df12adcfca6680a37b34176a5b5f9333"
+    },
+    "firstImplementationRace": {
+      "failed": 1,
+      "logSha256": "e16658c415ee2985407480aa9bfe5adbd25aff954d0d3623e3014f323539843e"
+    }
+  },
+  "testSources": {
+    "src/__tests__/oidc-group-mapping.test.js": "2eee22c24c1f485fb9776ae0980738b55e35c644be36ce7fbc395335083406db",
+    "src/__tests__/oidc-flow-security.test.js": "50e6b9de8bc015ececb0d3fa1fa414eef7480aab8e78027ca66f005760e2b299",
+    "src/__tests__/external-identity.test.js": "223a1b5d68296d501a8cd246d1ad5e5210ad7ea314f9a6a266835b25833eb617",
+    "scripts/fixtures/oidc-flow-smoke.cjs": "1b757d867a8657e8731abb7f4f6b1023d36e7de4dd6487f75a1cf59b0336f4c5"
+  },
+  "npm": {
+    "outdated": {},
+    "audit": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    },
+    "packageManager": "npm@11.19.1"
+  },
+  "targets": {
+    "lan": {
+      "at": "2026-09-20T09:16:02.625Z",
+      "image": "sha256:92ccd1ee61927eedfbc697cacedd46de6ba355f2e82b298ebed571362da4c7f3",
+      "mode": "source-overlay",
+      "sourceHashes": {
+        "src/routes/auth.js": "1bc60b0e80036030e0594e3454d97e084d856ffb5a5a6c2632bf52b2f996b12e",
+        "src/services/auth.js": "0994e376ce347178c14baa64ae0f2291ef64e62ee7a5cf60114986cafd8042a3",
+        "src/services/email.js": "d1522d8d44e8de55eb456ad4b5151d3049c4732c054ad10178a5fb5565ae053b",
+        "src/services/password-reset.js": "79d075d1c708380be94b2a1800b6c1a7c4df149b25846c963a2b6098a9fdc3db",
+        "src/services/password-reset-delivery.js": "ddfacb50c82b660810aa95ff7e9f099f343082cf2d5f6d457087173012732211",
+        "src/config/index.js": "eb8e7a9e0f772ceef152df333fcc2b435639c28a16fce140f49257e480badeb6",
+        "src/db/migrations/178_auth_time_indexes.js": "8bc918181e9f8d82e651c1e5b1a4469d138de64b469cf010549b6fd80dab1a00",
+        "src/db/migrations/179_auth_credential_version.js": "957bdef2c02ff178c8832a620c0bac4b2e7d6bcbda3e5c3970ccf875d0dcfd32",
+        "src/db/migrations/180_mfa_replay_and_attempts.js": "fb258719499bf70f27758e40777d777609c55325b7d40df44b139eafe2fc35bd",
+        "src/db/migrations/181_external_identities.js": "a8ef39e08c8f03c9a2f7bb0425e36ccbfea5898de1b197c0c514c47f08574b25",
+        "src/utils/totp.js": "3628b33e2d6d3947004db45789df3d72b1b1894e6f8be45cd4ed872862a5bbe1",
+        "src/ws/index.js": "93e3bde85119105fac950072cdadd5c88b56e53caf73f7926e086511cb1ae9e6",
+        "src/services/provider-console/gateway.js": "94cfc5b9b8eb7e99533ac776a9193529db512d4adc94218d8191b229dfa85aac",
+        "src/services/provider-console/byte-channel.js": "1d32effd0d751910c0240a7a50634710bd7fe2940cdad2a09342d7665fc4cc78"
+      },
+      "checks": [
+        "identical-http-response-before-smtp-completes",
+        "configured-link-origin",
+        "account-quota-across-case-and-ip",
+        "native-sqlite-cross-process-single-redemption-and-audit",
+        "expired-iso-session-refused-by-real-http-auth",
+        "expired-iso-mfa-refused",
+        "production-login-timestamps-enforce-ip-lockout",
+        "native-cross-process-recovery-code-consumed-once",
+        "real-websocket-revocation-input",
+        "real-websocket-revocation-broadcast",
+        "real-websocket-revocation-idle-expiry",
+        "real-provider-console-revocation-input",
+        "real-provider-console-revocation-output",
+        "real-provider-console-revocation-idle",
+        "native-fragmented-console-read-allows-transport-progress",
+        "native-reset-revokes-outstanding-mfa-proof",
+        "native-cross-process-login-cannot-outlive-password-reset",
+        "native-cross-process-failures-enforce-account-lockout",
+        "native-cross-process-single-use-totp-login-login",
+        "native-cross-process-single-use-totp-login-stepup",
+        "native-cross-process-challenge-five-attempt-bound",
+        "native-oidc-foreign-browser-denied-before-state-consumption",
+        "native-oidc-pkce-and-single-session-concurrent-callback",
+        "native-oidc-mismatched-nonce-denied",
+        "native-oidc-invalid-id-token-no-userinfo-bypass",
+        "native-oidc-local-admin-collision-isolated",
+        "native-oidc-stable-subject-survives-profile-rename",
+        "native-oidc-audit-failure-rolls-back-account-and-session",
+        "native-oidc-empty-groups-demote-and-revoke-personal-credentials",
+        "native-oidc-missing-groups-refuse-and-revoke-personal-credentials",
+        "native-oidc-revocation-survives-denial-audit-failure",
+        "native-oidc-savepoint-rolls-back-grant-but-commits-revocation",
+        "native-cross-process-single-external-identity-provisioning"
+      ],
+      "emailMocked": true,
+      "providerMocked": true,
+      "externalNetwork": false,
+      "sqlite": "3.53.4",
+      "ownedResourcesRemoved": true,
+      "logSha256": "c615f7934b669fc9a5125c7d8b31cd6a7e7a9460952e05417d7845ac2341a31e"
+    },
+    "vps": {
+      "at": "2026-09-20T09:16:02.774Z",
+      "image": "sha256:92ccd1ee61927eedfbc697cacedd46de6ba355f2e82b298ebed571362da4c7f3",
+      "mode": "source-overlay",
+      "sourceHashes": {
+        "src/routes/auth.js": "1bc60b0e80036030e0594e3454d97e084d856ffb5a5a6c2632bf52b2f996b12e",
+        "src/services/auth.js": "0994e376ce347178c14baa64ae0f2291ef64e62ee7a5cf60114986cafd8042a3",
+        "src/services/email.js": "d1522d8d44e8de55eb456ad4b5151d3049c4732c054ad10178a5fb5565ae053b",
+        "src/services/password-reset.js": "79d075d1c708380be94b2a1800b6c1a7c4df149b25846c963a2b6098a9fdc3db",
+        "src/services/password-reset-delivery.js": "ddfacb50c82b660810aa95ff7e9f099f343082cf2d5f6d457087173012732211",
+        "src/config/index.js": "eb8e7a9e0f772ceef152df333fcc2b435639c28a16fce140f49257e480badeb6",
+        "src/db/migrations/178_auth_time_indexes.js": "8bc918181e9f8d82e651c1e5b1a4469d138de64b469cf010549b6fd80dab1a00",
+        "src/db/migrations/179_auth_credential_version.js": "957bdef2c02ff178c8832a620c0bac4b2e7d6bcbda3e5c3970ccf875d0dcfd32",
+        "src/db/migrations/180_mfa_replay_and_attempts.js": "fb258719499bf70f27758e40777d777609c55325b7d40df44b139eafe2fc35bd",
+        "src/db/migrations/181_external_identities.js": "a8ef39e08c8f03c9a2f7bb0425e36ccbfea5898de1b197c0c514c47f08574b25",
+        "src/utils/totp.js": "3628b33e2d6d3947004db45789df3d72b1b1894e6f8be45cd4ed872862a5bbe1",
+        "src/ws/index.js": "93e3bde85119105fac950072cdadd5c88b56e53caf73f7926e086511cb1ae9e6",
+        "src/services/provider-console/gateway.js": "94cfc5b9b8eb7e99533ac776a9193529db512d4adc94218d8191b229dfa85aac",
+        "src/services/provider-console/byte-channel.js": "1d32effd0d751910c0240a7a50634710bd7fe2940cdad2a09342d7665fc4cc78"
+      },
+      "checks": [
+        "identical-http-response-before-smtp-completes",
+        "configured-link-origin",
+        "account-quota-across-case-and-ip",
+        "native-sqlite-cross-process-single-redemption-and-audit",
+        "expired-iso-session-refused-by-real-http-auth",
+        "expired-iso-mfa-refused",
+        "production-login-timestamps-enforce-ip-lockout",
+        "native-cross-process-recovery-code-consumed-once",
+        "real-websocket-revocation-input",
+        "real-websocket-revocation-broadcast",
+        "real-websocket-revocation-idle-expiry",
+        "real-provider-console-revocation-input",
+        "real-provider-console-revocation-output",
+        "real-provider-console-revocation-idle",
+        "native-fragmented-console-read-allows-transport-progress",
+        "native-reset-revokes-outstanding-mfa-proof",
+        "native-cross-process-login-cannot-outlive-password-reset",
+        "native-cross-process-failures-enforce-account-lockout",
+        "native-cross-process-single-use-totp-login-login",
+        "native-cross-process-single-use-totp-login-stepup",
+        "native-cross-process-challenge-five-attempt-bound",
+        "native-oidc-foreign-browser-denied-before-state-consumption",
+        "native-oidc-pkce-and-single-session-concurrent-callback",
+        "native-oidc-mismatched-nonce-denied",
+        "native-oidc-invalid-id-token-no-userinfo-bypass",
+        "native-oidc-local-admin-collision-isolated",
+        "native-oidc-stable-subject-survives-profile-rename",
+        "native-oidc-audit-failure-rolls-back-account-and-session",
+        "native-oidc-empty-groups-demote-and-revoke-personal-credentials",
+        "native-oidc-missing-groups-refuse-and-revoke-personal-credentials",
+        "native-oidc-revocation-survives-denial-audit-failure",
+        "native-oidc-savepoint-rolls-back-grant-but-commits-revocation",
+        "native-cross-process-single-external-identity-provisioning"
+      ],
+      "emailMocked": true,
+      "providerMocked": true,
+      "externalNetwork": false,
+      "sqlite": "3.53.4",
+      "ownedResourcesRemoved": true,
+      "logSha256": "c8f94412ba388b08524d653e9107a622674e1c373791c8e2dc3b6ae2b1a9ab75"
+    }
+  },
+  "liveHealth": [
+    {
+      "target": "lan",
+      "status": 200,
+      "health": "ok",
+      "version": "8.96.8",
+      "at": "2026-09-20T09:17:41.062Z"
+    },
+    {
+      "target": "vps",
+      "status": 200,
+      "health": "ok",
+      "version": "8.96.8",
+      "at": "2026-09-20T09:17:34.982Z"
+    }
+  ]
+}

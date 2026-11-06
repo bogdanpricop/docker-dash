@@ -35,6 +35,8 @@ i18n.register('de', 'DE', "Deutsch", {
     inactive: "Inaktiv",
     enabled: "Aktiviert",
     disabled: "Deaktiviert",
+    yes: "Ja",
+    no: "Nein",
     test: "Testen",
     prune: "Bereinigen",
     unlimited: "unbegrenzt",
@@ -84,6 +86,7 @@ i18n.register('de', 'DE', "Deutsch", {
     "registry-browse": "Registries",
     onboarding: "Umgebungs-Setup",
     posture: "Sicherheitslage",
+    procedures: "Prozeduren",
     blueprints: "Reconciler",
     copilot: "Copilot",
     "incus-instances": "Incus / LXD (Alpha)",
@@ -91,7 +94,25 @@ i18n.register('de', 'DE', "Deutsch", {
     "migration-vm": "VM-Migration (Alpha)",
     "kubernetes-resources": "Kubernetes (Alpha)",
     "nomad-jobs": "Nomad (Alpha)",
-    "vsphere-resources": "vSphere / ESXi (Alpha)"
+    "vsphere-resources": "vSphere / ESXi (Alpha)",
+    "virtual-machines": "Virtuelle Maschinen",
+    "high-availability": "Hochverfügbarkeit",
+    "storage-posture": "Speicherstatus",
+    "network-posture": "Netzwerkstatus",
+    "provider-security-posture": "Anbietersicherheit",
+    "placement-advisor": "Platzierungsberatung",
+    "recovery-points": "Wiederherstellungspunkte",
+    "backup-policies": "Sicherungsrichtlinien",
+    "disaster-recovery": "Notfallwiederherstellung",
+    "virtualization-catalog": "VM-Katalog",
+    activity: "Aktivitätszentrum",
+    "xen-resources": "Xen / XCP-ng",
+    governance: "Governance",
+    "self-service": "Self-Service",
+    "governance-controls": "Identität und Richtlinien",
+    "edge-platform": "Edge und Offline-Betrieb",
+    "workstation-fleet": "Arbeitsplatzflotte",
+    "compose-catalog": "Compose-Katalog"
   },
   login: {
     title: "Docker Dash",
@@ -1930,5 +1951,12 @@ i18n.register('de', 'DE', "Deutsch", {
     checkFailed: "Prüfung fehlgeschlagen",
     upToDate: "Sie verwenden die neueste Version",
     refreshed: "Update-Prüfung aktualisiert"
-  }
+  },
+  selfService: {
+    title: 'Infrastruktur-Self-Service', requestQuota: 'Kontingent anfordern', acknowledge: 'Bestätigen', pause: 'Benachrichtigungen pausieren',
+    tabs: { catalog: 'Katalog', project: 'Projekt', requests: 'Anfragen', incidents: 'Vorfälle', guidance: 'Anleitung' },
+    actions: { start: 'Starten', shutdown: 'Herunterfahren', reboot: 'Neu starten', snapshot: 'Snapshot', console: 'Konsole' },
+    providers: { proxmox: 'Proxmox VE', vsphere: 'VMware vSphere', xen: 'Xen' },
+    safety: { confirm: 'Jede Infrastrukturänderung erfordert eine separate geschützte Bestätigung.', mobile: 'Sichere mobile Ansicht:' },
+  },
 });

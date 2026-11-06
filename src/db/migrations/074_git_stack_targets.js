@@ -29,17 +29,22 @@ exports.up = function (db) {
     CREATE INDEX IF NOT EXISTS idx_git_stack_targets_host ON git_stack_targets(host_id);
   `);
 
-  // Backfill: for every existing git_stacks row that has a host_id, insert
-  // a git_stack_targets row so the single-host case continues to work
-  // through the fan-out code path.
+  // Backfill: resolve the legacy host_id=0 local alias to the persisted
+  // default-host row before inserting into the FK-backed target table.
   const hasHostIdCol = db.prepare('PRAGMA table_info(git_stacks)').all()
     .some(c => c.name === 'host_id');
   if (hasHostIdCol) {
     db.exec(`
       INSERT OR IGNORE INTO git_stack_targets (stack_id, host_id, last_deployed_commit, last_deployed_at, last_deploy_status)
-      SELECT id, host_id, NULL, NULL, 'never'
-      FROM git_stacks
-      WHERE host_id IS NOT NULL;
+      SELECT gs.id,
+             CASE WHEN gs.host_id = 0 THEN defaults.id ELSE gs.host_id END,
+             NULL, NULL, 'never'
+      FROM git_stacks gs
+      LEFT JOIN (
+        SELECT id FROM docker_hosts WHERE is_default = 1 ORDER BY id LIMIT 1
+      ) defaults ON 1 = 1
+      WHERE gs.host_id IS NOT NULL
+        AND (gs.host_id != 0 OR defaults.id IS NOT NULL);
     `);
   }
 };

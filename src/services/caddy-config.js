@@ -42,7 +42,9 @@ function caddyApi(method, path, body) {
       res.on('data', (c) => { data += c; });
       res.on('end', () => {
         if (res.statusCode >= 400) {
-          return reject(new Error(`Caddy admin ${method} ${path} → ${res.statusCode}: ${data || '(no body)'}`));
+          const error = new Error(`Caddy admin ${method} ${path} → ${res.statusCode}: ${data || '(no body)'}`);
+          error.statusCode = res.statusCode;
+          return reject(error);
         }
         if (!data) return resolve(null);
         try { resolve(JSON.parse(data)); }
@@ -75,7 +77,8 @@ async function configPathExists(path) {
     await caddyApi('GET', '/config' + (path.startsWith('/') ? path : '/' + path));
     return true;
   } catch (e) {
-    if (e.message.includes('404') || e.message.includes('invalid traversal path')) return false;
+    if (e.statusCode === 404 ||
+        (e.statusCode === 400 && e.message.includes('invalid traversal path'))) return false;
     throw e;
   }
 }

@@ -1,0 +1,84 @@
+{
+  "image": "sha256:b21e40cf15e9548154310f82704fe6fe1ad81abfb640cadaf5c1f445e3dc2979",
+  "counts": {
+    "MEDIUM": 3,
+    "UNKNOWN": 3,
+    "HIGH": 4
+  },
+  "vulnerabilities": [
+    {
+      "target": "usr/libexec/docker/cli-plugins/docker-compose",
+      "id": "CVE-2026-53495",
+      "pkg": "github.com/containerd/containerd/v2",
+      "installed": "v2.3.4",
+      "fixed": "2.0.12, 2.2.8, 2.3.5",
+      "severity": "MEDIUM"
+    },
+    {
+      "target": "usr/libexec/docker/cli-plugins/docker-compose",
+      "id": "GO-2026-5932",
+      "pkg": "golang.org/x/crypto",
+      "installed": "v0.56.0",
+      "severity": "UNKNOWN"
+    },
+    {
+      "target": "usr/local/bin/docker",
+      "id": "CVE-2026-84445",
+      "pkg": "google.golang.org/grpc",
+      "installed": "v1.84.0",
+      "fixed": "1.82.2, 1.83.2, 1.85.0-dev.0.20260825072537-93e31b48545e",
+      "severity": "HIGH"
+    },
+    {
+      "target": "usr/local/bin/grype",
+      "id": "CVE-2026-41567",
+      "pkg": "github.com/docker/docker",
+      "installed": "v28.5.2+incompatible",
+      "severity": "HIGH"
+    },
+    {
+      "target": "usr/local/bin/grype",
+      "id": "CVE-2026-42306",
+      "pkg": "github.com/docker/docker",
+      "installed": "v28.5.2+incompatible",
+      "severity": "HIGH"
+    },
+    {
+      "target": "usr/local/bin/grype",
+      "id": "CVE-2026-33997",
+      "pkg": "github.com/docker/docker",
+      "installed": "v28.5.2+incompatible",
+      "fixed": "29.3.1",
+      "severity": "MEDIUM"
+    },
+    {
+      "target": "usr/local/bin/grype",
+      "id": "CVE-2026-41568",
+      "pkg": "github.com/docker/docker",
+      "installed": "v28.5.2+incompatible",
+      "severity": "MEDIUM"
+    },
+    {
+      "target": "usr/local/bin/grype",
+      "id": "GO-2026-5932",
+      "pkg": "golang.org/x/crypto",
+      "installed": "v0.57.0",
+      "severity": "UNKNOWN"
+    },
+    {
+      "target": "usr/local/bin/trivy",
+      "id": "GO-2026-5932",
+      "pkg": "golang.org/x/crypto",
+      "installed": "v0.57.0",
+      "severity": "UNKNOWN"
+    },
+    {
+      "target": "usr/local/bin/trivy",
+      "id": "CVE-2026-84445",
+      "pkg": "google.golang.org/grpc",
+      "installed": "v1.84.0",
+      "fixed": "1.82.2, 1.83.2, 1.85.0-dev.0.20260825072537-93e31b48545e",
+      "severity": "HIGH"
+    }
+  ]
+}

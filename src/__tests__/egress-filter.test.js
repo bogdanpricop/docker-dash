@@ -14,13 +14,39 @@ getDb();  // triggers migrations (including 054)
 
 const egressFilter = require('../services/egress-filter');
 
+it('re-enables a removed scope with the new allowlist while preserving policy identity', () => {
+  const scope = { scopeType: 'container', scopeKey: 'revocation-recreate', preset: 'custom' };
+  const original = egressFilter.createPolicy({ ...scope, customAllowlist: ['old.example.com'] });
+  egressFilter.removePolicy(original.policyId);
+  expect(egressFilter.getPolicyForScope(scope)).toBeNull();
+  const restored = egressFilter.createPolicy({ ...scope, customAllowlist: ['new.example.com'] });
+  expect(restored.policyId).toBe(original.policyId);
+  expect(egressFilter.getPolicyForScope(scope)).toMatchObject({ active: true, allowlist: ['new.example.com'] });
+  egressFilter.removePolicy(restored.policyId);
+});
+
 // ─── canApplyFilter ───────────────────────────────────
 
 describe('canApplyFilter', () => {
-  const mk = (hc = {}) => ({ HostConfig: { NetworkMode: 'bridge', Privileged: false, CapAdd: [], ...hc } });
+  const mk = (hc = {}) => ({ HostConfig: { NetworkMode: 'bridge', Privileged: false, CapAdd: [], CapDrop: ['NET_RAW'], ...hc } });
 
-  it('allows a default bridge container', () => {
+  it('allows a bridge container with NET_RAW explicitly dropped', () => {
     expect(egressFilter.canApplyFilter(mk()).ok).toBe(true);
+  });
+
+  it.each([undefined, null, [], ['CHOWN']])('refuses default NET_RAW when CapDrop is %j', CapDrop => {
+    const result = egressFilter.canApplyFilter(mk({ CapDrop }));
+    expect(result).toMatchObject({ ok: false, reason: expect.stringContaining('NET_RAW') });
+  });
+  it.each(['NET_RAW', 'net_raw', 'CAP_NET_RAW'])('refuses explicitly added %s even with ALL dropped', cap => {
+    expect(egressFilter.canApplyFilter(mk({ CapDrop: ['ALL'], CapAdd: [cap] })).ok).toBe(false);
+  });
+  it.each(['ALL', 'all', 'CAP_NET_RAW', 'net_raw'])('accepts explicit drop %s', cap => {
+    expect(egressFilter.canApplyFilter(mk({ CapDrop: [cap] })).ok).toBe(true);
+  });
+  it('permits namespace inspection and removal for legacy default-capability containers', () => {
+    expect(egressFilter.canInspectFilter(mk({ CapDrop: [] })).ok).toBe(true);
+    expect(egressFilter.canInspectFilter(mk({ CapDrop: [], Privileged: true })).ok).toBe(false);
   });
 
   it('refuses privileged', () => {
@@ -39,6 +65,10 @@ describe('canApplyFilter', () => {
     const r = egressFilter.canApplyFilter(mk({ CapAdd: ['SYS_ADMIN'] }));
     expect(r.ok).toBe(false);
     expect(r.reason).toMatch(/SYS_ADMIN/);
+  });
+
+  it.each(['ALL', 'all', 'CAP_NET_ADMIN', 'cap_sys_admin', 'net_admin'])('refuses capability alias %s', cap => {
+    expect(egressFilter.canApplyFilter(mk({ CapAdd: [cap] })).ok).toBe(false);
   });
 
   it('refuses network_mode=host', () => {
@@ -107,6 +137,14 @@ describe('allowlist validation', () => {
 
   it('rejects garbage', () => {
     expect(validateAllowlistEntry('not a hostname!')).toMatch(/Invalid hostname/);
+  });
+
+  it('rejects ambiguous wildcards, invalid DNS labels and metadata variants', () => {
+    for (const entry of ['*example.com', 'bad-.example.com', 'a..example.com', `${'a'.repeat(64)}.example.com`,
+      'METADATA.GOOGLE.INTERNAL.', '169.254.169.254.', 'fd00:ec2::254']) {
+      expect(validateAllowlistEntry(entry)).not.toBeNull();
+    }
+    expect(validateAllowlistEntry('*.Example.COM.')).toBeNull();
   });
 
   it('rejects single-label names (no dot)', () => {
@@ -225,6 +263,14 @@ describe('updatePolicy', () => {
     });
     expect(egressFilter.updatePolicy(policyId, { mode: 'audit-only' }).mode).toBe('audit-only');
     expect(egressFilter.updatePolicy(policyId, { mode: 'enforce' }).mode).toBe('enforce');
+  });
+
+  it('rejects invalid mode changes without modifying the existing policy', () => {
+    const { policyId } = egressFilter.createPolicy({
+      scopeType: 'container', scopeKey: 'aaaaaaaaaaaa', preset: 'registry-only',
+    });
+    expect(() => egressFilter.updatePolicy(policyId, { mode: 'typo' })).toThrow(/Invalid mode/);
+    expect(egressFilter.getPolicy(policyId).mode).toBe('enforce');
   });
 
   it('throws on unknown policy', () => {
@@ -379,25 +425,30 @@ describe('writePolicyFile + _buildAggregatePolicy', () => {
     expect(p.allowlist).toEqual([]);
   });
 
-  it('aggregates a single enforce policy', () => {
+  it('requires source authorization even for one policy', () => {
     egressFilter.createPolicy({ scopeType: 'stack', scopeKey: 's1', preset: 'registry-only' });
     const p = egressFilter._internals._buildAggregatePolicy();
     expect(p.mode).toBe('enforce');
-    expect(p.allowlist).toEqual(expect.arrayContaining(['docker.io', 'registry.npmjs.org']));
+    expect(p.schema_version).toBe(2);
+    expect(p.allowlist).toEqual([]);
   });
 
-  it('union of allowlists + enforce wins if mixed', () => {
+  it('never exports an allowlist union for unrelated stacks', () => {
     egressFilter.createPolicy({ scopeType: 'stack', scopeKey: 's1', preset: 'registry-only', mode: 'enforce' });
     egressFilter.createPolicy({ scopeType: 'stack', scopeKey: 's2', preset: 'audit-only' });  // audit-only preset forces mode
     const p = egressFilter._internals._buildAggregatePolicy();
-    expect(p.mode).toBe('enforce');  // one enforce is enough
+    expect(p.mode).toBe('enforce');
+    expect(p.schema_version).toBe(2);
+    expect(p.allowlist).toEqual([]);
   });
 
-  it('all audit-only → audit-only mode', () => {
+  it('does not turn unmatched sources into audit-only when all policies are audit-only', () => {
     egressFilter.createPolicy({ scopeType: 'stack', scopeKey: 's1', preset: 'audit-only' });
     egressFilter.createPolicy({ scopeType: 'stack', scopeKey: 's2', preset: 'audit-only' });
     const p = egressFilter._internals._buildAggregatePolicy();
-    expect(p.mode).toBe('audit-only');
+    expect(p.mode).toBe('enforce');
+    expect(p.schema_version).toBe(2);
+    expect(p.allowlist).toEqual([]);
   });
 
   it('writes policy.json atomically and calls onPolicyWritten', () => {
@@ -417,7 +468,8 @@ describe('writePolicyFile + _buildAggregatePolicy', () => {
     const { policyId } = egressFilter.createPolicy({ scopeType: 'stack', scopeKey: 's1', preset: 'lockdown' });
     egressFilter.updatePolicy(policyId, { preset: 'registry-only' });
     let onDisk = JSON.parse(fs.readFileSync(process.env.DD_EGRESS_POLICY_PATH, 'utf8'));
-    expect(onDisk.allowlist.length).toBeGreaterThan(0);
+    expect(onDisk.schema_version).toBe(2);
+    expect(onDisk.allowlist).toEqual([]);
 
     egressFilter.removePolicy(policyId);
     onDisk = JSON.parse(fs.readFileSync(process.env.DD_EGRESS_POLICY_PATH, 'utf8'));

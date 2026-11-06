@@ -1,0 +1,161 @@
+'use strict';
+const page = require('../../public/js/pages/provider-security-posture');
+describe('provider security posture page', () => {
+  it('labels coverage as declared evidence', () => {
+    const html = page._coverageHtml({ coverage: { declaredFeatureCount: 3,
+      states: { supported: 1, conditional: 1, unsupported: 1 } } });
+    expect(html).toContain('Declared SDK contract evidence'); expect(html).toContain('unsupported');
+  });
+  it('does not imply that declared safeguards execute an operation', () => {
+    const html = page._safeguardsHtml({ safeguards: {
+      declaredPrivilegedFeatureCount: 2, approvalRequired: 1 } });
+    expect(html).toContain('no operation is attempted'); expect(html).toContain('Four-eyes');
+  });
+  it('labels console data as declared safeguards', () => {
+    global.Utils = { escapeHtml: value => String(value) };
+    expect(page._consoleHtml({ consoleExposure: { state: 'conditional',
+      singleUseToken: true } })).toContain('not proof of a live console');
+  });
+  it('renders ten-feature operational evidence without implying browser or provider validation', () => {
+    global.Utils = { escapeHtml: value => String(value).replaceAll('<', '&lt;') };
+    const html = page._operationalQualificationHtml({ evidenceHash: 'a'.repeat(64),
+      batch: { key: 'network-backup', label: 'B124/B125/B129–B136' },
+      summary: { featureCount: 10, schemaReady: 10, runtimeObserved: 1,
+        executeFlagsEnabled: 0, browserSmokeRecorded: 0 },
+      items: [{ featureId: 'B015', name: '<saved>', schema: { state: 'ready' },
+        runtime: { state: 'observed', recordCount: 1 },
+        delivery: { qualificationRelease: 'v8.85.0' },
+        validation: { outstanding: ['browser_smoke'] } }] });
+    expect(html).not.toContain('<saved>');
+    expect(html).toContain('&lt;saved>');
+    expect(html).toContain('starts no provider mutation');
+    expect(html).toContain('browser_smoke');
+    expect(html).toContain('B124/B125/B129–B136 operational qualification');
+    expect(html).toContain('0</div><div class="stat-label">Browser smoke recorded');
+  });
+  it('renders the recovery-depth batch and its default-off release boundaries', () => {
+    global.Utils = { escapeHtml: value => String(value) };
+    const html = page._operationalQualificationHtml({ evidenceHash: 'b'.repeat(64),
+      batch: { key: 'recovery-depth', label: 'B137–B146' },
+      summary: { featureCount: 10, schemaReady: 10, runtimeObserved: 0,
+        executeFlagsEnabled: 0, browserSmokeRecorded: 0 },
+      items: [{ featureId: 'B139', name: 'Automated restore drill', schema: { state: 'ready' },
+        runtime: { state: 'not_observed', recordCount: 0, releaseFlags: [
+          { name: 'DD_PROVIDER_RESTORE_DRILLS', enabled: false },
+        ] }, delivery: { qualificationRelease: 'v8.87.0' },
+      validation: { outstanding: ['disposable_provider_canary'] } }] });
+    expect(html).toContain('B137–B146 operational qualification');
+    expect(html).toContain('DD_PROVIDER_RESTORE_DRILLS');
+    expect(html).toContain('default-off');
+    expect(html).toContain('disposable_provider_canary');
+  });
+  it('renders DR and security evidence without claiming provider execution', () => {
+    global.Utils = { escapeHtml: value => String(value) };
+    const html = page._operationalQualificationHtml({ evidenceHash: 'c'.repeat(64),
+      batch: { key: 'dr-security', label: 'B147–B156' },
+      summary: { featureCount: 10, schemaReady: 10, runtimeObserved: 2,
+        executeFlagsEnabled: 0, browserSmokeRecorded: 0 },
+      items: [{ featureId: 'B149', name: 'Non-disruptive DR test', schema: { state: 'ready' },
+        runtime: { state: 'observed', recordCount: 1, releaseFlags: [
+          { name: 'DD_PROVIDER_DR_RUNBOOKS', enabled: false },
+        ] }, delivery: { qualificationRelease: 'v8.88.0' },
+      validation: { outstanding: ['bubble_network_and_clone_executor', 'browser_smoke'] } }] });
+    expect(html).toContain('B147–B156 operational qualification');
+    expect(html).toContain('DD_PROVIDER_DR_RUNBOOKS');
+    expect(html).toContain('default-off');
+    expect(html).toContain('bubble_network_and_clone_executor');
+    expect(html).toContain('starts no provider mutation');
+  });
+  it('renders security lifecycle qualification with plan and adapter boundaries', () => {
+    global.Utils = { escapeHtml: value => String(value) };
+    const html = page._operationalQualificationHtml({ evidenceHash: 'd'.repeat(64),
+      batch: { key: 'security-lifecycle', label: 'B157–B166' },
+      summary: { featureCount: 10, schemaReady: 10, runtimeObserved: 1,
+        executeFlagsEnabled: 0, browserSmokeRecorded: 0 },
+      items: [{ featureId: 'B166', name: 'Remediation plan/dry-run', schema: { state: 'ready' },
+        runtime: { state: 'observed', recordCount: 1, releaseFlags: [
+          { name: 'DD_PROVIDER_SECURITY_LIFECYCLE', enabled: false },
+        ] }, delivery: { qualificationRelease: 'v8.89.0' },
+      validation: { outstanding: ['production_remediation_adapter', 'browser_smoke'] } }] });
+    expect(html).toContain('B157–B166 operational qualification');
+    expect(html).toContain('DD_PROVIDER_SECURITY_LIFECYCLE');
+    expect(html).toContain('default-off');
+    expect(html).toContain('production_remediation_adapter');
+    expect(html).toContain('Browser smoke recorded');
+  });
+  it('renders privileged closure qualification without claiming external execution', () => {
+    global.Utils = { escapeHtml: value => String(value) };
+    const html = page._operationalQualificationHtml({ evidenceHash: 'e'.repeat(64),
+      batch: { key: 'privileged-closure', label: 'B167–B176' },
+      summary: { featureCount: 10, schemaReady: 10, runtimeObserved: 1,
+        executeFlagsEnabled: 1, browserSmokeRecorded: 0 },
+      items: [{ featureId: 'B169', name: 'Privileged action elevation', schema: { state: 'ready' },
+        runtime: { state: 'not_observed', recordCount: 0, releaseFlags: [
+          { name: 'DD_PROVIDER_PRIVILEGED_COMPLIANCE', enabled: true },
+        ] }, delivery: { qualificationRelease: 'v8.90.0' },
+      validation: { outstanding: ['critical_operation_jit_wiring', 'browser_smoke'] } }] });
+    expect(html).toContain('B167–B176 operational qualification');
+    expect(html).toContain('DD_PROVIDER_PRIVILEGED_COMPLIANCE');
+    expect(html).toContain('critical_operation_jit_wiring');
+    expect(html).toContain('starts no provider mutation');
+    expect(html).toContain('Browser smoke recorded');
+  });
+  it('keeps assurance evidence and confidential planning explicitly non-mutating', () => {
+    global.App = { user: { role: 'viewer' } };
+    global.Utils = { escapeHtml: value => String(value), timeAgo: value => value };
+    const html = page._assuranceHtml({ pack: { title: 'Proxmox security', version: '1.0.0' },
+      counts: { pass: 1 }, evidenceCount: 0, items: [], keyProviders: [] });
+    expect(html).toContain('Absence is unknown');
+    expect(html).toContain('starts no probe or provider mutation');
+    expect(html).toContain('never returned by the API');
+  });
+  it('escapes security lifecycle evidence and labels correlation as non-mutating', () => {
+    global.App = { user: { role: 'viewer' } };
+    global.Utils = { escapeHtml: value => String(value).replaceAll('<', '&lt;'),
+      timeAgo: value => value };
+    const html = page._securityLifecycleHtml({ counts: { open: 1 }, validations: [],
+      automation: { enabled: false }, certificateRotation: [], findings: [{
+        id: `psfd_${'a'.repeat(26)}`, advisoryId: '<img src=x>', cveIds: ['CVE-2026-12345'],
+        severity: 'high', priorityScore: 80, confidence: 'high', resourceName: '<script>',
+        resourceId: `ddr_vm_${'b'.repeat(26)}`, state: 'open', exception: null,
+      }] });
+    expect(html).not.toContain('<img src=x>'); expect(html).not.toContain('<script>');
+    expect(html).toContain('&lt;img src=x>');
+    expect(html).toContain('No advisory fetch or provider mutation is started by this view');
+  });
+  it('escapes privileged compliance evidence and exposes the B169-B178 safety boundaries', () => {
+    global.App = { user: { id: 9, role: 'viewer' } };
+    global.Utils = { escapeHtml: value => String(value).replaceAll('<', '&lt;'),
+      timeAgo: value => value };
+    const html = page._privilegedComplianceHtml({ counts: { activeGrants: 1, activeBreakGlass: 0,
+      remoteSessions: 1, classifications: 1, mappings: 1, exports: 1 },
+    governanceIntegration: { permissionCount: 10 }, ransomwarePostures: [{ score: 75, confidence: 'medium' }],
+    grants: [{ id: 'ppjg_aaaaaaaaaaaaaaaaaaaaaaaaaa', scopeId: 1,
+      permissionKey: '<img src=x>', state: 'active', expiresAt: '2026-08-01T00:00:00Z',
+      requestedBy: 9, claimed: true }],
+    breakGlass: [], classifications: [{ resourceId: '<script>alert(1)</script>',
+      resourceKind: 'endpoint', classification: 'restricted',
+      policy: { backup: 'immutable_encrypted_required', evidenceExport: 'hashes_only' } }] });
+    expect(html).not.toContain('<img src=x>'); expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).toContain('&lt;img src=x>'); expect(html).toContain('installation-signed evidence');
+    expect(html).toContain('Catalog permissions');
+  });
+  it('renders only the governed controls assigned to a custom role', () => {
+    global.App = { user: { id: 9, role: 'viewer' } };
+    global.Utils = { escapeHtml: value => String(value), timeAgo: value => value };
+    const html = page._privilegedComplianceHtml({ counts: {}, grants: [], breakGlass: [],
+      classifications: [], ransomwarePostures: [],
+      governanceIntegration: { permissionCount: 10,
+        actorPermissions: ['compliance.evidence.export'] } });
+    expect(html).toContain('pc-export');
+    expect(html).not.toContain('pc-classify');
+    expect(html).not.toContain('pc-request-break-glass');
+  });
+  it('offers granular critical provider permissions in the JIT request flow', () => {
+    const source = page._requestJit.toString();
+    expect(source).toContain('provider.vm.power.force');
+    expect(source).toContain('provider.vm.snapshot.revert');
+    expect(source).toContain('provider.vm.snapshot.delete');
+    expect(source).toContain('provider.vm.migration.execute');
+  });
+});

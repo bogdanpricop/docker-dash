@@ -20,7 +20,7 @@ const SettingsPageUsers = {
             <thead><tr><th>${i18n.t('pages.settings.username')}</th><th>Email</th><th>${i18n.t('pages.settings.role')}</th><th>MFA</th><th>${i18n.t('common.status')}</th><th>${i18n.t('pages.settings.lastLogin')}</th><th>${i18n.t('common.actions')}</th></tr></thead>
             <tbody>${items.map(u => `
               <tr>
-                <td class="mono">${Utils.escapeHtml(u.username)}</td>
+                <td class="mono">${Utils.escapeHtml(u.username)} <span class="badge badge-info">${({ local: 'Local', oidc: 'OIDC', proxy: 'Proxy SSO', ldap: 'LDAP', scim: 'SCIM', sso_legacy: 'SSO (legacy)' })[u.auth_source] || '—'}</span></td>
                 <td class="text-sm">${u.email ? Utils.escapeHtml(u.email) : '<span class="text-muted">—</span>'}</td>
                 <td><span class="badge badge-info">${u.role}</span></td>
                 <td>${u.totp_enabled
@@ -32,11 +32,11 @@ const SettingsPageUsers = {
                   <div class="action-btns">
                     <button class="action-btn" data-action="edit-user" data-id="${u.id}" title="${i18n.t('common.edit')}"><i class="fas fa-edit"></i></button>
                     <button class="action-btn" data-action="stack-perms" data-id="${u.id}" data-username="${Utils.escapeHtml(u.username)}" title="Stack Permissions"><i class="fas fa-lock"></i></button>
-                    <button class="action-btn" data-action="reset-password" data-id="${u.id}" data-username="${Utils.escapeHtml(u.username)}" title="Reset Password"><i class="fas fa-key"></i></button>
+                    ${u.auth_source === 'local' ? `<button class="action-btn" data-action="reset-password" data-id="${u.id}" data-username="${Utils.escapeHtml(u.username)}" title="Reset Password"><i class="fas fa-key"></i></button>` : ''}
                     ${!u.totp_enabled
                       ? `<button class="action-btn" data-action="setup-mfa" data-id="${u.id}" data-username="${Utils.escapeHtml(u.username)}" title="Enable MFA"><i class="fas fa-shield-alt"></i></button>`
                       : `<button class="action-btn danger" data-action="disable-mfa" data-id="${u.id}" data-username="${Utils.escapeHtml(u.username)}" title="Disable MFA"><i class="fas fa-unlock"></i></button>`}
-                    ${u.email ? `<button class="action-btn" data-action="send-invite" data-id="${u.id}" data-username="${Utils.escapeHtml(u.username)}" title="${i18n.t('pages.settings.sendInvite')}"><i class="fas fa-envelope"></i></button>` : ''}
+                    ${u.email && u.auth_source === 'local' ? `<button class="action-btn" data-action="send-invite" data-id="${u.id}" data-username="${Utils.escapeHtml(u.username)}" title="${i18n.t('pages.settings.sendInvite')}"><i class="fas fa-envelope"></i></button>` : ''}
                     ${u.username !== 'admin' ? `<button class="action-btn danger" data-action="delete-user" data-id="${u.id}" title="${i18n.t('common.delete')}"><i class="fas fa-trash"></i></button>` : ''}
                   </div>
                 </td>

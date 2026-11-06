@@ -50,6 +50,7 @@
 //     against strict regexes before construction.
 
 const { Client: SshClient } = require('ssh2');
+const { hostKeyOptions } = require('../utils/ssh-host-key');
 const { getDb } = require('../db');
 const { fromHostRow: proxmoxFromHostRow, decryptDaemonConfig } = require('./proxmox');
 const log = require('../utils/logger')('migration-vm');
@@ -263,6 +264,7 @@ function _shellEscape(str) {
 }
 
 async function _connectSsh(sshConfig) {
+  const identity = hostKeyOptions(sshConfig);
   return new Promise((resolve, reject) => {
     const client = new SshClient();
     const timer = setTimeout(() => {
@@ -272,6 +274,7 @@ async function _connectSsh(sshConfig) {
     client.on('ready', () => { clearTimeout(timer); resolve(client); });
     client.on('error', (err) => { clearTimeout(timer); reject(err); });
     client.connect({
+      ...identity,
       host: sshConfig.host,
       port: sshConfig.port || 22,
       username: sshConfig.user,

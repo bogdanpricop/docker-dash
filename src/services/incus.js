@@ -21,10 +21,9 @@
 // to their compose file, and configure a hosts row with daemon_type='incus'
 // and daemon_config = {"transport":"unix","socket":"/var/lib/incus/unix.socket"}.
 //
-// For remote: daemon_config = {"transport":"https","endpoint":
-//   "https://host:8443","cert":"...PEM...","key":"...PEM...","fingerprint":"..."}
-// TLS-verified via the server cert fingerprint (Incus's standard trust
-// model — clients trust a specific fingerprint, not a CA).
+// For remote HTTPS, cert/key authenticate the client. caCert optionally trusts
+// a verified private CA or self-signed server certificate. The certificate must
+// validate for the configured endpoint; no automatic trust or TLS bypass.
 //
 // TIMEOUT + SIZE CAPS
 // Per the v8.7.x hardening pattern, every fetch has an explicit
@@ -34,7 +33,7 @@
 
 const http = require('http');
 const https = require('https');
-const log = require('../utils/logger')('incus');
+const { secureEndpoint, tlsOptions } = require('../utils/provider-tls');
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
@@ -63,14 +62,11 @@ class IncusClient {
       this._agent = new http.Agent({ keepAlive: true });
     } else if (config.transport === 'https') {
       if (!config.endpoint) throw new Error('IncusClient: config.endpoint required for https transport');
-      // v8.9.32 — the client cert MUST be on the pooling Agent so it's presented
-      // on every TLS handshake (Incus authenticates clients by their cert). Incus
-      // servers use self-signed certs, so we don't verify the server cert against
-      // a CA — the trust model is the client-cert side. (skipTlsVerify default = do
-      // not verify the server cert, matching how `incus remote add` pins by fp.)
+      this._config = { ...config, endpoint: secureEndpoint(config.endpoint) };
+      // Client authentication and server authentication are both required.
       this._agent = new https.Agent({
         keepAlive: true,
-        rejectUnauthorized: config.skipTlsVerify === false ? true : false,
+        ...tlsOptions(config),
         cert: config.cert || undefined,
         key: config.key || undefined,
       });
@@ -421,7 +417,3 @@ module.exports = {
   // Constants exposed for tests
   _internals: { DEFAULT_TIMEOUT_MS, MAX_RESPONSE_BYTES },
 };
-
-// Silence "unused" for log — module retains reference for future use
-// (start/stop/delete operations will log audit events here).
-if (false) log.info();

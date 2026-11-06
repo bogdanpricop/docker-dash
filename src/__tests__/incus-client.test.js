@@ -142,7 +142,7 @@ describe('IncusClient (v8.9.0-alpha)', () => {
         daemon_type: 'incus',
         daemon_config: JSON.stringify({
           transport: 'https', endpoint: 'https://incus.example.com:8443',
-          skipTlsVerify: true,
+          skipTlsVerify: false,
         }),
       });
       expect(client._config.transport).toBe('https');

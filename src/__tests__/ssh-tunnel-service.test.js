@@ -146,7 +146,7 @@ describe('SshTunnelService — createTunnel auth modes', () => {
   it('uses privateKey + passphrase when provided (key auth)', async () => {
     const cfg = {
       id: 'host-key',
-      sshConfig: {
+      sshConfig: { hostKeySha256: 'ab'.repeat(32),
         host: '10.0.0.1',
         port: 2222,
         username: 'deploy',
@@ -167,7 +167,7 @@ describe('SshTunnelService — createTunnel auth modes', () => {
   it('uses password auth when no privateKey is provided', async () => {
     const cfg = {
       id: 'host-pw',
-      sshConfig: { host: '10.0.0.2', username: 'root', password: 's3cret' },
+      sshConfig: { hostKeySha256: 'ab'.repeat(32), host: '10.0.0.2', username: 'root', password: 's3cret' },
     };
     await sshTunnel.createTunnel(cfg);
     const opts = MockClient.lastInstance._lastConnectOpts;
@@ -183,7 +183,7 @@ describe('SshTunnelService — createTunnel auth modes', () => {
   it('rejects an unsafe dockerSocket path (validation)', async () => {
     const cfg = {
       id: 'bad-sock',
-      sshConfig: {
+      sshConfig: { hostKeySha256: 'ab'.repeat(32),
         host: 'h',
         username: 'u',
         password: 'p',
@@ -368,7 +368,7 @@ describe('SshTunnelService — testConnection (timeout + reject)', () => {
       setImmediate(() => this.emit('error', new Error('auth failed')));
     };
     try {
-      await expect(sshTunnel.testConnection({
+      await expect(sshTunnel.testConnection({ hostKeySha256: 'ab'.repeat(32),
         host: 'h', username: 'u', password: 'p',
       })).rejects.toThrow(/auth failed/);
     } finally {
@@ -381,7 +381,7 @@ describe('SshTunnelService — testConnection (timeout + reject)', () => {
     const origConnect = MockClient.prototype.connect;
     MockClient.prototype.connect = function patched() { MockClient.lastInstance = this; };
     try {
-      const promise = sshTunnel.testConnection({ host: 'silent', username: 'u', password: 'p' });
+      const promise = sshTunnel.testConnection({ hostKeySha256: 'ab'.repeat(32), host: 'silent', username: 'u', password: 'p' });
       // Attach a catch handler immediately so Node doesn't flag the rejection
       // as unhandled when we advance the fake timer below.
       const settled = promise.catch((e) => e);

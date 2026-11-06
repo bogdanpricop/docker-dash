@@ -1,0 +1,284 @@
+[
+  {
+    "scanner": "trivy",
+    "sha256": "d8cb4257ac73dcb262def30c2bbad7303a5b7d55059693288c4f840cd73a3874",
+    "version": "Version: 0.74.0+dd.1"
+  },
+  {
+    "scanner": "grype",
+    "sha256": "91a46ba37aa0fe5b40fd619adc7d450a8d8d942c3f935d0771aa54b00e542542",
+    "version": "Application:         grype\nVersion:             0.119.0+dd.1\nBuildDate:           [not provided]\nGitCommit:           b6f5194537747ee7f705f4113069ac9eb269919f\nGitDescription:      v0.119.0-dependency-security-patch\nPlatform:            linux/amd64\nGoVersion:           go1.27.1\nCompiler:            gc\nSyft Version:        v1.52.0\nSupported DB Schema: 6"
+  },
+  {
+    "scanner": "trivy",
+    "image": "sha256:a64f40b88ce0d1bafa8c4119c61e10754fb66bc78b61c32c7709f4aad2937e2c",
+    "findings": [
+      {
+        "id": "CVE-2026-41567",
+        "package": "github.com/docker/docker",
+        "severity": "HIGH"
+      },
+      {
+        "id": "CVE-2026-42306",
+        "package": "github.com/docker/docker",
+        "severity": "HIGH"
+      },
+      {
+        "id": "CVE-2026-33997",
+        "package": "github.com/docker/docker",
+        "severity": "MEDIUM"
+      },
+      {
+        "id": "CVE-2026-41568",
+        "package": "github.com/docker/docker",
+        "severity": "MEDIUM"
+      },
+      {
+        "id": "GO-2026-5932",
+        "package": "golang.org/x/crypto",
+        "severity": "UNKNOWN"
+      },
+      {
+        "id": "GO-2026-5932",
+        "package": "golang.org/x/crypto",
+        "severity": "UNKNOWN"
+      },
+      {
+        "id": "CVE-2026-84445",
+        "package": "google.golang.org/grpc",
+        "severity": "HIGH"
+      }
+    ]
+  },
+  {
+    "scanner": "grype",
+    "image": "sha256:52e1354edeffe38acc0c99417656f890c58a418a3b2a707ec7deee405ccde625",
+    "findings": [
+      {
+        "id": "GO-2026-4887",
+        "package": "github.com/docker/docker",
+        "severity": "High"
+      },
+      {
+        "id": "GO-2026-4887",
+        "package": "github.com/docker/docker",
+        "severity": "High"
+      },
+      {
+        "id": "GO-2026-5026",
+        "package": "golang.org/x/net",
+        "severity": "High"
+      },
+      {
+        "id": "GHSA-2v4p-qf9q-27wj",
+        "package": "google.golang.org/grpc",
+        "severity": "High"
+      },
+      {
+        "id": "GHSA-2v4p-qf9q-27wj",
+        "package": "google.golang.org/grpc",
+        "severity": "High"
+      },
+      {
+        "id": "GHSA-rm3j-f69w-wqmq",
+        "package": "golang.org/x/crypto",
+        "severity": "Critical"
+      },
+      {
+        "id": "GO-2026-5942",
+        "package": "golang.org/x/net",
+        "severity": "High"
+      },
+      {
+        "id": "GO-2026-5970",
+        "package": "golang.org/x/text",
+        "severity": "High"
+      },
+      {
+        "id": "GHSA-q4h4-gmj2-qvw2",
+        "package": "golang.org/x/crypto",
+        "severity": "High"
+      },
+      {
+        "id": "CVE-2026-85091",
+        "package": "zlib",
+        "severity": "High"
+      },
+      {
+        "id": "GHSA-vp52-pcj8-j9qc",
+        "package": "google.golang.org/grpc",
+        "severity": "High"
+      },
+      {
+        "id": "GHSA-33vj-92qq-66hc",
+        "package": "github.com/containerd/containerd/v2",
+        "severity": "High"
+      },
+      {
+        "id": "CVE-2026-58469",
+        "package": "wget",
+        "severity": "High"
+      },
+      {
+        "id": "CVE-2026-17106",
+        "package": "docker-cli",
+        "severity": "High"
+      },
+      {
+        "id": "GHSA-hfg8-hc9c-6c3h",
+        "package": "github.com/moby/go-archive",
+        "severity": "High"
+      },
+      {
+        "id": "GHSA-pxq6-2prw-chj9",
+        "package": "github.com/docker/docker",
+        "severity": "Medium"
+      },
+      {
+        "id": "GHSA-pxq6-2prw-chj9",
+        "package": "github.com/docker/docker",
+        "severity": "Medium"
+      },
+      {
+        "id": "GHSA-cvxm-645q-p574",
+        "package": "github.com/containerd/containerd/v2",
+        "severity": "Medium"
+      },
+      {
+        "id": "GHSA-7236-3392-c5c6",
+        "package": "github.com/moby/buildkit",
+        "severity": "Medium"
+      },
+      {
+        "id": "GO-2026-5158",
+        "package": "go.opentelemetry.io/otel",
+        "severity": "Medium"
+      },
+      {
+        "id": "CVE-2025-60876",
+        "package": "busybox",
+        "severity": "Medium"
+      },
+      {
+        "id": "CVE-2025-60876",
+        "package": "busybox-binsh",
+        "severity": "Medium"
+      },
+      {
+        "id": "CVE-2025-60876",
+        "package": "ssl_client",
+        "severity": "Medium"
+      },
+      {
+        "id": "GHSA-jpcc-p29g-p8mq",
+        "package": "github.com/containerd/containerd/v2",
+        "severity": "Medium"
+      },
+      {
+        "id": "CVE-2026-58471",
+        "package": "wget",
+        "severity": "High"
+      },
+      {
+        "id": "CVE-2026-58472",
+        "package": "wget",
+        "severity": "High"
+      },
+      {
+        "id": "GHSA-xhf5-7wjv-pqxp",
+        "package": "github.com/containerd/containerd/v2",
+        "severity": "High"
+      },
+      {
+        "id": "CVE-2026-58055",
+        "package": "nghttp2-libs",
+        "severity": "Medium"
+      },
+      {
+        "id": "CVE-2026-58470",
+        "package": "wget",
+        "severity": "Medium"
+      },
+      {
+        "id": "GHSA-rgh6-rfwx-v388",
+        "package": "github.com/containerd/containerd/v2",
+        "severity": "High"
+      },
+      {
+        "id": "GHSA-fqw6-gf59-qr4w",
+        "package": "github.com/containerd/containerd/v2",
+        "severity": "High"
+      },
+      {
+        "id": "GHSA-x86f-5xw2-fm2r",
+        "package": "github.com/docker/docker",
+        "severity": "High"
+      },
+      {
+        "id": "GHSA-7jxh-36q5-gcqv",
+        "package": "github.com/containerd/containerd/v2",
+        "severity": "Medium"
+      },
+      {
+        "id": "GHSA-w8rr-5gcm-pp58",
+        "package": "go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp",
+        "severity": "Medium"
+      },
+      {
+        "id": "GHSA-w8rr-5gcm-pp58",
+        "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp",
+        "severity": "Medium"
+      },
+      {
+        "id": "GHSA-rg2x-37c3-w2rh",
+        "package": "github.com/docker/docker",
+        "severity": "High"
+      },
+      {
+        "id": "GHSA-9vcr-p3rj-q5q6",
+        "package": "github.com/sigstore/sigstore-go",
+        "severity": "Medium"
+      },
+      {
+        "id": "GHSA-vp62-88p7-qqf5",
+        "package": "github.com/docker/docker",
+        "severity": "Medium"
+      },
+      {
+        "id": "GHSA-8wmf-6v46-5gfg",
+        "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace",
+        "severity": "Low"
+      },
+      {
+        "id": "GHSA-8wmf-6v46-5gfg",
+        "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc",
+        "severity": "Low"
+      },
+      {
+        "id": "GHSA-8wmf-6v46-5gfg",
+        "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp",
+        "severity": "Low"
+      },
+      {
+        "id": "GHSA-8wmf-6v46-5gfg",
+        "package": "go.opentelemetry.io/otel/sdk",
+        "severity": "Low"
+      },
+      {
+        "id": "GHSA-wqqc-jjcq-vfxm",
+        "package": "github.com/sigstore/sigstore-go",
+        "severity": "Low"
+      },
+      {
+        "id": "GHSA-hrxh-6v49-42gf",
+        "package": "google.golang.org/grpc",
+        "severity": "High"
+      },
+      {
+        "id": "GHSA-pmwq-pjrm-6p5r",
+        "package": "github.com/in-toto/in-toto-golang",
+        "severity": "Medium"
+      }
+    ]
+  }
+]

@@ -12,11 +12,28 @@ the connection to the real destination or resets it.
 **No TLS decryption. No cert injection.** The filtered container sees the
 destination's real cert, never ours.
 
-## Status
+## Application authorization
 
-- `v6.7.0-alpha.2` — standalone sidecar. Run via `HTTP_PROXY` env on your
-  containers, or manual iptables redirect. **No automatic wiring yet** —
-  that lands in `v6.7.0-rc1` via Docker Dash's UI.
+Docker Dash writes schema-2 configuration and resolves each TCP peer to exactly
+one running container using live Docker inventory and inspect. Container and
+Compose-stack policies on that host are intersected: every enforce policy must
+allow the destination. Audit policies cannot override an enforce denial.
+Missing policies, ambiguous sources, invalid replies, timeouts and an unavailable
+resolver deny new connections. Existing streams keep their initial authorization.
+
+The application creates `resolver.sock` beside `DD_EGRESS_POLICY_PATH`. Mount
+that directory into the sidecar at `/etc/dd-egress:ro`; the socket is mode 0600,
+so both processes must use a compatible UID. The sidecar requires no Docker
+socket. Upgrade both components together: older sidecars see the empty enforce
+allowlist in schema-2 files and deny access. Manually supplied legacy files below
+remain available for standalone single-policy use.
+
+Source identity assumes a trusted bridge preserving container source IPs. It is
+not cryptographic workload attestation: peers able to spoof IP/ARP, privileged
+containers and shared NAT require host network isolation/anti-spoofing controls.
+Use one local app/resolver/sidecar domain per Docker host. Remote volume/socket
+transport is not implemented. Authorization checks do not by themselves prevent
+direct traffic bypassing the proxy; the runner's firewall must also be validated.
 
 ## Build
 
@@ -51,9 +68,14 @@ docker build -t docker-dash-egress-filter:local .
 
 `mode` is one of `enforce` or `audit-only`. The `audit-only` mode logs the
 denied attempts to stderr but forwards them anyway — use for migration.
+Unknown modes and malformed/oversized policy files are rejected. Failed reloads
+keep the previous validated policy.
 
 IMDS endpoints (`169.254.169.254`, `metadata.google.internal`,
-`169.254.170.2`) are **always blocked regardless of the allowlist**.
+`169.254.170.2`, `fd00:ec2::254`) are **always blocked, including audit-only**.
+Matching handles trailing DNS dots and IPv4-mapped IPv6. DNS is resolved once;
+all returned addresses are checked before dialing a validated IP, so an allowed
+DNS alias cannot redirect the proxy to one of these metadata addresses.
 
 2. Run the sidecar:
 
@@ -82,6 +104,7 @@ docker run --rm -it \
 |---|---|---|
 | `DD_EGRESS_LISTEN` | `:29193` | Bind address |
 | `DD_EGRESS_POLICY_PATH` | `/etc/dd-egress/policy.json` | Policy file path |
+| `DD_EGRESS_RESOLVER_SOCKET` | `/etc/dd-egress/resolver.sock` | Private application authorization socket for schema 2 |
 | `DD_EGRESS_METRICS_LISTEN` | *(empty → disabled)* | Prometheus-compatible `/metrics` endpoint |
 | `DD_EGRESS_BLOCKLOG_PATH` | `/var/log/dd-egress/denied.log` | Append-only deny log |
 
@@ -95,6 +118,28 @@ docker run --rm -it \
 
 SNI works across all modern TLS clients. Containers that send TLS without SNI
 (rare — very old clients) will be blocked.
+
+HTTP headers are bounded to 16 KiB and read through their terminator. Plain HTTP
+defaults to port 80, TLS to 443; explicit HTTP/CONNECT ports are validated.
+CONNECT receives a proxy `200 Connection Established` response and its headers
+are consumed locally before tunnel bytes are forwarded. TLS ClientHello records
+are bounded to 16 KiB; fragmented or unsupported handshakes fail closed.
+
+The filter authorizes a connection's destination. It does not inspect subsequent
+encrypted traffic or provide per-request authorization inside a tunnel. Custom
+transparent TLS ports require an explicit CONNECT destination; the sidecar does
+not recover the original destination port from a NAT redirect.
+
+## Verification
+
+With Go 1.27.1, run `go vet ./...`, `go test ./...` and
+`go test -fuzz=FuzzSNI -fuzztime=5s -parallel=2`. Tests cover policy rejection,
+IMDS pins in every mode, DNS alias/rebinding protection, hostname boundaries,
+IPv6/ports, bounded HTTP headers, real TLS ClientHello parsing, CONNECT tunneling
+and response delivery after a TCP half-close. All sockets are loopback-only.
+CI also runs the race detector; Docker builds run the unit/integration tests
+before cross-compilation. Actual container network-namespace/iptables wiring
+still requires Docker integration testing.
 
 ## Policy reload
 

@@ -7,8 +7,9 @@
 
 process.env.APP_ENV = 'test';
 process.env.ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'test-encryption-key-for-jest-32chars';
-// Point at a non-existent socket so caddyApi() reliably fails with ENOENT in tests.
-process.env.CADDY_ADMIN_SOCKET = '/tmp/no-such-caddy-admin.sock-' + Date.now();
+// Include "404" in the missing socket path to prove transport errors are not
+// mistaken for an HTTP 404 response based on unstructured message text.
+process.env.CADDY_ADMIN_SOCKET = '/tmp/no-such-caddy-admin-404.sock-' + process.pid;
 
 const caddyConfig = require('../services/caddy-config');
 

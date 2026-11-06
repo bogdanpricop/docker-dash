@@ -22,6 +22,7 @@
 const fs = require('fs');
 const path = require('path');
 const log = require('../utils/logger')('howto-loader');
+const markdown = require('../utils/markdown');
 
 const CONTENT_DIR = path.join(__dirname, '..', 'db', 'howto-content');
 
@@ -138,8 +139,12 @@ function loadAll(db) {
         enMeta.icon || '',
         enMeta.summary || '',
         roMeta.summary || '',
-        enBody || '',
-        roBody || '',
+        // v8.94.2 — convert to HTML before storing. The frontend injects
+        // `content` as HTML, so a markdown body used to arrive as one wall of
+        // text. Raw HTML in a body passes through untouched, which matters:
+        // most bodies mix the two.
+        enBody ? markdown.render(enBody) : '',
+        roBody ? markdown.render(roBody) : '',
       );
       loaded++;
     } catch (err) {

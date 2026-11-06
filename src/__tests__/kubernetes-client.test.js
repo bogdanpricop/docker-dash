@@ -70,7 +70,7 @@ describe('KubernetesClient (v8.9.4-alpha.1)', () => {
 
     it('accepts a fully-formed config', () => {
       expect(() => new KubernetesClient({
-        endpoint: 'https://k.example.com:6443', token: 'x', caCert: 'PEM',
+        endpoint: 'https://k.example.com:6443', token: 'x', caCert: require('fs').readFileSync(require('path').join(__dirname, 'fixtures/provider-tls/ca.pem'), 'utf8'),
       })).not.toThrow();
     });
 

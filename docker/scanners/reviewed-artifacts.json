@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "scope": "Reviewed Linux amd64 source builds; evidence only, never a scan ignore policy",
+  "basis": [
+    "docs/audits/2026-09-20-scanner-rebuild-evidence.json",
+    "docs/audits/2026-10-07-security-refresh.md",
+    "docs/audits/2026-11-02-security-refresh.md",
+    "CHANGELOG.md"
+  ],
+  "artifacts": {
+    "docker-cli": {
+      "path": "/usr/local/bin/docker",
+      "binarySha256": "0b30490cc3a092331f8302d5779ef293c23d87f34900b4d56f73e35527c0ae61",
+      "metadata": {
+        "packages.txt": "00809fa58c8f0b6415f6e01a04ab04b906857ed4f22b12eebbc7d407abd15b5f",
+        "build-info.txt": "b97bd5cc749552d903504ed14b4c38f4e3249aa7bd7a8e6d4289c87289cc58aa",
+        "source.json": "24e4a575747c60fbd260ebbc5e605debf6f65211d3b25cadfc7dbcdb66ae3a3a"
+      }
+    },
+    "docker-compose": {
+      "path": "/usr/libexec/docker/cli-plugins/docker-compose",
+      "binarySha256": "f7a124eabe10048e29618a6b2b8e89aa5a178ffd15ddd446bb669539b3f4f86f",
+      "metadata": {
+        "packages.txt": "5ecc7e5da71aaa8e1ba53073c3095c4612ac78ac28a94288b79e666dc0107026",
+        "build-info.txt": "883b41a917be38daf0069436cbe7bef68e3438727c55d5407c73d1b4b22e150f",
+        "source.json": "cd74496e5abb0316bdb94f6b6829be9bea7ce9acb84517f8ee61b5f7520b5095"
+      }
+    },
+    "trivy": {
+      "path": "/usr/local/bin/trivy",
+      "binarySha256": "dce25a47dd571c9d5a65a37e4400ffde2691faacc14a620ae741641b922d7af6",
+      "metadata": {
+        "packages.txt": "cf1e2382c4b1b59c8d10e4f01c30e1413a3357ffee00145606e6de70b376fe9d",
+        "build-info.txt": "ee26167bc0e04b8057d83a05e1cc46ae6bbd9c932c245b99356f3fb77d11441f",
+        "source.json": "ce8a2bb29e0b27e0688f99f058441d0425ae3ceddd62c89b9dd59568dceb34be"
+      }
+    },
+    "grype": {
+      "path": "/usr/local/bin/grype",
+      "binarySha256": "a66afa2cf13519fee5e684b62a7b943e0c598f98b52945db48ab67f831edc028",
+      "metadata": {
+        "packages.txt": "eb05cac2ba6c20791065efc7b476ae9792b1c3704ce25ab18a0503fbdec51c8f",
+        "build-info.txt": "1fed595620876335b15cbcdf20134935c23bd108ce5087c0e309bfd96576b695",
+        "source.json": "ec012233813b1cd8ce25d4009ce09e0655a586e25b1483964100bd0d01031862"
+      }
+    }
+  },
+  "grpc": {
+    "version": "v1.84.0",
+    "sum": "h1:soMyaPJ8pAak5PIQ0DGBUir0XRo2fRoMqhNWMLlLxO0=",
+    "transportSha256": "6ff2da17e276ba22a782dffe467ec32b664895d12faccfbb5fc1ec40d59cdcf6c",
+    "regression": "Test/MissingAuthorityAndHostHeader",
+    "advisory": "https://github.com/grpc/grpc-go/security/advisories/GHSA-2v4p-qf9q-27wj"
+  }
+}

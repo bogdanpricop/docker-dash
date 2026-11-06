@@ -97,6 +97,11 @@ const SettingsPageAi = {
       const p = providers.find(x => x.id === providerId);
       const fields = document.getElementById('ai-provider-fields');
       if (!p) { fields.innerHTML = ''; return; }
+      const selectedModel = settings.provider === p.id && settings.model ? settings.model : p.recommendedModel;
+      const models = [...p.models];
+      if (selectedModel && !models.some(model => model.id === selectedModel)) {
+        models.unshift({ id: selectedModel, label: selectedModel + ' (saved)' });
+      }
 
       fields.innerHTML = `
         <div class="form-group">
@@ -104,7 +109,7 @@ const SettingsPageAi = {
             ${p.recommendedModel ? `<span class="text-muted text-sm" style="margin-left:6px;font-weight:normal">recommended: <code>${Utils.escapeHtml(p.recommendedModel)}</code></span>` : ''}
           </label>
           <select id="ai-model" class="form-control">
-            ${p.models.map(m => `<option value="${m.id}" ${(settings.model === m.id || (!settings.model && m.recommended)) ? 'selected' : ''}>${Utils.escapeHtml(m.label)}</option>`).join('')}
+            ${models.map(m => `<option value="${Utils.escapeHtml(m.id)}" ${m.id === selectedModel ? 'selected' : ''}>${Utils.escapeHtml(m.label)}</option>`).join('')}
           </select>
         </div>
         ${p.requiresApiKey ? `

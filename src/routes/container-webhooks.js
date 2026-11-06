@@ -68,7 +68,7 @@ const trigger = Router();
 
 // 10 triggers per minute per IP+path — uses the existing rateLimit
 // middleware (memory in standalone, Redis INCR in HA).
-const triggerLimiter = rateLimit(10, 60_000);
+const triggerLimiter = rateLimit(10, 60_000, 'container-webhook');
 
 trigger.post('/:token', triggerLimiter, asyncHandler(async (req, res) => {
   const row = svc.getByToken(req.params.token);

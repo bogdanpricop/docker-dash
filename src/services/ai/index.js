@@ -16,8 +16,8 @@
 const { getDb } = require('../../db');
 const { encrypt, decrypt } = require('../../utils/crypto');
 const log = require('../../utils/logger')('ai');
-const { redact, AiRedactionError } = require('./redactor');
-const { AiProviderError, AiNotConfiguredError, MockAiProvider } = require('./providers/base');
+const { redact } = require('./redactor');
+const { AiProviderError, AiNotConfiguredError } = require('./providers/base');
 const auditService = require('../audit');
 
 const KNOWN_PROVIDERS = ['anthropic', 'openai', 'ollama'];
@@ -60,12 +60,17 @@ function _parseJsonOrEmpty(s) {
 
 /**
  * Persist settings. API key is re-encrypted on every write. Caller must
- * pass `apiKey` undefined to leave it unchanged, null to clear it, string
- * to replace it.
+ * omit `apiKey` to keep it for the current provider, pass null to clear it,
+ * or pass a new key to replace it.
  */
 function saveSettings(updates, userId = null) {
   const current = _readSettings();
   const merged = { ...current, ...updates };
+  if (merged.provider !== current.provider) {
+    merged.apiKey = updates.apiKey ?? null;
+    merged.endpointUrl = updates.endpointUrl ?? null;
+    merged.model = updates.model ?? null;
+  }
 
   // Validate
   if (merged.enabled && !merged.provider) {
@@ -85,9 +90,7 @@ function saveSettings(updates, userId = null) {
     require('./redactor').compileCustomPatterns(merged.customRedactionPatterns);
   }
 
-  const apiKeyEncrypted = updates.apiKey === undefined
-    ? current.apiKey ? encrypt(current.apiKey) : null
-    : updates.apiKey === null ? null : encrypt(updates.apiKey);
+  const apiKeyEncrypted = merged.apiKey ? encrypt(merged.apiKey) : null;
 
   getDb().prepare(`
     UPDATE ai_settings SET

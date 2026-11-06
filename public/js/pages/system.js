@@ -30,6 +30,7 @@ const SystemPage = {
         <button class="tab" data-tab="ssl"><i class="fas fa-shield-alt" style="margin-right:4px"></i> SSL/TLS</button>
         <button class="tab" data-tab="cis"><i class="fas fa-clipboard-check" style="margin-right:4px"></i> CIS Benchmark</button>
         <button class="tab" data-tab="secrets"><i class="fas fa-user-secret" style="margin-right:4px"></i> Secrets</button>
+        <button class="tab" data-tab="terminal-access"><i class="fas fa-terminal" style="margin-right:4px"></i> Terminal Access</button>
         <button class="tab" data-tab="egress"><i class="fas fa-network-wired" style="margin-right:4px"></i> Egress</button>
         <button class="tab" data-tab="translations"><i class="fas fa-language" style="margin-right:4px"></i> Translations</button>
         <button class="tab" data-tab="prune">${i18n.t('pages.system.tabPrune')}</button>
@@ -68,6 +69,7 @@ const SystemPage = {
       else if (this._tab === 'ssl') await this._renderSsl(el);
       else if (this._tab === 'cis') await this._renderCisBenchmark(el);
       else if (this._tab === 'secrets') await this._renderSecretsAudit(el);
+      else if (this._tab === 'terminal-access') await this._renderTerminalAccess(el);
       else if (this._tab === 'egress') await this._renderEgressAudit(el);
       else if (this._tab === 'translations') await this._renderTranslations(el);
       else if (this._tab === 'prune') this._renderPrune(el);
@@ -78,7 +80,21 @@ const SystemPage = {
   },
 
   async _renderInfo(el) {
-    const info = await Api.getSystemInfo();
+    const [info, hosts] = await Promise.all([Api.getSystemInfo(), Api.getHosts()]);
+    const selectedHostId = Number(Api.getHostId() || 0);
+    const selectedHost = selectedHostId
+      ? (hosts || []).find(host => Number(host.id) === selectedHostId)
+      : (hosts || []).find(host => host.isDefault);
+    const isAdmin = App.user?.role === 'admin' || App.user?.roles?.includes('admin');
+    const hostSshReady = !!selectedHost?.hasSsh;
+    const secureHostTerminal = window.isSecureContext && location.protocol === 'https:';
+    const hostAccessAction = isAdmin
+      ? (hostSshReady
+          ? (secureHostTerminal
+              ? `<button class="btn btn-sm btn-secondary" id="open-host-terminal"><i class="fas fa-terminal"></i> Host terminal</button>`
+              : `<button class="btn btn-sm btn-secondary" disabled title="Open Docker Dash over HTTPS to use the host terminal"><i class="fas fa-lock"></i> HTTPS required</button>`)
+          : `<a class="btn btn-sm btn-secondary" href="#/hosts" title="Configure pinned SSH access on this host"><i class="fas fa-key"></i> Configure SSH</a>`)
+      : '';
     // Backend maps to lowercase: hostname, os, kernelVersion, dockerVersion, apiVersion, etc.
     const containersTotal = info.containers || info.Containers || 0;
     const containersRunning = info.containersRunning || info.ContainersRunning || 0;
@@ -131,22 +147,46 @@ const SystemPage = {
                 // Default runc is always present; hide the row unless there's something
                 // interesting beyond it. Signals "this is a professional-grade dashboard
                 // that knows about sandboxed runtimes" for the small audience that cares.
+                // v8.95.0 — the three-group panel our own how-to has documented
+                // since v8.9.5 but which was never built: operators following the
+                // guide to verify a Wasm setup found a flat list and concluded
+                // detection had failed. Groups with no members are omitted, so an
+                // ordinary host gains no clutter.
                 const alt = info.alternativeRuntimes || [];
                 const def = info.defaultRuntime || 'runc';
                 if (!alt.length && def === 'runc') return '';
-                const rtDisplay = [def, ...alt.filter(n => n !== def)].join(', ');
+                const cats = info.runtimeCategories || { standard: [], sandboxed: [], wasm: [] };
+                const groups = [
+                  { key: 'standard', names: cats.standard || [], badge: null },
+                  { key: 'sandboxed', names: cats.sandboxed || [], badge: 'SANDBOXED' },
+                  { key: 'wasm', names: cats.wasm || [], badge: 'WASM' },
+                ].filter(g => g.names.length);
+
+                // Fall back to the flat list if categorisation returned nothing —
+                // an older daemon payload should still show something useful.
+                if (!groups.length) {
+                  return `<tr><td>${i18n.t('pages.system.runtimes')}</td>
+                    <td><code style="font-family:var(--mono);font-size:12px">${Utils.escapeHtml([def, ...alt.filter(n => n !== def)].join(', '))}</code></td></tr>`;
+                }
+
+                const rows = groups.map(g => `
+                  <div style="display:flex;align-items:baseline;gap:8px;margin:2px 0">
+                    <span class="text-dim" style="font-size:11px;min-width:74px;text-transform:uppercase;letter-spacing:0.4px">${Utils.escapeHtml(i18n.t('pages.system.runtimeClass.' + g.key))}</span>
+                    <code style="font-family:var(--mono);font-size:12px">${Utils.escapeHtml(g.names.join(', '))}</code>
+                    ${g.badge ? `<span class="daemon-badge" title="${Utils.escapeHtml(i18n.t('pages.system.runtimeClassHint.' + g.key))}">${g.badge}</span>` : ''}
+                    ${g.names.includes(def) ? `<span class="text-dim" style="font-size:10px">${Utils.escapeHtml(i18n.t('pages.system.runtimeDefault'))}</span>` : ''}
+                  </div>`).join('');
+
                 return `<tr>
-                  <td>${i18n.t('pages.system.runtimes')}</td>
-                  <td><code style="font-family:var(--mono);font-size:12px">${Utils.escapeHtml(rtDisplay)}</code>
-                  ${alt.length ? `<span class="daemon-badge" style="margin-left:8px" title="Alternative OCI runtimes detected (Kata, gVisor, crun, ...)">SANDBOXED</span>` : ''}
-                  </td>
+                  <td style="vertical-align:top">${i18n.t('pages.system.runtimes')}</td>
+                  <td>${rows}</td>
                 </tr>`;
               })()}
             </table>
           </div>
         </div>
         <div class="card">
-          <div class="card-header"><h3>${i18n.t('pages.system.hostTitle')}</h3></div>
+          <div class="card-header"><h3>${i18n.t('pages.system.hostTitle')}</h3>${hostAccessAction}</div>
           <div class="card-body">
             <table class="info-table">
               <tr><td>${i18n.t('pages.system.hostname')}</td><td>${info.hostname || info.Name || '—'}</td></tr>
@@ -157,6 +197,9 @@ const SystemPage = {
               <tr><td>${i18n.t('pages.system.imagesLabel')}</td><td>${info.images || info.Images || 0}</td></tr>
               <tr><td>${i18n.t('pages.system.uptime')}</td><td>${info.uptime ? Utils.formatDuration(info.uptime) : '—'}</td></tr>
               <tr><td>${i18n.t('pages.system.serverTime')}</td><td>${info.serverTime ? Utils.formatDate(info.serverTime) : '—'}</td></tr>
+              <tr><td>System access</td><td>${hostSshReady
+                ? `<span class="badge badge-success">SSH configured</span> <span class="text-dim text-sm">${Utils.escapeHtml(selectedHost.sshHost || '')}</span>`
+                : '<span class="badge">Information only</span> <span class="text-dim text-sm">Configure pinned SSH for a host terminal</span>'}</td></tr>
             </table>
           </div>
         </div>
@@ -174,9 +217,8 @@ const SystemPage = {
         </div>
       </div>
     `;
-    el.querySelector('#check-updates-btn').addEventListener('click', () => this._loadUpdates());
-    // Auto-check updates
-    this._loadUpdates();
+    el.querySelector('#check-updates-btn').addEventListener('click', event => this._loadUpdates(event.currentTarget));
+    el.querySelector('#open-host-terminal')?.addEventListener('click', () => this._openHostSshConsole(selectedHost));
 
     // MOTD editor (admin only) — simple: one textarea, one message per line, checkbox for random
     const motdCard = document.createElement('div');
@@ -282,6 +324,85 @@ const SystemPage = {
     });
   },
 
+  _openHostSshConsole(host) {
+    if (!host) return;
+    if (!window.isSecureContext || location.protocol !== 'https:') {
+      Toast.error('Open Docker Dash over HTTPS to use the host terminal.');
+      return;
+    }
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+      <div class="modal-content" style="width:950px;max-width:96vw;height:650px;max-height:92vh;display:flex;flex-direction:column">
+        <div class="modal-header">
+          <h3><i class="fas fa-terminal"></i> Host terminal — ${Utils.escapeHtml(host.name || 'Host')}
+            <span id="host-ssh-status" style="font-size:12px;margin-left:10px;color:var(--text-dim)">connecting…</span></h3>
+          <button class="modal-close-btn" aria-label="Close"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="alert alert-warning" style="margin:8px 8px 0;padding:8px 12px">
+          Commands run directly on the Docker host and are recorded as an audited terminal session.
+        </div>
+        <div class="modal-body" style="flex:1;padding:8px;background:#0d1117"><div id="host-ssh-term" style="width:100%;height:100%"></div></div>
+      </div>`;
+    document.body.appendChild(modal);
+    const statusEl = modal.querySelector('#host-ssh-status');
+    const termEl = modal.querySelector('#host-ssh-term');
+    if (typeof Terminal === 'undefined') {
+      termEl.innerHTML = '<div style="color:#eee;padding:16px">Terminal component not loaded.</div>';
+      modal.querySelector('.modal-close-btn').addEventListener('click', () => modal.remove());
+      return;
+    }
+
+    const term = new Terminal({
+      cursorBlink: true, fontSize: 13, scrollback: 5000,
+      fontFamily: "'JetBrains Mono','Fira Code','Courier New',monospace",
+      theme: { background: '#0d1117', foreground: '#c9d1d9', cursor: '#58a6ff', selectionBackground: '#264f78' },
+    });
+    let fit = null;
+    if (typeof FitAddon !== 'undefined') { fit = new FitAddon.FitAddon(); term.loadAddon(fit); }
+    term.open(termEl);
+    if (fit) setTimeout(() => fit.fit(), 30);
+    let active = false;
+    const resize = () => WS.send('host-ssh:resize', { rows: term.rows, cols: term.cols });
+    const observer = new ResizeObserver(() => { if (fit) fit.fit(); if (active) resize(); });
+    observer.observe(termEl);
+    const dataDisposable = term.onData(data => { if (active) WS.send('host-ssh:input', { data }); });
+    const unsubscribers = [
+      WS.on('host-ssh:ready', () => {
+        active = true;
+        statusEl.textContent = 'connected';
+        statusEl.style.color = 'var(--green)';
+        term.focus();
+        resize();
+      }),
+      WS.on('host-ssh:output', message => term.write(message.data || '')),
+      WS.on('host-ssh:end', () => {
+        active = false;
+        statusEl.textContent = 'disconnected';
+        statusEl.style.color = 'var(--red)';
+        term.write('\r\n\x1b[31m[Session ended]\x1b[0m\r\n');
+      }),
+      WS.on('host-ssh:error', message => {
+        active = false;
+        statusEl.textContent = 'error';
+        statusEl.style.color = 'var(--red)';
+        const safeMessage = String(message.message || 'Connection failed').replace(/[^\x20-\x7e]/g, '');
+        term.write(`\r\n\x1b[31m${safeMessage}\x1b[0m\r\n`);
+      }),
+    ];
+    const cleanup = () => {
+      try { WS.send('host-ssh:stop', {}); } catch { /* ignore */ }
+      unsubscribers.forEach(unsubscribe => { try { unsubscribe(); } catch { /* ignore */ } });
+      try { dataDisposable.dispose(); } catch { /* ignore */ }
+      try { observer.disconnect(); } catch { /* ignore */ }
+      try { term.dispose(); } catch { /* ignore */ }
+      modal.remove();
+    };
+    modal.querySelector('.modal-close-btn').addEventListener('click', cleanup);
+    modal.addEventListener('click', event => { if (event.target === modal) cleanup(); });
+    WS.send('host-ssh:start', { hostId: host.id, cols: term.cols, rows: term.rows });
+  },
+
   _applyAccent(color) {
     document.documentElement.style.setProperty('--accent', color);
     document.documentElement.style.setProperty('--accent-hover', color);
@@ -290,9 +411,14 @@ const SystemPage = {
     Api.saveUserPreference('accent', color).catch(() => {});
   },
 
-  async _loadUpdates() {
+  async _loadUpdates(button = null) {
     const el = document.getElementById('updates-content');
     if (!el) return;
+    const originalButtonHtml = button?.innerHTML;
+    if (button) {
+      button.disabled = true;
+      button.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${i18n.t('pages.system.updatesChecking')}`;
+    }
     el.innerHTML = `<div class="text-muted text-sm"><i class="fas fa-spinner fa-spin"></i> ${i18n.t('pages.system.updatesChecking')}</div>`;
     try {
       const data = await Api.checkUpdates();
@@ -304,21 +430,24 @@ const SystemPage = {
         ? `<span class="badge badge-warning"><i class="fas fa-arrow-up"></i> ${i18n.t('pages.system.updateAvailable')}</span>`
         : `<span class="badge badge-running"><i class="fas fa-check"></i> ${i18n.t('pages.system.upToDate')}</span>`;
 
-      const osBadge = o.updateAvailable
-        ? `<span class="badge badge-warning"><i class="fas fa-arrow-up"></i> ${i18n.t('pages.system.osUpdatesCount', { count: o.total })}</span>`
-        : `<span class="badge badge-running"><i class="fas fa-check"></i> ${i18n.t('pages.system.upToDate')}</span>`;
+      const osBadge = o.error
+        ? `<span class="badge badge-warning"><i class="fas fa-exclamation-triangle"></i> ${Utils.escapeHtml(o.error)}</span>`
+        : (o.updateAvailable
+            ? `<span class="badge badge-warning"><i class="fas fa-arrow-up"></i> ${i18n.t('pages.system.osUpdatesCount', { count: o.total })}</span>`
+            : `<span class="badge badge-running"><i class="fas fa-check"></i> ${i18n.t('pages.system.upToDate')}</span>`);
 
       let osPackageList = '';
       if (o.packages && o.packages.length > 0) {
         osPackageList = `
           <details style="margin-top:8px">
-            <summary class="text-sm" style="cursor:pointer;color:var(--accent)">${i18n.t('pages.system.showPackages', { count: o.total })}</summary>
+            <summary class="text-sm" style="cursor:pointer;color:var(--accent)">${i18n.t('pages.system.showPackages', { count: o.total })}${o.truncated ? ` (${o.packages.length}/${o.total})` : ''}</summary>
             <div style="max-height:200px;overflow-y:auto;margin-top:6px">
               <table class="data-table compact">
-                <thead><tr><th>${i18n.t('pages.system.packageName')}</th><th>${i18n.t('pages.system.packageNew')}</th></tr></thead>
+                <thead><tr><th>${i18n.t('pages.system.packageName')}</th><th>${i18n.t('pages.system.version')}</th><th>${i18n.t('pages.system.packageNew')}</th></tr></thead>
                 <tbody>${o.packages.map(p => `
                   <tr>
                     <td class="mono text-sm">${Utils.escapeHtml(p.name)}</td>
+                    <td class="mono text-sm text-dim">${Utils.escapeHtml(p.oldVersion || '?')}</td>
                     <td class="mono text-sm">${Utils.escapeHtml(p.newVersion)}</td>
                   </tr>
                 `).join('')}</tbody>
@@ -339,7 +468,13 @@ const SystemPage = {
           </tr>
           <tr>
             <td><i class="fas fa-server" style="margin-right:6px"></i> ${i18n.t('pages.system.osUpdatesLabel')}</td>
-            <td>${osBadge}</td>
+            <td>
+              ${osBadge}
+              ${o.packageManager && o.packageManager !== 'unsupported' && o.packageManager !== 'unknown'
+                ? `<span class="badge" style="margin-left:8px">${Utils.escapeHtml(o.packageManager.toUpperCase())}</span>` : ''}
+              ${o.hostName ? `<span class="text-dim text-sm" style="margin-left:8px">${Utils.escapeHtml(o.hostName)}</span>` : ''}
+              ${o.checkedAt ? `<span class="text-dim text-sm" style="margin-left:8px">${Utils.formatDate(o.checkedAt)}</span>` : ''}
+            </td>
           </tr>
           <tr>
             <td><i class="fas fa-code-branch" style="margin-right:6px"></i> ${i18n.t('pages.system.appVersionLabel')}</td>
@@ -369,11 +504,24 @@ const SystemPage = {
       });
     } catch (err) {
       el.innerHTML = `<div class="text-muted text-sm"><i class="fas fa-exclamation-triangle" style="color:var(--yellow)"></i> ${i18n.t('pages.system.updatesError', { message: err.message })}</div>`;
+    } finally {
+      if (button?.isConnected) {
+        button.disabled = false;
+        button.innerHTML = originalButtonHtml;
+      }
     }
   },
 
   async _renderDisk(el) {
-    const du = await Api.getDiskUsage();
+    const [du, hosts] = await Promise.all([Api.getDiskUsage(), Api.getHosts()]);
+    const selectedHostId = Api.getHostId();
+    const selectedHost = hosts.find(host => host.id === selectedHostId)
+      || hosts.find(host => host.isDefault)
+      || hosts.find(host => host.isActive && ['docker', 'podman'].includes(host.daemonType || 'docker'));
+    let pressurePolicy = null;
+    if (selectedHost && (App.user?.role === 'admin' || App.user?.roles?.includes('admin'))) {
+      try { pressurePolicy = await Api.getDiskPressurePolicy(selectedHost.id); } catch { /* optional policy */ }
+    }
     const images = (du.Images || []).reduce((sum, i) => sum + (i.Size || 0), 0);
     const containers = (du.Containers || []).reduce((sum, c) => sum + (c.SizeRw || 0), 0);
     const volumes = (du.Volumes || []).reduce((sum, v) => sum + (v.UsageData?.Size || 0), 0);
@@ -399,8 +547,25 @@ const SystemPage = {
             </table>
           </div>
         </div>
+        ${selectedHost && pressurePolicy ? `<div class="card">
+          <div class="card-header"><h3><i class="fas fa-gauge-high" style="margin-right:8px"></i>Disk-pressure Guardrail</h3><button class="btn btn-sm btn-secondary" id="disk-pressure-config"><i class="fas fa-cog"></i></button></div>
+          <div class="card-body">
+            <table class="info-table">
+              <tr><td>Host</td><td>${Utils.escapeHtml(selectedHost.name)}</td></tr>
+              <tr><td>Automation</td><td>${pressurePolicy.enabled ? '<span class="badge badge-running">Enabled</span>' : '<span class="badge badge-stopped">Disabled</span>'}</td></tr>
+              <tr><td>Execution</td><td>${pressurePolicy.dry_run_only !== false ? '<span class="badge badge-info">Dry-run only</span>' : '<span class="badge badge-warning">Live cleanup</span>'}</td></tr>
+              <tr><td>Threshold</td><td>${pressurePolicy.threshold_percent || 85}%${pressurePolicy.max_docker_bytes ? ` or ${Utils.formatBytes(pressurePolicy.max_docker_bytes)}` : ''}</td></tr>
+              <tr><td>Minimum age</td><td>${pressurePolicy.min_age_hours || 168} hours</td></tr>
+              <tr><td>Volumes</td><td><span class="text-green">Always preserved</span></td></tr>
+            </table>
+            <button class="btn btn-sm btn-primary" id="disk-pressure-preview" style="margin-top:12px"><i class="fas fa-list-check"></i> Preview candidates</button>
+          </div>
+        </div>` : ''}
       </div>
     `;
+
+    el.querySelector('#disk-pressure-config')?.addEventListener('click', () => this._configureDiskPressure(selectedHost, pressurePolicy));
+    el.querySelector('#disk-pressure-preview')?.addEventListener('click', () => this._previewDiskPressure(selectedHost, pressurePolicy));
 
     // Render pie chart
     if (this._charts.disk) this._charts.disk.destroy();
@@ -421,6 +586,68 @@ const SystemPage = {
         },
       });
     }
+  },
+
+  async _configureDiskPressure(host, policy = {}) {
+    const result = await Modal.form(`
+      <div class="alert alert-warning"><i class="fas fa-shield-alt"></i> New policies start in dry-run mode. Volumes are never candidates. Resources labelled <code>${Utils.escapeHtml(policy.protected_label || 'docker-dash.protect')}=true</code> are excluded.</div>
+      <div class="form-group"><label><input type="checkbox" id="dp-enabled" ${policy.enabled ? 'checked' : ''}> Evaluate automatically every five minutes</label></div>
+      <div class="form-group"><label><input type="checkbox" id="dp-dry" ${policy.dry_run_only !== false ? 'checked' : ''}> Dry-run only (recommended until plans are reviewed)</label></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-group"><label>Filesystem threshold %</label><input id="dp-threshold" class="form-control" type="number" min="50" max="99" value="${policy.threshold_percent || 85}"></div>
+        <div class="form-group"><label>Docker bytes threshold (GiB, optional)</label><input id="dp-bytes" class="form-control" type="number" min="1" value="${policy.max_docker_bytes ? Math.round(policy.max_docker_bytes / 1073741824) : ''}"></div>
+        <div class="form-group"><label>Minimum resource age (hours)</label><input id="dp-age" class="form-control" type="number" min="1" max="8760" value="${policy.min_age_hours || 168}"></div>
+        <div class="form-group"><label>Cooldown (minutes)</label><input id="dp-cooldown" class="form-control" type="number" min="15" max="10080" value="${policy.cooldown_minutes || 360}"></div>
+      </div>
+      <div class="form-group"><label>Protected label</label><input id="dp-label" class="form-control mono" value="${Utils.escapeHtml(policy.protected_label || 'docker-dash.protect')}"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <label><input type="checkbox" id="dp-containers" ${policy.prune_containers !== false ? 'checked' : ''}> Old stopped containers</label>
+        <label><input type="checkbox" id="dp-images" ${policy.prune_images !== false ? 'checked' : ''}> Old unused images</label>
+        <label><input type="checkbox" id="dp-networks" ${policy.prune_networks ? 'checked' : ''}> Old unused networks</label>
+        <label><input type="checkbox" id="dp-cache" ${policy.prune_build_cache ? 'checked' : ''}> Old BuildKit cache</label>
+      </div>
+    `, {
+      title: `Disk-pressure Policy · ${Utils.escapeHtml(host.name)}`, width: '650px', confirmText: 'Save Policy',
+      onSubmit: content => ({
+        enabled: content.querySelector('#dp-enabled').checked,
+        dry_run_only: content.querySelector('#dp-dry').checked,
+        threshold_percent: Number(content.querySelector('#dp-threshold').value),
+        max_docker_bytes: content.querySelector('#dp-bytes').value ? Number(content.querySelector('#dp-bytes').value) * 1073741824 : null,
+        min_age_hours: Number(content.querySelector('#dp-age').value),
+        cooldown_minutes: Number(content.querySelector('#dp-cooldown').value),
+        protected_label: content.querySelector('#dp-label').value.trim(),
+        prune_containers: content.querySelector('#dp-containers').checked,
+        prune_images: content.querySelector('#dp-images').checked,
+        prune_networks: content.querySelector('#dp-networks').checked,
+        prune_build_cache: content.querySelector('#dp-cache').checked,
+      }),
+    });
+    if (!result) return;
+    if (!result.dry_run_only) {
+      const confirmed = await Modal.confirmSub('Enable live automatic cleanup for exact, old, unprotected candidates? Volumes remain preserved.', { danger: true, confirmText: 'Enable live cleanup' });
+      if (!confirmed) return;
+    }
+    try { await Api.updateDiskPressurePolicy(host.id, result); Toast.success('Disk-pressure policy saved'); await this._renderTab(); }
+    catch (err) { Toast.error(err.message); }
+  },
+
+  async _previewDiskPressure(host, policy = {}) {
+    try {
+      const plan = await Api.previewDiskPressure(host.id);
+      const candidates = plan.candidates || {};
+      const counts = Object.fromEntries(Object.entries(candidates).map(([key, values]) => [key, values.length]));
+      const confirmed = await Modal.confirm(`
+        <div style="text-align:left"><p><strong>${plan.threshold_met ? 'Threshold is met.' : 'Threshold is not currently met.'}</strong> Docker accounts for ${Utils.formatBytes(plan.docker_bytes)}.</p>
+        <ul><li>${counts.containers || 0} stopped container(s)</li><li>${counts.images || 0} unused image(s)</li><li>${counts.networks || 0} unused network(s)</li><li>${counts.buildCache || 0} build-cache record(s)</li><li><strong>0 volumes</strong></li></ul>
+        <p class="text-muted">Estimated reclaimable image/cache bytes: ${Utils.formatBytes(plan.candidate_bytes || 0)}</p></div>`,
+        { confirmText: policy.dry_run_only !== false ? 'Record dry-run' : 'Run exact cleanup', danger: policy.dry_run_only === false, html: true }
+      );
+      if (!confirmed) return;
+      const result = await Api.runDiskPressure(host.id, true);
+      if (result.dry_run) Toast.success('Dry-run plan recorded; no resources were deleted');
+      else Toast.success(`Cleanup ${result.status}; reclaimed approximately ${Utils.formatBytes(result.reclaimed_bytes || 0)}`);
+      await this._renderTab();
+    } catch (err) { Toast.error(err.message); }
   },
 
   async _renderEvents(el) {
@@ -2317,6 +2544,129 @@ DB_PASS=secret"></textarea>
       </div>`;
     }).join('');
     box.innerHTML = `<div class="prune-runs-title">${i18n.t('pages.system.pruneRunsTitle')}</div>${rows}`;
+  },
+
+  async _renderTerminalAccess(el) {
+    const [access, hosts] = await Promise.all([
+      Api.getTerminalAccess(Api.getHostId()),
+      Api.getHosts(),
+    ]);
+    const isAdmin = App.user?.role === 'admin' || App.user?.roles?.includes('admin');
+    const hostLocks = new Map((access.hosts || []).map(lock => [Number(lock.hostId), lock]));
+    const globalLocked = !!access.global?.locked;
+    const override = access.override || 'managed';
+    const forced = override !== 'managed';
+    const activeCount = Number(access.activeSessions?.count || 0);
+    const effective = access.effective || { locked: false, source: 'managed' };
+    const effectiveClass = effective.locked ? 'badge-danger' : 'badge-success';
+    const effectiveText = effective.locked ? 'LOCKED' : 'AVAILABLE';
+
+    const hostRows = (hosts || []).map(host => {
+      const lock = hostLocks.get(Number(host.id));
+      const locked = !!lock;
+      const inherited = !locked && globalLocked;
+      const status = forced
+        ? (override === 'deny' ? 'Forced closed by environment' : 'Forced open for recovery')
+        : locked
+          ? `Locked${lock.reason ? ` — ${Utils.escapeHtml(lock.reason)}` : ''}`
+          : inherited ? 'Locked by global policy' : 'Available';
+      const badgeClass = (override === 'deny' || locked || inherited) && override !== 'allow'
+        ? 'badge-danger'
+        : 'badge-success';
+      const action = locked ? 'unlock' : 'lock';
+      return `<tr>
+        <td><strong>${Utils.escapeHtml(host.name)}</strong>${host.isDefault ? ' <span class="badge badge-info">default</span>' : ''}</td>
+        <td><span class="badge ${badgeClass}">${status}</span></td>
+        <td>${Utils.escapeHtml(lock?.updatedBy || '—')}</td>
+        <td>${lock?.updatedAt ? Utils.formatDate(lock.updatedAt) : '—'}</td>
+        <td>${isAdmin ? `<button class="btn btn-sm ${locked ? 'btn-secondary' : 'btn-danger'} terminal-host-action" data-host-id="${host.id}" data-action="${action}" ${globalLocked && !locked ? 'disabled title="Global lock is active"' : ''}>
+          <i class="fas ${locked ? 'fa-unlock' : 'fa-lock'}"></i> ${locked ? 'Unlock' : 'Lock'}
+        </button>` : '—'}</td>
+      </tr>`;
+    }).join('');
+
+    el.innerHTML = `
+      <div class="card">
+        <div class="card-header">
+          <h3><i class="fas fa-user-shield" style="margin-right:8px;color:var(--yellow)"></i>Emergency terminal control</h3>
+          <span class="badge ${effectiveClass}">${effectiveText}</span>
+        </div>
+        <div class="card-body">
+          <p class="text-muted text-sm" style="margin-bottom:12px">Locks apply to every user, including administrators. Enabling a lock immediately closes matching container and host SSH terminal sessions and blocks new ones; Docker Dash background operations are unaffected.</p>
+          ${forced ? `<div class="alert ${override === 'deny' ? 'alert-danger' : 'alert-warning'}" style="margin-bottom:12px">
+            <i class="fas fa-exclamation-triangle"></i>
+            Environment override <code>DD_TERMINAL_ACCESS_OVERRIDE=${override}</code> is active. Database policy remains editable so recovery state can be prepared before removing the override and restarting.
+          </div>` : ''}
+          ${!access.featureEnabled ? '<div class="alert alert-danger" style="margin-bottom:12px"><code>ENABLE_EXEC=false</code> disables terminals independently of these policies.</div>' : ''}
+          <div class="info-grid">
+            <div>
+              <div class="text-sm text-muted">Global policy</div>
+              <div style="margin:5px 0 12px"><span class="badge ${globalLocked ? 'badge-danger' : 'badge-success'}">${globalLocked ? 'LOCKED' : 'OPEN'}</span>
+                ${access.global?.reason ? `<span class="text-sm" style="margin-left:8px">${Utils.escapeHtml(access.global.reason)}</span>` : ''}</div>
+              ${isAdmin ? `<div style="display:flex;gap:8px;flex-wrap:wrap">
+                <input id="terminal-lock-reason" class="form-control" maxlength="500" placeholder="Incident/change reason (stored in audit log)" style="min-width:280px;flex:1">
+                <button class="btn ${globalLocked ? 'btn-secondary' : 'btn-danger'}" id="terminal-global-action">
+                  <i class="fas ${globalLocked ? 'fa-unlock' : 'fa-lock'}"></i> ${globalLocked ? 'Unlock globally' : 'Lock globally'}
+                </button>
+              </div>` : ''}
+            </div>
+            <div>
+              <div class="text-sm text-muted">Active terminal sessions</div>
+              <div style="font-size:28px;font-weight:700;margin-top:4px">${activeCount}</div>
+              <div class="text-sm text-muted">Current node${access.activeSessions?.sessions ? '; user and target details are admin-only' : ''}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <div class="card-header"><h3>Per-host terminal policy</h3></div>
+        <div class="card-body" style="padding:0">
+          <table class="data-table">
+            <thead><tr><th>Host</th><th>Effective state</th><th>Changed by</th><th>Changed at</th><th>Action</th></tr></thead>
+            <tbody>${hostRows || '<tr><td colspan="5" class="text-muted">No hosts configured</td></tr>'}</tbody>
+          </table>
+        </div>
+      </div>`;
+
+    el.querySelector('#terminal-global-action')?.addEventListener('click', async () => {
+      const nextLocked = !globalLocked;
+      const reason = el.querySelector('#terminal-lock-reason')?.value.trim() || '';
+      const ok = await Modal.confirm(
+        nextLocked
+          ? `Lock container terminals globally? ${activeCount} active session(s) will be terminated immediately.`
+          : 'Unlock container terminals globally? Per-host locks and environment overrides still apply.',
+        { danger: nextLocked, confirmText: nextLocked ? 'Lock terminals' : 'Unlock terminals' }
+      );
+      if (!ok) return;
+      try {
+        const result = await Api.setGlobalTerminalAccess(nextLocked, reason);
+        Toast.success(nextLocked
+          ? `Global terminal lock enabled; ${result.terminatedSessions || 0} session(s) terminated`
+          : 'Global terminal lock removed');
+        await this._renderTerminalAccess(el);
+      } catch (err) { Toast.error(err.message); }
+    });
+
+    el.querySelectorAll('.terminal-host-action').forEach(button => {
+      button.addEventListener('click', async () => {
+        const hostId = Number(button.dataset.hostId);
+        const nextLocked = button.dataset.action === 'lock';
+        const host = (hosts || []).find(item => Number(item.id) === hostId);
+        const reason = el.querySelector('#terminal-lock-reason')?.value.trim() || '';
+        const ok = await Modal.confirm(
+          `${nextLocked ? 'Lock' : 'Unlock'} container terminals for “${Utils.escapeHtml(host?.name || String(hostId))}”?${nextLocked ? ' Active sessions on this host will close immediately.' : ''}`,
+          { danger: nextLocked, confirmText: nextLocked ? 'Lock host' : 'Unlock host' }
+        );
+        if (!ok) return;
+        try {
+          const result = await Api.setHostTerminalAccess(hostId, nextLocked, reason);
+          Toast.success(nextLocked
+            ? `Host terminal lock enabled; ${result.terminatedSessions || 0} session(s) terminated`
+            : 'Host terminal lock removed');
+          await this._renderTerminalAccess(el);
+        } catch (err) { Toast.error(err.message); }
+      });
+    });
   },
 
   async _renderAudit(el) {

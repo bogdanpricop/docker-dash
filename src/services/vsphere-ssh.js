@@ -36,6 +36,7 @@
 //   up across versions without brittle exact-key matching.
 
 const { Client: SshClient } = require('ssh2');
+const { hostKeyOptions } = require('../utils/ssh-host-key');
 const { decryptDaemonConfig } = require('./vsphere');
 const log = require('../utils/logger')('vsphere-ssh');
 
@@ -184,6 +185,7 @@ function _validateSshConfig(sshConfig) {
 
 async function _connectSsh(sshConfig) {
   _validateSshConfig(sshConfig);
+  const identity = hostKeyOptions(sshConfig);
   return new Promise((resolve, reject) => {
     const client = new SshClient();
     const timer = setTimeout(() => {
@@ -193,6 +195,7 @@ async function _connectSsh(sshConfig) {
     client.on('ready', () => { clearTimeout(timer); resolve(client); });
     client.on('error', (err) => { clearTimeout(timer); reject(_friendlySshError(err, sshConfig)); });
     client.connect({
+      ...identity,
       host: sshConfig.host,
       port: sshConfig.port || 22,
       username: sshConfig.user,

@@ -111,12 +111,12 @@ const Utils = {
     return '#388bfd';
   },
 
-  // Escape HTML
+  // Escape text and quoted HTML attributes. DOM text-node serialization does
+  // not escape quotes, so it cannot safely be reused inside an attribute.
   escapeHtml(str) {
     if (!str) return '';
-    const div = document.createElement('div');
-    div.appendChild(document.createTextNode(str));
-    return div.innerHTML;
+    const entities = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+    return String(str).replace(/[&<>"']/g, character => entities[character]);
   },
 
   // Debounce
