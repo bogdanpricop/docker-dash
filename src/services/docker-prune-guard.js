@@ -20,12 +20,25 @@ async function assertNoPrune(docker) {
 
 function recoveryContainer(container) {
   const labels = container.Labels || {};
+  // A stopped release operator is durable evidence, not disposable garbage.
+  // New Desktop Streamer owners also use PROTECT_LABEL before checking NAME.
+  const desktopOperation = Object.hasOwn(labels, 'com.desktop-streamer.release-operation')
+    || Object.hasOwn(labels, 'com.desktop-streamer.release-reservation');
+  const desktopHistory = Object.hasOwn(labels, 'com.desktop-streamer.cutover-owner')
+    && (container.State !== 'running'
+      || (container.Names || []).some(name => /^\/?ds-cutover-host-/.test(name)));
   return Object.hasOwn(labels, 'com.docker-dash.egress-operation')
     || labels['com.docker-dash.replacement.role'] === 'lock'
-    || (container.Names || []).some(name => /^\/?dd-(recovery-|replacement-lock-|egress-lock-)/.test(name));
+    || (container.Names || []).some(name => /^\/?dd-(recovery-|replacement-lock-|egress-lock-)/.test(name))
+    || desktopOperation || desktopHistory;
 }
 
 async function withPrune(docker, action) {
+  // Reject known recovery work without briefly fencing its next operator.
+  // The second inventory under the barrier still closes concurrent-start races.
+  if ((await docker.listContainers({ all: true })).some(recoveryContainer)) {
+    throw conflict('Container replacement, egress or Desktop Streamer release evidence is retained; reconcile it before pruning');
+  }
   const helperRef = process.env.DD_EGRESS_HELPER_IMAGE || 'docker-dash-egress-helper:local';
   let image, helperAvailable = true;
   try { image = (await docker.getImage(helperRef).inspect()).Id; }
@@ -56,7 +69,7 @@ async function withPrune(docker, action) {
   try {
     const containers = await docker.listContainers({ all: true });
     if (containers.some(recoveryContainer)) {
-      throw conflict('Container replacement or egress recovery is pending; reconcile it before pruning');
+      throw conflict('Container replacement, egress or Desktop Streamer release evidence is retained; reconcile it before pruning');
     }
     started = true;
     const result = await action({ helperImage: helperAvailable ? image : null });

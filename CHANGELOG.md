@@ -4,6 +4,9 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Preserve Desktop Streamer release reservations and recovery containers when
+  pruning Docker. Refuse known reservations before acquiring the prune lock
+  and check again under the lock before dispatching cleanup.
 - Update the Settings AI catalog and structured-output requests for GPT-6
   and Claude 5. Preserve saved models and scope credentials to their provider.
 - Fix the Add and Edit dialogs in Log Forwarding and Secrets. Show dedicated

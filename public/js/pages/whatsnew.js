@@ -9,6 +9,9 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.96.21', date: '2026-11-06', title: 'Desktop Streamer prune protection', changes: [
+      { type: 'security', text: 'Docker cleanup preserves Desktop Streamer release and recovery containers, including retained evidence from previous operations.' },
+    ] },
     { version: '8.96.20', date: '2026-11-06', title: 'AI models and Settings forms', changes: [
       { type: 'improvement', text: 'Choose GPT-6 or Claude 5 models in Settings → AI. Previously saved models remain selectable.' },
       { type: 'fix', text: 'Add or edit Log Forwarders and Secrets. Syslog forwarders have dedicated host, port and protocol settings.' },
