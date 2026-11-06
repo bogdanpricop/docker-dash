@@ -3,6 +3,19 @@
 const nodemailer = require('nodemailer');
 const config = require('../config');
 const log = require('../utils/logger')('email');
+const { networkDiagnostic, safeProviderText } = require('../utils/notification-diagnostics');
+
+const smtpReasons = {
+  EAUTH: 'SMTP authentication failed.',
+  ECONNECTION: 'Could not connect to the SMTP server.',
+  ETIMEDOUT: 'The SMTP server did not respond in time.',
+  ESOCKET: 'The SMTP connection failed.',
+  ETLS: 'The SMTP TLS session could not be established.',
+  EENVELOPE: 'The SMTP server rejected the sender or recipient.',
+  EMESSAGE: 'The SMTP server rejected the message.',
+  EDNS: 'The SMTP hostname could not be resolved.',
+  EPROTOCOL: 'The SMTP server sent an unexpected reply.',
+};
 
 class EmailService {
   constructor() {
@@ -46,20 +59,35 @@ class EmailService {
     return transporter;
   }
 
-  async send({ to, subject, html, smtp = config.smtp }) {
-    const transporter = this._getTransporter(smtp);
+  async send({ to, subject, html, smtp = config.smtp, diagnostics = false }) {
     const from = smtp.fromName ? { name: smtp.fromName, address: smtp.fromEmail } : smtp.fromEmail;
 
     try {
+      const transporter = this._getTransporter(smtp);
       const info = await transporter.sendMail({ from, to, subject, html });
       log.info('Email sent', { to, subject, messageId: info.messageId });
       return { ok: true, messageId: info.messageId };
     } catch (err) {
       // Transport errors can echo the message body, including reset/invite tokens.
-      const code = ['EAUTH', 'ECONNECTION', 'ETIMEDOUT', 'ESOCKET', 'EENVELOPE', 'EMESSAGE', 'EDNS'].includes(err.code) ? err.code : 'SEND_FAILED';
+      const code = Object.hasOwn(smtpReasons, err.code) ? err.code : 'SEND_FAILED';
       log.error('Email send failed', { to, subject, code });
-      // Callers may also log errors; never propagate the transport's raw text.
-      throw Object.assign(new Error('Email delivery failed'), { code });
+      const failure = Object.assign(new Error('Email delivery failed'), { code });
+      if (diagnostics) {
+        const network = networkDiagnostic(err);
+        const command = /^AUTH(?: |$)/.test(err.command) ? 'AUTH' : err.command;
+        const reply = typeof err.response === 'string' ? err.response : '';
+        const responseCode = Number.isInteger(err.responseCode) && err.responseCode >= 400 && err.responseCode <= 599 ? err.responseCode : undefined;
+        failure.details = {
+          code: network.code || code,
+          reason: network.reason || smtpReasons[code] || 'SMTP delivery failed.',
+          command: ['AUTH', 'CONN', 'EHLO', 'HELO', 'STARTTLS', 'MAIL FROM', 'RCPT TO', 'DATA', 'RSET'].includes(command) ? command : undefined,
+          smtpStatus: responseCode,
+          smtpEnhancedStatus: responseCode ? reply.match(/^\d{3}[ -]([45]\.\d{1,3}\.\d{1,3})(?:\s|$)/)?.[1] : undefined,
+          response: responseCode && command !== 'AUTH' && code !== 'EAUTH'
+            ? safeProviderText(reply, [smtp.user, smtp.password, smtp.fromEmail, subject, html, ...[to].flat()]) : undefined,
+        };
+      }
+      throw failure;
     }
   }
 

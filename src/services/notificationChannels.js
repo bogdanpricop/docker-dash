@@ -3,6 +3,7 @@
 const { getDb } = require('../db');
 const { encrypt, decrypt } = require('../utils/crypto');
 const { now } = require('../utils/helpers');
+const { networkDiagnostic, safeProviderText } = require('../utils/notification-diagnostics');
 const log = require('../utils/logger')('notify');
 
 /**
@@ -10,7 +11,7 @@ const log = require('../utils/logger')('notify');
  * Each provider sends messages via HTTP POST to the respective service API.
  */
 const providers = {
-  async discord(config, message) {
+  async discord(config, message, diagnostic) {
     const body = {
       content: message.text,
       embeds: message.embed ? [{
@@ -20,10 +21,10 @@ const providers = {
         timestamp: new Date().toISOString(),
       }] : undefined,
     };
-    await _post(config.webhook_url, body);
+    await _post(config.webhook_url, body, diagnostic);
   },
 
-  async slack(config, message) {
+  async slack(config, message, diagnostic) {
     const body = {
       text: message.text,
       blocks: [{
@@ -31,89 +32,116 @@ const providers = {
         text: { type: 'mrkdwn', text: `*${message.title || 'Docker Dash'}*\n${message.text}` },
       }],
     };
-    await _post(config.webhook_url, body);
+    await _post(config.webhook_url, body, diagnostic);
   },
 
-  async telegram(config, message) {
+  async telegram(config, message, diagnostic) {
     const url = `https://api.telegram.org/bot${config.bot_token}/sendMessage`;
     await _post(url, {
       chat_id: config.chat_id,
       text: `*${message.title || 'Docker Dash'}*\n${message.text}`,
       parse_mode: 'Markdown',
-    });
+    }, diagnostic);
   },
 
-  async ntfy(config, message) {
-    // v8.7.19 — ntfy uses raw fetch (not _post) because the body is plain
-    // text and the headers carry the structured fields. The previous
-    // implementation forgot the AbortController/timeout wrapper that
-    // _post uses — a hung ntfy.sh request would block notification
-    // dispatch for that channel indefinitely, AND because sendToAll
-    // awaits channels serially, it would also block delivery to every
-    // remaining channel for the same alert. Explicit 10s timeout to
-    // match _post.
+  async ntfy(config, message, diagnostic) {
     const url = `${config.server_url || 'https://ntfy.sh'}/${config.topic}`;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Title': message.title || 'Docker Dash Alert',
-          'Priority': message.severity === 'critical' ? '5' : message.severity === 'warning' ? '3' : '2',
-          'Tags': message.severity === 'critical' ? 'rotating_light' : 'whale',
-          ...(config.token ? { 'Authorization': `Bearer ${config.token}` } : {}),
-        },
-        body: message.text,
-        signal: controller.signal,
-      });
-      if (!res.ok) throw new Error(`ntfy: ${res.status}`);
-    } finally {
-      clearTimeout(timeout);
-    }
+    await request(url, {
+      headers: {
+        'Title': message.title || 'Docker Dash Alert',
+        'Priority': message.severity === 'critical' ? '5' : message.severity === 'warning' ? '3' : '2',
+        'Tags': message.severity === 'critical' ? 'rotating_light' : 'whale',
+        ...(config.token ? { 'Authorization': `Bearer ${config.token}` } : {}),
+      },
+      body: message.text,
+    }, diagnostic);
   },
 
-  async gotify(config, message) {
+  async gotify(config, message, diagnostic) {
     const url = `${config.server_url}/message?token=${config.app_token}`;
     await _post(url, {
       title: message.title || 'Docker Dash Alert',
       message: message.text,
       priority: message.severity === 'critical' ? 8 : message.severity === 'warning' ? 5 : 2,
-    });
+    }, diagnostic);
   },
 
-  async email(config, message) {
+  async email(config, message, diagnostic) {
     // Delegate to existing email service
     const emailService = require('./email');
     await emailService.send({
       to: config.to,
       smtp: require('./notification-smtp').transport(),
+      diagnostics: Boolean(diagnostic),
       subject: message.title || 'Docker Dash Alert',
       html: `<p>${message.text.replace(/\n/g, '<br>')}</p>`,
     });
   },
 
-  async webhook(config, message) {
+  async webhook(config, message, diagnostic) {
     // Generic webhook — same format as existing outgoing webhooks
     await _post(config.url, {
       event: message.event || 'alert',
       timestamp: new Date().toISOString(),
       data: message,
-    });
+    }, diagnostic);
   },
 };
 
-async function _post(url, body) {
+function _post(url, body, diagnostic) {
+  return request(url, { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, diagnostic);
+}
+
+async function readFailureResponse(response) {
+  const contentType = response.headers?.get('content-type')?.split(';')[0].trim().toLowerCase();
+  if (!response.body || !['application/json', 'application/problem+json', 'text/plain'].includes(contentType)) return undefined;
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let text = '', length = 0;
+  try {
+    while (length <= 4096) {
+      const { done, value } = await reader.read();
+      if (done) {
+        text += decoder.decode();
+        if (contentType === 'text/plain') return text;
+        const data = JSON.parse(text);
+        return [data?.description, data?.errorDescription, data?.detail, data?.message, data?.error?.message, data?.error]
+          .find(item => typeof item === 'string' && item.trim());
+      }
+      length += value.byteLength;
+      if (length <= 4096) text += decoder.decode(value, { stream: true });
+    }
+  } catch { /* Keep the HTTP status when the body cannot be read. */ }
+  finally { reader.releaseLock(); }
+  return undefined;
+}
+
+async function request(url, options, diagnostic) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10000);
   try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    let res;
+    try {
+      res = await fetch(url, { method: 'POST', ...options, signal: controller.signal });
+    } catch (err) {
+      const failure = new Error('Could not reach the notification provider');
+      if (diagnostic) failure.details = networkDiagnostic(err);
+      throw failure;
+    }
+    try {
+      if (!res.ok) {
+        const failure = new Error(`HTTP ${res.status}`);
+        if (diagnostic) {
+          failure.details = {
+            httpStatus: res.status,
+            response: safeProviderText(await readFailureResponse(res), [...diagnostic, url]),
+          };
+        }
+        throw failure;
+      }
+    } finally {
+      await res.body?.cancel().catch(() => {});
+    }
   } finally {
     clearTimeout(timeout);
   }
@@ -215,17 +243,20 @@ class NotificationChannelService {
 
   // ─── Send ────────────────────────────────────────
 
-  async send(channelId, message) {
+  async send(channelId, message, { diagnostics = false } = {}) {
     const channel = this.get(channelId);
-    if (!channel) throw new Error('Channel not found');
-    if (!channel.is_active) return;
+    if (!channel) throw Object.assign(new Error('Channel not found'), { status: 404 });
+    if (!channel.is_active) {
+      if (diagnostics) throw Object.assign(new Error('This notification channel is inactive'), { status: 400 });
+      return;
+    }
 
     const config = JSON.parse(decrypt(channel.config_encrypted));
     this._validateConfig(channel.provider, config);
     const provider = providers[channel.provider];
 
     try {
-      await provider(config, message);
+      await provider(config, message, diagnostics ? Object.values(config).flat() : undefined);
       log.debug('Notification sent', { channelId, provider: channel.provider });
     } catch (err) {
       log.error('Notification failed', { channelId, provider: channel.provider, error: err.message });
@@ -262,7 +293,7 @@ class NotificationChannelService {
       text: 'If you see this, your notification channel is configured correctly!',
       severity: 'info',
       event: 'test',
-    });
+    }, { diagnostics: true });
   }
 
   // ─── Helpers ─────────────────────────────────────

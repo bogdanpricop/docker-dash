@@ -9,6 +9,9 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.96.23', date: '2026-11-06', title: 'Notification test details', changes: [
+      { type: 'improvement', text: 'See and copy SMTP, HTTP, and connection diagnostics when a notification channel test fails.' },
+    ] },
     { version: '8.96.22', date: '2026-11-06', title: 'SMTP relay without TLS', changes: [
       { type: 'feature', text: 'Choose None under SMTP connection security for trusted relays that accept mail without SMTP authentication.' },
     ] },

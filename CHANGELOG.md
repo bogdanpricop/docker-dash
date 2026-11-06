@@ -4,6 +4,9 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Show copyable notification test diagnostics with SMTP reply and command,
+  HTTP status, or a connection error. Sensitive values are redacted from
+  provider replies.
 - Allow plaintext SMTP for notification relays that accept mail without
   SMTP authentication. STARTTLS remains the default for new configurations.
 - Preserve Desktop Streamer release reservations and recovery containers when

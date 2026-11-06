@@ -268,12 +268,17 @@ const SettingsPage = {
           const channel = channels.find(c => c.id === id);
           if (channel) await this._openNotificationChannel(providers, channel);
         } else if (btn.dataset.action === 'test-nc') {
+          const channel = channels.find(c => c.id === id);
+          const provider = providers.find(p => p.id === channel?.provider)?.name || channel?.provider;
+          btn.disabled = true;
           Toast.info(i18n.t('pages.settings.sendingTest'));
           try {
             const res = await Api.testNotificationChannel(id);
             if (res.ok) Toast.success(i18n.t('pages.settings.testSentSuccess'));
-            else Toast.error(i18n.t('pages.settings.testFailed', { message: res.error || 'Unknown error' }));
-          } catch (err) { Toast.error(err.message); }
+            else this._showNotificationTestFailure(channel?.name, provider, res);
+          } catch (err) {
+            this._showNotificationTestFailure(channel?.name, provider, { error: err.message });
+          } finally { btn.disabled = false; }
         } else if (btn.dataset.action === 'delete-nc') {
           const ok = await Modal.confirm(i18n.t('pages.settings.deleteChannelConfirm'), { danger: true });
           if (!ok) return;
@@ -287,6 +292,40 @@ const SettingsPage = {
     } catch (err) {
       el.innerHTML = `<div class="empty-msg">Error: ${Utils.escapeHtml(err.message)}</div>`;
     }
+  },
+
+  _showNotificationTestFailure(name, provider, result) {
+    const t = key => i18n.t('pages.settings.' + key);
+    const esc = Utils.escapeHtml;
+    const close = esc(i18n.t('common.close'));
+    const details = result.details || {};
+    const summary = [name, provider].filter(Boolean).join(' · ');
+    const entries = [
+      ['notificationTestReason', details.reason],
+      ['notificationTestCode', details.code],
+      ['notificationTestCommand', details.command],
+      ['notificationTestSmtpStatus', [details.smtpStatus, details.smtpEnhancedStatus].filter(Boolean).join(' ')],
+      ['notificationTestHttpStatus', details.httpStatus],
+      ['notificationTestResponse', details.response],
+    ].filter(([, value]) => value);
+    const text = [summary, result.error, ...entries.map(([label, value]) => `${t(label)}: ${value}`)].filter(Boolean).join('\n');
+    Modal.open(`
+      <div class="modal-header">
+        <h3>${esc(t('notificationTestFailedTitle'))}</h3>
+        <button type="button" class="modal-close-btn" data-nc-test-close aria-label="${close}"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="modal-body">
+        <pre id="nc-test-details" style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(text)}</pre>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="nc-test-copy">${esc(i18n.t('common.copy'))}</button>
+        <button type="button" class="btn btn-primary" data-nc-test-close>${close}</button>
+      </div>`, { width: '560px' });
+    Modal._content.querySelectorAll('[data-nc-test-close]').forEach(button => button.addEventListener('click', () => Modal.close()));
+    Modal._content.querySelector('#nc-test-copy').addEventListener('click', async () => {
+      try { await Utils.copyToClipboard(text); Toast.success(i18n.t('common.copied')); }
+      catch (err) { Toast.error(err.message); }
+    });
   },
 
   async _openNotificationChannel(providers, channel = null) {

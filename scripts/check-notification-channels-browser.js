@@ -122,6 +122,24 @@ async function main() {
       mode: 'external', host: 'relay.example.test', port: 25, security: 'none',
       user: '', password: '', fromEmail: 'sender@example.test', fromName: '',
     });
+    await page.evaluate(() => {
+      Api.testNotificationChannel = async () => ({
+        ok: false, error: 'Email delivery failed',
+        details: { code: 'EENVELOPE', command: 'RCPT TO', smtpStatus: 550, smtpEnhancedStatus: '5.7.1',
+          response: 'Relay access denied <img src=x onerror=alert(1)>' },
+      });
+      Utils.copyToClipboard = async text => { window.copiedDetails = text; };
+    });
+    await page.click('[data-action="test-nc"]');
+    await page.waitForSelector('#nc-test-details');
+    const diagnostics = await page.$eval('#nc-test-details', el => el.textContent);
+    assert.match(diagnostics, /SMTP status: 550 5\.7\.1/);
+    assert.match(diagnostics, /SMTP command: RCPT TO/);
+    assert.match(diagnostics, /Relay access denied/);
+    assert.equal(await page.$('#nc-test-details img'), null);
+    await page.click('#nc-test-copy');
+    assert.equal(await page.evaluate(() => window.copiedDetails), diagnostics);
+    await page.click('.modal-footer [data-nc-test-close]');
     console.log('Notification channel create/edit, validation, and external SMTP settings passed.');
     await checkSettingsForms(page);
     assert.deepEqual(errors, []);

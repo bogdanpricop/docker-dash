@@ -20,6 +20,7 @@ beforeEach(() => {
 });
 
 afterAll(closeDb);
+afterEach(() => jest.restoreAllMocks());
 
 test.each([undefined, {}, { to: '   ' }])('rejects an email channel without a recipient (%j)', config => {
   expect(() => channels.create({ name: 'Email', provider: 'email', config, created_by: 1 }))
@@ -73,4 +74,41 @@ test.each([['discord', 'webhook_url'], ['webhook', 'url']])('does not disclose t
   channels.create({ name: 'Team', provider, config: { [key]: 'https://hook.example.test/secret-token' }, created_by: 1 });
   expect(channels.list()[0]).toMatchObject({ config: {}, configuredSecrets: [key] });
   expect(JSON.stringify(channels.list())).not.toContain('secret-token');
+});
+
+test('includes only a redacted provider error excerpt on explicit tests', async () => {
+  const url = 'https://hooks.example.test/api/path-secret?token=query-secret';
+  const { id } = channels.create({ name: 'Hook', provider: 'webhook', config: { url }, created_by: 1 });
+  jest.spyOn(global, 'fetch').mockImplementation(async () => new global.Response(JSON.stringify({
+    message: 'Endpoint rejected the test path-secret query-secret ' + url,
+    data: 'arbitrary response field',
+  }), { status: 403, headers: { 'content-type': 'application/json' } }));
+  const failure = await channels.test(id).catch(error => error);
+  expect(failure.details).toMatchObject({ httpStatus: 403, response: expect.stringContaining('Endpoint rejected the test') });
+  expect(JSON.stringify(failure.details)).not.toMatch(/path-secret|query-secret|hooks\.example\.test|arbitrary response/);
+  const background = await channels.send(id, { text: 'Live message' }).catch(error => error);
+  expect(background.message).toBe('HTTP 403');
+  expect(background).not.toHaveProperty('details');
+});
+
+test.each([
+  ['text/html', '<html>Raw server page</html>'],
+  ['text/plain', 'a'.repeat(4097)],
+])('keeps the status of unreadable or oversized %s failures', async (type, body) => {
+  const { id } = channels.create({ name: 'Ntfy', provider: 'ntfy', config: { topic: 'alerts' }, created_by: 1 });
+  jest.spyOn(global, 'fetch').mockResolvedValue(new global.Response(body, { status: 429, headers: { 'content-type': type } }));
+  await expect(channels.test(id)).rejects.toMatchObject({ details: { httpStatus: 429, response: undefined } });
+});
+
+test('reports connection refusal and distinguishes inactive channels from successful sends', async () => {
+  const { id } = channels.create({ name: 'Hook', provider: 'webhook', config: { url: 'https://hooks.example.test' }, created_by: 1 });
+  const fetch = jest.spyOn(global, 'fetch').mockRejectedValue(new TypeError('fetch failed', {
+    cause: new AggregateError([Object.assign(new Error('private path'), { code: 'ECONNREFUSED' })]),
+  }));
+  await expect(channels.test(id)).rejects.toMatchObject({
+    details: { code: 'ECONNREFUSED', reason: 'The provider refused the connection.' },
+  });
+  channels.update(id, { is_active: false });
+  await expect(channels.test(id)).rejects.toThrow('This notification channel is inactive');
+  expect(fetch).toHaveBeenCalledTimes(1);
 });
