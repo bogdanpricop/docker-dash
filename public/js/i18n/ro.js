@@ -1167,6 +1167,7 @@ i18n.register('ro', 'RO', "Română", {
       deleteChannelConfirm: "Ștergi acest canal de notificare?",
       channelDeleted: "Canal șters",
       addChannelTitle: "Adaugă canal de notificare",
+      notificationSmtpHint: "Acest canal folosește setările SMTP ale serverului. Introdu adresa de e-mail la care vrei să primești notificările.",
       nameRequired: "Numele este obligatoriu",
       gitCredentialsTitle: "Credențiale Git",
       ldapTransportLabel: 'Transport LDAP criptat',

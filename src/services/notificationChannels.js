@@ -135,7 +135,7 @@ class NotificationChannelService {
 
   create({ name, provider, config, created_by }) {
     if (!name || !provider) throw new Error('name and provider are required');
-    if (!providers[provider]) throw new Error(`Unknown provider: ${provider}. Supported: ${Object.keys(providers).join(', ')}`);
+    this._validateConfig(provider, config);
 
     const db = getDb();
     const r = db.prepare(`
@@ -155,6 +155,9 @@ class NotificationChannelService {
     if (data.name !== undefined) { sets.push('name = ?'); params.push(data.name); }
     if (data.is_active !== undefined) { sets.push('is_active = ?'); params.push(data.is_active ? 1 : 0); }
     if (data.config !== undefined) {
+      const channel = this.get(id);
+      if (!channel) return;
+      this._validateConfig(channel.provider, data.config);
       sets.push('config_encrypted = ?');
       params.push(encrypt(JSON.stringify(data.config)));
     }
@@ -178,8 +181,8 @@ class NotificationChannelService {
     if (!channel.is_active) return;
 
     const config = JSON.parse(decrypt(channel.config_encrypted));
+    this._validateConfig(channel.provider, config);
     const provider = providers[channel.provider];
-    if (!provider) throw new Error(`Unknown provider: ${channel.provider}`);
 
     try {
       await provider(config, message);
@@ -205,8 +208,8 @@ class NotificationChannelService {
     await Promise.allSettled(channels.map(async (channel) => {
       try {
         const config = JSON.parse(decrypt(channel.config_encrypted));
-        const provider = providers[channel.provider];
-        if (provider) await provider(config, message);
+        this._validateConfig(channel.provider, config);
+        await providers[channel.provider](config, message);
       } catch (err) {
         log.error('Notification failed', { channelId: channel.id, error: err.message });
       }
@@ -223,6 +226,23 @@ class NotificationChannelService {
   }
 
   // ─── Helpers ─────────────────────────────────────
+
+  _validateConfig(provider, config) {
+    const definition = this.getProviders().find(entry => entry.id === provider);
+    const invalid = message => Object.assign(new Error(message), { status: 400 });
+    if (!definition) throw invalid('Unknown notification provider');
+    if (config != null && (typeof config !== 'object' || Array.isArray(config))) {
+      throw invalid('Notification channel configuration must be an object');
+    }
+    const hasText = value => typeof value === 'string' && value.trim().length > 0;
+    for (const field of definition.fields) {
+      if (!field.required) continue;
+      const value = config?.[field.key];
+      // SMTP also accepts recipient arrays from existing API clients.
+      const recipients = field.type === 'email' && Array.isArray(value) && value.length > 0 && value.every(hasText);
+      if (!hasText(value) && !recipients) throw invalid(`${field.label} is required`);
+    }
+  }
 
   _maskConfig(provider, config) {
     const masked = { ...config };

@@ -813,6 +813,7 @@ i18n.register('en', 'EN', 'English', {
       deleteChannelConfirm: 'Delete this notification channel?',
       channelDeleted: 'Channel deleted',
       addChannelTitle: 'Add Notification Channel',
+      notificationSmtpHint: 'This channel uses the server’s SMTP settings. Enter the email address that should receive notifications.',
       nameRequired: 'Name is required',
       // Git Credentials
       gitCredentialsTitle: 'Git Credentials',

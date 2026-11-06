@@ -253,15 +253,16 @@ const SettingsPage = {
       `;
 
       el.querySelector('#nc-create')?.addEventListener('click', async () => {
-        const providerOptions = providers.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+        const esc = Utils.escapeHtml;
+        const providerOptions = providers.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
 
         const result = await Modal.form(`
           <div class="form-group">
-            <label>Name *</label>
+            <label for="nc-name">Name *</label>
             <input type="text" id="nc-name" class="form-control" placeholder="e.g. Team Discord" required>
           </div>
           <div class="form-group">
-            <label>Provider *</label>
+            <label for="nc-provider">Provider *</label>
             <select id="nc-provider" class="form-control">${providerOptions}</select>
           </div>
           <div id="nc-fields"></div>
@@ -273,23 +274,27 @@ const SettingsPage = {
             const provider = content.querySelector('#nc-provider').value;
             if (!name) { Toast.warning(i18n.t('pages.settings.nameRequired')); return false; }
             const config = {};
-            content.querySelectorAll('[data-config-key]').forEach(input => {
+            for (const input of content.querySelectorAll('[data-config-key]')) {
+              if (input.type !== 'password') input.value = input.value.trim();
+              if (!input.reportValidity()) return false;
               config[input.dataset.configKey] = input.value;
-            });
+            }
             return { name, provider, config };
           },
-          onOpen: (content) => {
+          onMount: (content) => {
             const renderFields = () => {
               const pid = content.querySelector('#nc-provider').value;
               const prov = providers.find(p => p.id === pid);
               const fieldsEl = content.querySelector('#nc-fields');
               fieldsEl.innerHTML = (prov?.fields || []).map(f => `
                 <div class="form-group">
-                  <label>${f.label}${f.required ? ' *' : ''}</label>
-                  <input type="${f.type || 'text'}" data-config-key="${f.key}" class="form-control"
-                    placeholder="${f.placeholder || ''}" ${f.required ? 'required' : ''}>
+                  <label for="nc-config-${esc(f.key)}">${esc(f.label)}${f.required ? ' *' : ''}</label>
+                  <input id="nc-config-${esc(f.key)}" type="${esc(f.type || 'text')}" data-config-key="${esc(f.key)}" class="form-control"
+                    placeholder="${esc(f.placeholder || '')}" ${f.required ? 'required' : ''}>
                 </div>
-              `).join('');
+              `).join('') + (pid === 'email'
+                ? `<p class="text-sm text-muted">${esc(i18n.t('pages.settings.notificationSmtpHint'))}</p>`
+                : '');
             };
             content.querySelector('#nc-provider').addEventListener('change', renderFields);
             renderFields();
@@ -305,9 +310,7 @@ const SettingsPage = {
         }
       });
 
-      el.addEventListener('click', async (e) => {
-        const btn = e.target.closest('[data-action]');
-        if (!btn) return;
+      el.querySelectorAll('[data-action]').forEach(btn => btn.addEventListener('click', async () => {
         const id = parseInt(btn.dataset.id);
         if (btn.dataset.action === 'test-nc') {
           Toast.info(i18n.t('pages.settings.sendingTest'));
@@ -325,7 +328,7 @@ const SettingsPage = {
             this._renderTab();
           } catch (err) { Toast.error(err.message); }
         }
-      });
+      }));
     } catch (err) {
       el.innerHTML = `<div class="empty-msg">Error: ${err.message}</div>`;
     }

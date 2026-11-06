@@ -4,6 +4,10 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Fix notification channel forms that hid provider fields, including the SMTP
+  recipient. Required fields are checked before saving, and testing an old
+  channel with no recipient now identifies the missing configuration (#14).
+
 - Security refresh 8.96.17: patch Express/body-parser, Nodemailer, qs, Puppeteer/Zod,
   glob and minimatch; pin Node.js 24.22.2, npm 12.2.1 and Go 1.27.3. Rebuild Go
   tools with x/net 0.62.0 and go-jose 4.1.6 and refresh Alpine security packages.

@@ -9,6 +9,9 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.96.18', date: '2026-11-06', title: 'Notification channel configuration', changes: [
+      { type: 'fix', text: 'Settings → Notifications shows the required options for each provider, including the SMTP recipient, and prevents saving incomplete channels (#14).' },
+    ] },
     { version: '8.96.17', date: '2026-11-02', title: 'Dependency security patches', changes: [
       { type: 'security', text: 'Patch request parsing, email address parsing, browser test tooling and filesystem matching dependencies. Update Node.js and rebuild bundled Go tools with security patches.' },
     ] },
