@@ -7,6 +7,9 @@ All notable changes to Docker Dash are documented here.
 - Fix notification channel forms that hid provider fields, including the SMTP
   recipient. Required fields are checked before saving, and testing an old
   channel with no recipient now identifies the missing configuration (#14).
+- Refresh production image security dependencies: require Alpine libexpat
+  2.10.0-r0 or later, rebuild the bundled Go tools with compress 1.20.3, and
+  use Brotli 1.2.8 in Grype (GO-2026-6865 and GO-2026-6888).
 
 - Security refresh 8.96.17: patch Express/body-parser, Nodemailer, qs, Puppeteer/Zod,
   glob and minimatch; pin Node.js 24.22.2, npm 12.2.1 and Go 1.27.3. Rebuild Go
