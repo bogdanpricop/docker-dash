@@ -72,6 +72,11 @@ async function main() {
       name: 'Team email', provider: 'email', config: { to: 'team@example.test' },
     });
     await page.waitForSelector('#modal-overlay.hidden');
+    await page.click('[data-action="smtp-nc"]');
+    await page.waitForSelector('#modal-content #nc-smtp-mode');
+    assert.equal(await page.$eval('#nc-smtp-mode', el => el.value), 'server');
+    await page.click('[data-nc-smtp-cancel]');
+    await page.waitForSelector('#modal-overlay.hidden');
     await page.click('[data-action="test-nc"]');
     assert.deepEqual(await page.evaluate(() => window.testedChannels), [1], 'Test sends once after refreshing the list');
     await page.click('[data-action="edit-nc"][data-id="1"]');
@@ -83,8 +88,8 @@ async function main() {
     await page.select('#nc-smtp-mode', 'external');
     await page.select('#nc-smtp-security', 'tls');
     assert.equal(await page.$eval('#nc-smtp-port', el => el.value), '465');
-    await page.type('#nc-smtp-host', 'smtp.example.test');
-    await page.type('#nc-smtp-from', 'sender@example.test');
+    await page.locator('#nc-smtp-host').fill('smtp.example.test');
+    await page.locator('#nc-smtp-from').fill('sender@example.test');
     await page.click('#nc-smtp-form [type="submit"]');
     await page.waitForSelector('#modal-sub-overlay.hidden');
     assert.deepEqual(await page.evaluate(() => window.smtpWrites[0]), {
