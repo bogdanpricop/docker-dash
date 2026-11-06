@@ -411,7 +411,9 @@ const SettingsPage = {
               <select id="nc-smtp-security" class="form-control">
                 <option value="starttls">STARTTLS</option>
                 <option value="tls" ${cfg.security === 'tls' ? 'selected' : ''}>TLS</option>
-              </select></div>
+                <option value="none" ${cfg.security === 'none' ? 'selected' : ''}>${t('notificationSmtpNone')}</option>
+              </select>
+              <p id="nc-smtp-relay-hint" class="text-sm text-muted" hidden>${t('notificationSmtpRelayHint')}</p></div>
             <div class="form-group"><label for="nc-smtp-port">${t('notificationSmtpPort')} *</label>
               <input id="nc-smtp-port" type="number" class="form-control" min="1" max="65535" value="${esc(cfg.port || 587)}" required></div>
             <div class="form-group"><label for="nc-smtp-user">${t('notificationSmtpUsername')}</label>
@@ -437,17 +439,29 @@ const SettingsPage = {
         input('external').hidden = input('external').disabled = !externalMode;
       };
       input('mode').addEventListener('change', toggle);
+      const defaultPorts = { starttls: '587', tls: '465', none: '25' };
+      let security = input('security').value;
+      const updateAuthentication = () => {
+        const relay = security === 'none';
+        input('user').disabled = input('password').disabled = relay;
+        input('relay-hint').hidden = !relay;
+      };
       input('security').addEventListener('change', () => {
-        if (['465', '587'].includes(input('port').value)) input('port').value = input('security').value === 'tls' ? '465' : '587';
+        const nextSecurity = input('security').value;
+        if (input('port').value === defaultPorts[security]) input('port').value = defaultPorts[nextSecurity];
+        security = nextSecurity;
+        updateAuthentication();
       });
       form.querySelector('[data-nc-smtp-cancel]').addEventListener('click', close);
       toggle();
+      updateAuthentication();
       form.addEventListener('submit', async event => {
         event.preventDefault();
         const data = { mode: input('mode').value };
         if (data.mode === 'external') Object.assign(data, {
           host: input('host').value, port: Number(input('port').value), security: input('security').value,
-          user: input('user').value, password: input('password').value,
+          user: input('user').disabled ? '' : input('user').value,
+          password: input('password').disabled ? '' : input('password').value,
           fromEmail: input('from').value, fromName: input('from-name').value,
         });
         const submit = form.querySelector('[type="submit"]');

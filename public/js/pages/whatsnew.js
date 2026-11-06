@@ -9,6 +9,9 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.96.22', date: '2026-11-06', title: 'SMTP relay without TLS', changes: [
+      { type: 'feature', text: 'Choose None under SMTP connection security for trusted relays that accept mail without SMTP authentication.' },
+    ] },
     { version: '8.96.21', date: '2026-11-06', title: 'Desktop Streamer prune protection', changes: [
       { type: 'security', text: 'Docker cleanup preserves Desktop Streamer release and recovery containers, including retained evidence from previous operations.' },
     ] },

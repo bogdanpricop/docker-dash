@@ -4,6 +4,8 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Allow plaintext SMTP for notification relays that accept mail without
+  SMTP authentication. STARTTLS remains the default for new configurations.
 - Preserve Desktop Streamer release reservations and recovery containers when
   pruning Docker. Refuse known reservations before acquiring the prune lock
   and check again under the lock before dispatching cleanup.

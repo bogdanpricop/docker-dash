@@ -50,13 +50,16 @@ function save(body, userId) {
   const port = body.port;
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw invalid('Invalid SMTP port');
   const security = body.security;
-  if (!['starttls', 'tls'].includes(security)) throw invalid('Select STARTTLS or implicit TLS');
+  if (!['starttls', 'tls', 'none'].includes(security)) throw invalid('Select STARTTLS, TLS or None');
   const user = text(body.user ?? '', 'SMTP username', 320);
   const fromName = text(body.fromName ?? '', 'sender name', 256);
   const fromEmail = text(body.fromEmail, 'sender email', 320);
   if (!/^[^\s@<>(),;:"\\]+@[^\s@<>(),;:"\\]+$/.test(fromEmail)) throw invalid('Enter a valid sender email');
   if (body.password !== undefined && (typeof body.password !== 'string' || body.password.length > 1024)) {
     throw invalid('Invalid SMTP password');
+  }
+  if (security === 'none' && (user || body.password)) {
+    throw invalid('SMTP authentication requires STARTTLS or TLS');
   }
 
   const previous = readSettings().external;
@@ -74,7 +77,12 @@ function save(body, userId) {
 function transport() {
   const { mode, external } = readSettings();
   return mode === 'external'
-    ? { ...external, secure: external.security === 'tls', requireTLS: external.security === 'starttls' }
+    ? {
+      ...external,
+      secure: external.security === 'tls',
+      requireTLS: external.security === 'starttls',
+      ignoreTLS: external.security === 'none',
+    }
     : undefined;
 }
 

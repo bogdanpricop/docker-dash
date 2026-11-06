@@ -827,6 +827,8 @@ i18n.register('en', 'EN', 'English', {
       notificationSmtpHost: 'SMTP host',
       notificationSmtpPort: 'Port',
       notificationSmtpSecurity: 'Connection security',
+      notificationSmtpNone: 'None',
+      notificationSmtpRelayHint: 'Email is sent without encryption. Use this only for a trusted relay that accepts mail without SMTP authentication.',
       notificationSmtpUsername: 'Username (optional)',
       notificationSmtpPassword: 'Password',
       notificationSmtpFrom: 'Sender email',

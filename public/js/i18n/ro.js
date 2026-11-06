@@ -1181,6 +1181,8 @@ i18n.register('ro', 'RO', "Română", {
       notificationSmtpHost: "Adresă server SMTP",
       notificationSmtpPort: "Port",
       notificationSmtpSecurity: "Securitatea conexiunii",
+      notificationSmtpNone: "Fără criptare",
+      notificationSmtpRelayHint: "E-mailurile sunt trimise fără criptare. Folosește această opțiune doar pentru un releu de încredere care acceptă mesaje fără autentificare SMTP.",
       notificationSmtpUsername: "Utilizator (opțional)",
       notificationSmtpPassword: "Parolă",
       notificationSmtpFrom: "E-mail expeditor",

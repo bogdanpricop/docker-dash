@@ -42,7 +42,7 @@ test('external SMTP applies to channel tests while account email uses server SMT
   const { id } = channels.create({ name: 'Alert email', provider: 'email', config: { to: 'ops@example.test' }, created_by: 1 });
   await channels.test(id);
   expect(mailer.createTransport).toHaveBeenNthCalledWith(1, expect.objectContaining({
-    host: external.host, port: 587, secure: false, requireTLS: true,
+    host: external.host, port: 587, secure: false, requireTLS: true, ignoreTLS: false,
     auth: { user: external.user, pass: external.password }, tls: { rejectUnauthorized: true },
   }));
   expect(mailer.createTransport.mock.results[0].value.sendMail).toHaveBeenCalledWith(expect.objectContaining({
@@ -61,6 +61,21 @@ test('preserves the external credential on the same account and restores server 
   expect(smtp.save({ mode: 'server' }, 1).mode).toBe('server');
   expect(smtp.transport()).toBeUndefined();
   expect(smtp.publicSettings().external.passwordConfigured).toBe(true);
+});
+
+test('uses a plaintext relay without forwarding credentials from the previous mode', async () => {
+  smtp.save(external, 1);
+  const relay = { ...external, security: 'none', port: 25, user: '', password: '' };
+  expect(() => smtp.save({ ...relay, user: external.user }, 1)).toThrow('SMTP authentication requires STARTTLS or TLS');
+  expect(() => smtp.save({ ...relay, password: external.password }, 1)).toThrow('SMTP authentication requires STARTTLS or TLS');
+  expect(smtp.transport().requireTLS).toBe(true);
+  expect(smtp.save(relay, 1).external).toMatchObject({ security: 'none', port: 25, passwordConfigured: false });
+  const { id } = channels.create({ name: 'Relay', provider: 'email', config: { to: 'ops@example.test' }, created_by: 1 });
+  await channels.test(id);
+  const [options] = mailer.createTransport.mock.calls[0];
+  expect(options).toMatchObject({ port: 25, secure: false, requireTLS: false, ignoreTLS: true });
+  expect(options).not.toHaveProperty('auth');
+  expect(() => smtp.save({ ...external, password: '' }, 1)).toThrow('Enter the password');
 });
 
 test.each([{ security: 'plain' }, { host: 'smtp://user:password@example.test' }, { port: 65536 }])(

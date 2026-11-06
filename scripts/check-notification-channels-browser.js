@@ -103,6 +103,25 @@ async function main() {
     assert.deepEqual(await page.evaluate(() => window.updatedChannels[0]), {
       id: 1, name: 'Team email', configPatch: { to: 'oncall@example.test' },
     });
+    await page.waitForSelector('#modal-overlay.hidden');
+    await page.click('[data-action="smtp-nc"]');
+    await page.waitForSelector('#modal-content #nc-smtp-mode');
+    await page.select('#nc-smtp-mode', 'external');
+    await page.locator('#nc-smtp-user').fill('test-user');
+    await page.locator('#nc-smtp-password').fill('fixture-password');
+    await page.select('#nc-smtp-security', 'none');
+    assert.equal(await page.$eval('#nc-smtp-port', el => el.value), '25');
+    assert.equal(await page.$eval('#nc-smtp-relay-hint', el => el.hidden), false);
+    assert.equal(await page.$eval('#nc-smtp-user', el => el.disabled), true);
+    assert.equal(await page.$eval('#nc-smtp-password', el => el.disabled), true);
+    await page.locator('#nc-smtp-host').fill('relay.example.test');
+    await page.locator('#nc-smtp-from').fill('sender@example.test');
+    await page.click('#nc-smtp-form [type="submit"]');
+    await page.waitForSelector('#modal-overlay.hidden');
+    assert.deepEqual(await page.evaluate(() => window.smtpWrites[1]), {
+      mode: 'external', host: 'relay.example.test', port: 25, security: 'none',
+      user: '', password: '', fromEmail: 'sender@example.test', fromName: '',
+    });
     console.log('Notification channel create/edit, validation, and external SMTP settings passed.');
     await checkSettingsForms(page);
     assert.deepEqual(errors, []);

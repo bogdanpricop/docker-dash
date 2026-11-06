@@ -24,6 +24,7 @@ class EmailService {
       port: smtp.port,
       secure: smtp.secure,
       requireTLS: smtp.requireTLS === true,
+      ignoreTLS: smtp.ignoreTLS === true,
       tls: { rejectUnauthorized: true },
       disableFileAccess: true,
       disableUrlAccess: true,
@@ -32,8 +33,8 @@ class EmailService {
       socketTimeout: 30_000,
     };
 
-    // Only add auth if user is set
-    if (smtp.user) {
+    // Plaintext relays must never receive SMTP credentials.
+    if (smtp.user && !opts.ignoreTLS) {
       opts.auth = {
         user: smtp.user,
         pass: smtp.password || '',
