@@ -4,6 +4,10 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Update the Settings AI catalog and structured-output requests for GPT-6
+  and Claude 5. Preserve saved models and scope credentials to their provider.
+- Fix the Add and Edit dialogs in Log Forwarding and Secrets. Show dedicated
+  Syslog host, port and protocol fields, and keep form values on save errors.
 - Edit notification channels in place while keeping their rules and saved
   credentials. Configure external SMTP for notifications from the email
   channel's SMTP settings, with required STARTTLS or TLS.

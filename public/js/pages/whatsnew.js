@@ -9,6 +9,10 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.96.20', date: '2026-11-06', title: 'AI models and Settings forms', changes: [
+      { type: 'improvement', text: 'Choose GPT-6 or Claude 5 models in Settings → AI. Previously saved models remain selectable.' },
+      { type: 'fix', text: 'Add or edit Log Forwarders and Secrets. Syslog forwarders have dedicated host, port and protocol settings.' },
+    ] },
     { version: '8.96.19', date: '2026-11-06', title: 'Notification channel editing and external SMTP', changes: [
       { type: 'feature', text: 'Edit existing notification channels while keeping their rules and saved credentials.' },
       { type: 'feature', text: 'Open SMTP Settings from an email channel to choose server SMTP or a secure external SMTP server for notifications.' },

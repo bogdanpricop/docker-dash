@@ -15,6 +15,8 @@ const { requireAuth, requireRole, writeable } = require('../middleware/auth');
 const { getClientIp } = require('../utils/helpers');
 const aiService = require('../services/ai');
 const auditService = require('../services/audit');
+const AnthropicProvider = require('../services/ai/providers/anthropic');
+const OpenAiProvider = require('../services/ai/providers/openai');
 
 const router = Router();
 
@@ -26,11 +28,12 @@ const PROVIDERS_CATALOG = [
     name: 'Anthropic Claude',
     requiresApiKey: true,
     requiresEndpoint: false,
-    recommendedModel: 'claude-haiku-4-5-20251001',
+    recommendedModel: AnthropicProvider.defaultModel,
     models: [
-      { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5 — fast, cheap, recommended', recommended: true },
-      { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6 — higher quality reasoning' },
-      { id: 'claude-opus-4-7', label: 'Opus 4.7 — best reasoning, costs more' },
+      { id: AnthropicProvider.defaultModel, label: 'Claude Haiku 5.5 — fast and economical', recommended: true },
+      { id: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5 — balanced' },
+      { id: 'claude-opus-5-5', label: 'Claude Opus 5.5 — complex reasoning' },
+      { id: 'claude-fable-5-1', label: 'Claude Fable 5.1 — demanding reasoning' },
     ],
     apiKeyHelpUrl: 'https://console.anthropic.com/settings/keys',
     privacyNote: 'API inputs are not used to train models. Default 30-day caching; enterprise terms support zero retention.',
@@ -40,10 +43,12 @@ const PROVIDERS_CATALOG = [
     name: 'OpenAI',
     requiresApiKey: true,
     requiresEndpoint: false,
-    recommendedModel: 'gpt-4o-mini',
+    recommendedModel: OpenAiProvider.defaultModel,
     models: [
-      { id: 'gpt-4o-mini', label: 'GPT-4o-mini — cheap, recommended', recommended: true },
-      { id: 'gpt-4o', label: 'GPT-4o — higher quality' },
+      { id: OpenAiProvider.defaultModel, label: 'GPT-6 Luna — fast and economical', recommended: true },
+      { id: 'gpt-6.1-terra', label: 'GPT-6.1 Terra — efficient reasoning' },
+      { id: 'gpt-6.1-sol', label: 'GPT-6.1 Sol — balanced' },
+      { id: 'gpt-6-astra', label: 'GPT-6 Astra — complex reasoning' },
     ],
     apiKeyHelpUrl: 'https://platform.openai.com/api-keys',
     privacyNote: 'API inputs are not used for training by default (since 2023). 30-day retention.',
@@ -116,8 +121,8 @@ router.post('/test', asyncHandler(async (req, res) => {
   let adapter;
   try {
     switch (settings.provider) {
-      case 'anthropic': adapter = new (require('../services/ai/providers/anthropic'))(settings); break;
-      case 'openai':    adapter = new (require('../services/ai/providers/openai'))(settings); break;
+      case 'anthropic': adapter = new AnthropicProvider(settings); break;
+      case 'openai':    adapter = new OpenAiProvider(settings); break;
       case 'ollama':    adapter = new (require('../services/ai/providers/ollama'))(settings); break;
       default: return res.status(400).json({ error: `Unknown provider: ${settings.provider}` });
     }

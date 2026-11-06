@@ -24,7 +24,8 @@ async function main() {
     page.on('pageerror', error => errors.push(error.message));
     const base = `http://127.0.0.1:${server.address().port}`;
     await page.goto(`${base}/smoke`);
-    for (const script of ['i18n.js', 'i18n/en.js', 'utils.js', 'components/modal.js', 'pages/settings.js']) {
+    for (const script of ['i18n.js', 'i18n/en.js', 'utils.js', 'components/modal.js',
+      'pages/settings-logforwarding.js', 'pages/settings.js']) {
       await page.addScriptTag({ url: `${base}/js/${script}` });
     }
     const providers = getProviders();
@@ -102,12 +103,63 @@ async function main() {
     assert.deepEqual(await page.evaluate(() => window.updatedChannels[0]), {
       id: 1, name: 'Team email', configPatch: { to: 'oncall@example.test' },
     });
-    assert.deepEqual(errors, []);
     console.log('Notification channel create/edit, validation, and external SMTP settings passed.');
+    await checkSettingsForms(page);
+    assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();
     await new Promise(resolve => server.close(resolve));
   }
+}
+
+async function checkSettingsForms(page) {
+  await page.waitForSelector('#modal-overlay.hidden');
+  await page.evaluate(async () => {
+    window.settingsWrites = [];
+    window.formErrors = [];
+    Toast.error = message => window.formErrors.push(message);
+    Api.get = async () => [];
+    Api.post = async (route, data) => {
+      if (route === '/secrets' && window.formErrors.length === 1) throw new Error('Name already exists');
+      window.settingsWrites.push([route, data]);
+    };
+    SettingsPage._tab = 'log-forwarding';
+    await SettingsPage._renderTab();
+  });
+  await page.click('#lf-create');
+  await page.locator('#lf-name').fill('Example logs');
+  await page.locator('#lf-url').fill('https://logs.example.test/');
+  await page.locator('#lf-headers').fill('invalid JSON');
+  await page.click('#modal-submit');
+  assert.equal(await page.evaluate(() => window.formErrors[0]), 'Custom headers must be a JSON object');
+  await page.select('#lf-type', 'syslog');
+  await page.locator('#lf-host').fill('syslog.example.test');
+  await page.locator('#lf-port').fill('1514');
+  await page.select('#lf-protocol', 'tcp');
+  await page.click('#modal-submit');
+  await page.waitForSelector('#modal-overlay.hidden');
+  assert.deepEqual(await page.evaluate(() => window.settingsWrites[0]), ['/log-forwarders', {
+    name: 'Example logs', type: 'syslog', config: { host: 'syslog.example.test', port: 1514, protocol: 'tcp' },
+  }]);
+  await page.evaluate(async () => {
+    SettingsPage._tab = 'secrets';
+    await SettingsPage._renderTab();
+  });
+  await page.click('#secret-create');
+  await page.locator('#sec-name').fill('Invalid name');
+  await page.locator('#sec-value').fill('fixture-value');
+  await page.click('#modal-submit');
+  assert.equal(await page.$eval('#sec-name', input => input.validity.patternMismatch), true);
+  await page.locator('#sec-name').fill('MY-SECRET_01');
+  await page.click('#modal-submit');
+  await page.waitForFunction(() => window.formErrors.length === 2);
+  assert.equal(await page.$eval('#sec-value', input => input.value), 'fixture-value');
+  await page.click('#modal-submit');
+  await page.waitForSelector('#modal-overlay.hidden');
+  assert.deepEqual(await page.evaluate(() => window.settingsWrites[1]), ['/secrets', {
+    name: 'MY-SECRET_01', description: '', value: 'fixture-value',
+  }]);
+  console.log('Log Forwarding and Secrets create forms passed.');
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; });

@@ -1,25 +1,19 @@
 'use strict';
 
-// OpenAI provider — v8.0.0
-//
-// Uses OpenAI's Responses API with structured outputs (response_format with
-// json_schema). The schema is enforced server-side by OpenAI when the model
-// supports it (gpt-4o, gpt-4o-mini, gpt-4-turbo and later).
-//
-// Docs: https://platform.openai.com/docs/guides/structured-outputs
-//
-// Recommended model: gpt-4o-mini ($0.15/$0.60 per Mtok). Cheap enough for
-// frequent NL search; capable enough for our v8.0.0 use case.
+// Chat Completions with JSON Schema structured outputs.
 
 const https = require('https');
 const { AiProvider, AiProviderError } = require('./base');
+const cloudSchema = require('./cloud-schema');
 
 class OpenAiProvider extends AiProvider {
+  static defaultModel = 'gpt-6-luna';
+
   constructor(config) {
     super(config);
     if (!config.apiKey) throw new Error('OpenAiProvider requires apiKey');
     this.apiKey = config.apiKey;
-    this.model = config.model || 'gpt-4o-mini';
+    this.model = config.model || OpenAiProvider.defaultModel;
     this.baseUrl = config.endpointUrl || 'https://api.openai.com';
   }
 
@@ -43,23 +37,27 @@ class OpenAiProvider extends AiProvider {
 
   async structured(req) {
     const start = Date.now();
+    const modern = /^gpt-[56](?:[.-]|$)/.test(this.model);
+    const reasoningEffort = /^(?:gpt-6-luna|gpt-6-sol|gpt-6\.1-terra)(?:-|$)/.test(this.model) ? 'none' : 'low';
+    const maxTokens = req.maxTokens || 1024;
     const body = {
       model: this.model,
       messages: [
         { role: 'system', content: req.systemPrompt },
         { role: 'user', content: req.userPrompt },
       ],
-      max_tokens: req.maxTokens || 1024,
+      ...(modern ? { max_completion_tokens: maxTokens + (reasoningEffort === 'low' ? 2048 : 0), reasoning_effort: reasoningEffort } : {
+        max_tokens: maxTokens, temperature: 0,
+      }),
       // Structured outputs — JSON schema enforced by the API.
       response_format: {
         type: 'json_schema',
         json_schema: {
           name: req.toolName || 'output',
           strict: true,
-          schema: this._toStrictSchema(req.schema),
+          schema: cloudSchema(req.schema, true),
         },
       },
-      temperature: 0,  // deterministic for structured output
     };
 
     let response;
@@ -74,7 +72,7 @@ class OpenAiProvider extends AiProvider {
     }
 
     const content = response.choices?.[0]?.message?.content;
-    if (!content) {
+    if (!content || response.choices[0].finish_reason === 'length' || response.choices[0].message.refusal) {
       throw new AiProviderError('OpenAI returned no content', { code: 'empty-response' });
     }
     let parsed;
@@ -86,7 +84,7 @@ class OpenAiProvider extends AiProvider {
     }
 
     return {
-      data: parsed,
+      data: this._restoreOptionalFields(parsed, req.schema),
       usage: {
         input: response.usage?.prompt_tokens || 0,
         output: response.usage?.completion_tokens || 0,
@@ -96,22 +94,12 @@ class OpenAiProvider extends AiProvider {
     };
   }
 
-  /**
-   * OpenAI structured outputs require additionalProperties:false on every
-   * object level. We add it defensively if the schema author forgot.
-   */
-  _toStrictSchema(schema) {
-    if (!schema || typeof schema !== 'object') return schema;
-    const out = { ...schema };
-    if (out.type === 'object' && out.additionalProperties === undefined) {
-      out.additionalProperties = false;
-    }
-    if (out.properties) {
-      out.properties = Object.fromEntries(
-        Object.entries(out.properties).map(([k, v]) => [k, this._toStrictSchema(v)])
-      );
-    }
-    return out;
+  _restoreOptionalFields(value, schema) {
+    if (Array.isArray(value) && schema?.items) return value.map(item => this._restoreOptionalFields(item, schema.items));
+    if (!value || Array.isArray(value) || typeof value !== 'object' || !schema?.properties) return value;
+    return Object.fromEntries(Object.entries(value)
+      .filter(([key, entry]) => entry !== null || !Object.hasOwn(schema.properties, key) || schema.required?.includes(key))
+      .map(([key, entry]) => [key, this._restoreOptionalFields(entry, schema.properties[key])]));
   }
 
   _request(method, path, body, timeoutMs) {

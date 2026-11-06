@@ -502,30 +502,9 @@ const SettingsPage = {
         </div>
       `;
 
-      el.querySelector('#secret-create').addEventListener('click', async () => {
-        const result = await Modal.form({
-          title: 'Add Secret',
-          fields: `
-            <div class="form-group"><label>Name</label><input type="text" id="sec-name" class="form-control" placeholder="MY_SECRET_KEY" pattern="[a-zA-Z0-9_-]+" required></div>
-            <div class="form-group"><label>Value</label><textarea id="sec-value" class="form-control" rows="3" required></textarea></div>
-            <div class="form-group"><label>Description (optional)</label><input type="text" id="sec-desc" class="form-control" placeholder="What is this secret for?"></div>
-          `,
-          onSubmit: (c) => ({
-            name: c.querySelector('#sec-name').value.trim(),
-            value: c.querySelector('#sec-value').value,
-            description: c.querySelector('#sec-desc').value.trim(),
-          }),
-        });
-        if (result && result.name) {
-          try {
-            await Api.post('/secrets', result);
-            Toast.success('Secret created');
-            this._renderTab();
-          } catch (err) { Toast.error(err.message); }
-        }
-      });
+      el.querySelector('#secret-create').addEventListener('click', () => this._openSecret());
 
-      el.addEventListener('click', async (e) => {
+      el.querySelector('.card').addEventListener('click', async (e) => {
         const btn = e.target.closest('[data-action]');
         if (!btn) return;
         const id = parseInt(btn.dataset.id);
@@ -537,27 +516,7 @@ const SettingsPage = {
             Toast.success('Secret value copied to clipboard');
           } catch (err) { Toast.error(err.message); }
         } else if (btn.dataset.action === 'edit-secret') {
-          const result = await Modal.form({
-            title: 'Edit Secret',
-            fields: `
-              <div class="form-group"><label>Name</label><input type="text" id="sec-name" class="form-control" value="${btn.dataset.name}" pattern="[a-zA-Z0-9_-]+" required></div>
-              <div class="form-group"><label>New Value (leave empty to keep current)</label><textarea id="sec-value" class="form-control" rows="3"></textarea></div>
-              <div class="form-group"><label>Description</label><input type="text" id="sec-desc" class="form-control" value="${btn.dataset.desc}"></div>
-            `,
-            onSubmit: (c) => {
-              const data = { name: c.querySelector('#sec-name').value.trim(), description: c.querySelector('#sec-desc').value.trim() };
-              const val = c.querySelector('#sec-value').value;
-              if (val) data.value = val;
-              return data;
-            },
-          });
-          if (result && result.name) {
-            try {
-              await Api.put('/secrets/' + id, result);
-              Toast.success('Secret updated');
-              this._renderTab();
-            } catch (err) { Toast.error(err.message); }
-          }
+          await this._openSecret({ id, name: btn.dataset.name, description: btn.dataset.desc });
         } else if (btn.dataset.action === 'delete-secret') {
           const ok = await Modal.confirm('Delete secret "' + btn.dataset.name + '"? This cannot be undone.', { danger: true });
           if (!ok) return;
@@ -569,7 +528,44 @@ const SettingsPage = {
         }
       });
     } catch (err) {
-      el.innerHTML = '<div class="empty-msg">Error: ' + err.message + '</div>';
+      el.innerHTML = `<div class="empty-msg">Error: ${Utils.escapeHtml(err.message)}</div>`;
+    }
+  },
+
+  async _openSecret(secret = null) {
+    const esc = Utils.escapeHtml;
+    const saved = await Modal.form(`
+      <div class="form-group"><label for="sec-name">Name</label>
+        <input type="text" id="sec-name" class="form-control" value="${esc(secret?.name || '')}" placeholder="MY_SECRET_KEY" pattern="[a-zA-Z0-9_\\-]+" required></div>
+      <div class="form-group"><label for="sec-value">${secret ? 'New Value (leave empty to keep current)' : 'Value'}</label>
+        <textarea id="sec-value" class="form-control" rows="3" autocomplete="off" spellcheck="false" ${secret ? '' : 'required'}></textarea></div>
+      <div class="form-group"><label for="sec-desc">Description (optional)</label>
+        <input type="text" id="sec-desc" class="form-control" value="${esc(secret?.description || '')}"></div>
+    `, {
+      title: secret ? 'Edit Secret' : 'Add Secret',
+      onSubmit: async content => {
+        const name = content.querySelector('#sec-name');
+        name.value = name.value.trim();
+        const value = content.querySelector('#sec-value');
+        if (!name.reportValidity() || !value.reportValidity()) return false;
+        const data = { name: name.value, description: content.querySelector('#sec-desc').value.trim() };
+        if (value.value) data.value = value.value;
+        const submit = content.querySelector('#modal-submit');
+        submit.disabled = true;
+        try {
+          if (secret) await Api.put('/secrets/' + secret.id, data);
+          else await Api.post('/secrets', data);
+          return true;
+        } catch (err) {
+          Toast.error(err.message);
+          submit.disabled = false;
+          return false;
+        }
+      },
+    });
+    if (saved) {
+      Toast.success(secret ? 'Secret updated' : 'Secret created');
+      await this._renderTab();
     }
   },
 
