@@ -9,8 +9,9 @@ class EmailService {
     this._transporter = null;
   }
 
-  _getTransporter() {
-    if (this._transporter) return this._transporter;
+  _getTransporter(smtp = config.smtp) {
+    const useServer = smtp === config.smtp;
+    if (useServer && this._transporter) return this._transporter;
 
     // v8.7.13 — explicit timeouts. nodemailer defaults are:
     //   connectionTimeout=2min, greetingTimeout=30s, socketTimeout=10min.
@@ -19,9 +20,10 @@ class EmailService {
     // up to 10 minutes when SMTP misbehaves — user sits on a spinner, an
     // express worker is tied up. Tightened to 10s / 5s / 30s respectively.
     const opts = {
-      host: config.smtp.host,
-      port: config.smtp.port,
-      secure: config.smtp.secure,
+      host: smtp.host,
+      port: smtp.port,
+      secure: smtp.secure,
+      requireTLS: smtp.requireTLS === true,
       tls: { rejectUnauthorized: true },
       disableFileAccess: true,
       disableUrlAccess: true,
@@ -31,22 +33,21 @@ class EmailService {
     };
 
     // Only add auth if user is set
-    if (config.smtp.user) {
+    if (smtp.user) {
       opts.auth = {
-        user: config.smtp.user,
-        pass: config.smtp.password || '',
+        user: smtp.user,
+        pass: smtp.password || '',
       };
     }
 
-    this._transporter = nodemailer.createTransport(opts);
-    return this._transporter;
+    const transporter = nodemailer.createTransport(opts);
+    if (useServer) this._transporter = transporter;
+    return transporter;
   }
 
-  async send({ to, subject, html }) {
-    const transporter = this._getTransporter();
-    const from = config.smtp.fromName
-      ? `"${config.smtp.fromName}" <${config.smtp.fromEmail}>`
-      : config.smtp.fromEmail;
+  async send({ to, subject, html, smtp = config.smtp }) {
+    const transporter = this._getTransporter(smtp);
+    const from = smtp.fromName ? { name: smtp.fromName, address: smtp.fromEmail } : smtp.fromEmail;
 
     try {
       const info = await transporter.sendMail({ from, to, subject, html });

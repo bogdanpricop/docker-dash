@@ -9,6 +9,10 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.96.19', date: '2026-11-06', title: 'Notification channel editing and external SMTP', changes: [
+      { type: 'feature', text: 'Edit existing notification channels while keeping their rules and saved credentials.' },
+      { type: 'feature', text: 'Open SMTP Settings from an email channel to choose server SMTP or a secure external SMTP server for notifications.' },
+    ] },
     { version: '8.96.18', date: '2026-11-06', title: 'Notification channel configuration', changes: [
       { type: 'fix', text: 'Settings → Notifications shows the required options for each provider, including the SMTP recipient, and prevents saving incomplete channels (#14).' },
     ] },

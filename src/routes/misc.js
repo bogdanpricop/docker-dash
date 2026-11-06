@@ -7,6 +7,7 @@ const { Router } = require('express');
 // misc-api-keys.js). Other ../services/misc exports may still be used below.
 const auditService = require('../services/audit');
 const settingsService = require('../services/settings');
+const { KEY: notificationSmtpKey } = require('../services/notification-smtp');
 const statsService = require('../services/stats');
 const { requireAuth, requireRole, writeable } = require('../middleware/auth');
 const monitoringAccess=require('../middleware/monitoring-access');
@@ -922,10 +923,15 @@ router.get('/watchtower', requireAuth, async (req, res) => {
 // ─── Settings ───────────────────────────────────────────────
 
 router.get('/settings', requireAuth, requireRole('admin'), (req, res) => {
-  res.json(settingsService.getAll());
+  const settings = settingsService.getAll();
+  delete settings[notificationSmtpKey];
+  res.json(settings);
 });
 
 router.put('/settings', requireAuth, requireRole('admin'), writeable, (req, res) => {
+  if (Object.hasOwn(req.body || {}, notificationSmtpKey)) {
+    return res.status(400).json({ error: 'Use /api/notification-channels/smtp-settings to update notification SMTP' });
+  }
   if (Object.prototype.hasOwnProperty.call(req.body || {}, 'ldap_config')) {
     return res.status(400).json({ error: 'Use /api/auth/ldap to update LDAP credentials securely' });
   }

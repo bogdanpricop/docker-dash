@@ -1607,6 +1607,8 @@ const Api = {
 
   // ─── Notification Channels ──────────────────────
   getNotificationProviders() { return this.get('/notification-channels/providers'); },
+  getNotificationSmtpSettings() { return this.get('/notification-channels/smtp-settings'); },
+  saveNotificationSmtpSettings(data) { return this.put('/notification-channels/smtp-settings', data); },
   getNotificationChannels() { return this.get('/notification-channels'); },
   createNotificationChannel(data) { return this.post('/notification-channels', data); },
   updateNotificationChannel(id, data) { return this.put(`/notification-channels/${id}`, data); },

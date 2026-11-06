@@ -87,6 +87,7 @@ const providers = {
     const emailService = require('./email');
     await emailService.send({
       to: config.to,
+      smtp: require('./notification-smtp').transport(),
       subject: message.title || 'Docker Dash Alert',
       html: `<p>${message.text.replace(/\n/g, '<br>')}</p>`,
     });
@@ -123,10 +124,22 @@ class NotificationChannelService {
 
   list() {
     const db = getDb();
-    return db.prepare('SELECT * FROM notification_channels ORDER BY name').all().map(r => ({
-      ...r,
-      config: this._maskConfig(r.provider, JSON.parse(r.config_encrypted ? decrypt(r.config_encrypted) : '{}')),
-    }));
+    const catalog = this.getProviders();
+    return db.prepare('SELECT * FROM notification_channels ORDER BY name').all().map(({ config_encrypted, ...channel }) => {
+      const saved = config_encrypted ? JSON.parse(decrypt(config_encrypted)) : {};
+      const config = {};
+      const configuredSecrets = [];
+      for (const field of catalog.find(entry => entry.id === channel.provider)?.fields || []) {
+        const value = saved?.[field.key];
+        if (field.secret || field.type === 'password') {
+          if (typeof value === 'string' && value.trim()) configuredSecrets.push(field.key);
+        } else if (typeof value === 'string' ||
+          (field.type === 'email' && Array.isArray(value) && value.every(item => typeof item === 'string'))) {
+          config[field.key] = value;
+        }
+      }
+      return { ...channel, config, configuredSecrets };
+    });
   }
 
   get(id) {
@@ -149,24 +162,51 @@ class NotificationChannelService {
 
   update(id, data) {
     const db = getDb();
+    const channel = this.get(id);
+    if (!channel) throw Object.assign(new Error('Channel not found'), { status: 404 });
+    const invalid = message => Object.assign(new Error(message), { status: 400 });
     const sets = [];
     const params = [];
 
-    if (data.name !== undefined) { sets.push('name = ?'); params.push(data.name); }
+    if (data.name !== undefined) {
+      if (typeof data.name !== 'string' || !data.name.trim()) throw invalid('Name is required');
+      sets.push('name = ?');
+      params.push(data.name.trim());
+    }
     if (data.is_active !== undefined) { sets.push('is_active = ?'); params.push(data.is_active ? 1 : 0); }
+    if (data.configPatch !== undefined) {
+      if (data.config !== undefined) throw invalid('Use either config or configPatch');
+      if (!data.configPatch || typeof data.configPatch !== 'object' || Array.isArray(data.configPatch)) {
+        throw invalid('Configuration changes must be an object');
+      }
+      const fields = this.getProviders().find(entry => entry.id === channel.provider)?.fields || [];
+      const changes = Object.entries(data.configPatch);
+      if (changes.length) {
+        const config = { ...JSON.parse(decrypt(channel.config_encrypted)) };
+        for (const [key, value] of changes) {
+          const field = fields.find(entry => entry.key === key);
+          if (!field) throw invalid('Unknown notification channel field');
+          if (value === null && !field.required) delete config[key];
+          else if (typeof value === 'string') config[key] = value;
+          else throw invalid(`Invalid value for ${field.label}`);
+        }
+        this._validateConfig(channel.provider, config);
+        sets.push('config_encrypted = ?');
+        params.push(encrypt(JSON.stringify(config)));
+      }
+    }
     if (data.config !== undefined) {
-      const channel = this.get(id);
-      if (!channel) return;
       this._validateConfig(channel.provider, data.config);
       sets.push('config_encrypted = ?');
       params.push(encrypt(JSON.stringify(data.config)));
     }
 
-    if (sets.length === 0) return;
+    if (sets.length === 0) return false;
     sets.push('updated_at = ?');
     params.push(now());
     params.push(id);
     db.prepare(`UPDATE notification_channels SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+    return true;
   }
 
   delete(id) {
@@ -244,25 +284,10 @@ class NotificationChannelService {
     }
   }
 
-  _maskConfig(provider, config) {
-    const masked = { ...config };
-    // Mask sensitive fields
-    if (masked.bot_token) masked.bot_token = masked.bot_token.substring(0, 8) + '...';
-    if (masked.app_token) masked.app_token = masked.app_token.substring(0, 8) + '...';
-    if (masked.token) masked.token = masked.token.substring(0, 8) + '...';
-    if (masked.webhook_url) {
-      try {
-        const u = new URL(masked.webhook_url);
-        masked.webhook_url = u.origin + '/...' + u.pathname.slice(-8);
-      } catch {}
-    }
-    return masked;
-  }
-
   getProviders() {
     return [
-      { id: 'discord', name: 'Discord', fields: [{ key: 'webhook_url', label: 'Webhook URL', type: 'url', required: true }] },
-      { id: 'slack', name: 'Slack', fields: [{ key: 'webhook_url', label: 'Webhook URL', type: 'url', required: true }] },
+      { id: 'discord', name: 'Discord', fields: [{ key: 'webhook_url', label: 'Webhook URL', type: 'url', required: true, secret: true }] },
+      { id: 'slack', name: 'Slack', fields: [{ key: 'webhook_url', label: 'Webhook URL', type: 'url', required: true, secret: true }] },
       { id: 'telegram', name: 'Telegram', fields: [
         { key: 'bot_token', label: 'Bot Token', type: 'password', required: true },
         { key: 'chat_id', label: 'Chat ID', type: 'text', required: true },
@@ -276,11 +301,11 @@ class NotificationChannelService {
         { key: 'server_url', label: 'Server URL', type: 'url', required: true },
         { key: 'app_token', label: 'App Token', type: 'password', required: true },
       ]},
-      { id: 'email', name: 'Email (SMTP)', fields: [
+      { id: 'email', name: 'Email (SMTP)', settings: 'smtp', fields: [
         { key: 'to', label: 'Recipient Email', type: 'email', required: true },
       ]},
       { id: 'webhook', name: 'Custom Webhook', fields: [
-        { key: 'url', label: 'Webhook URL', type: 'url', required: true },
+        { key: 'url', label: 'Webhook URL', type: 'url', required: true, secret: true },
       ]},
     ];
   }

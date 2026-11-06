@@ -4,6 +4,9 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Edit notification channels in place while keeping their rules and saved
+  credentials. Configure external SMTP for notifications from the email
+  channel's SMTP settings, with required STARTTLS or TLS.
 - Fix notification channel forms that hid provider fields, including the SMTP
   recipient. Required fields are checked before saving, and testing an old
   channel with no recipient now identifies the missing configuration (#14).

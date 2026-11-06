@@ -182,6 +182,8 @@ const auditActionsList = [
   "network_remove",
   "nomenclature_seed",
   "notification_channel_create",
+  "notification_channel_update",
+  "notification_smtp_update",
   "notification_channel_delete",
   "observability_dashboard_import_failed",
   "observability_dashboard_imported",
