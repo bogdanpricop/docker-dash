@@ -101,6 +101,32 @@ describe('multiplexed stack log WebSocket protocol', () => {
     expect(messages(ws).map(message => message.data.hostId)).toEqual([4, 4]);
   });
 
+  it('correlates single-container log events and failures with the inspector request', async () => {
+    const ws = makeClient('viewer');
+    const subscribe = requestId => wsServer._handleMessage(ws, Buffer.from(JSON.stringify({
+      type: 'logs:subscribe', containerId: 'one', hostId: 71, requestId,
+    })));
+    await subscribe('inspect-1');
+    const previous = dockerService._logStreams.get('one');
+    await subscribe('inspect-2');
+    previous.emit('data', Buffer.from('old logs'));
+    const current = dockerService._logStreams.get('one');
+    current.emit('data', Buffer.from('current logs'));
+    current.emit('end');
+    expect(messages(ws, 'logs:data')).toHaveLength(1);
+    expect(messages(ws, 'logs:data')[0].data).toEqual({
+      containerId: 'one', hostId: 71, requestId: 'inspect-2', lines: ['current logs'],
+    });
+    expect(messages(ws, 'logs:subscribed').at(-1)).toMatchObject({ requestId: 'inspect-2', hostId: 71 });
+    expect(messages(ws, 'logs:end').at(-1)).toMatchObject({ requestId: 'inspect-2', hostId: 71 });
+
+    hostPermissions.resolveEffectivePermission.mockReturnValue(null);
+    await subscribe('inspect-3');
+    expect(messages(ws, 'logs:error').at(-1)).toMatchObject({
+      requestId: 'inspect-3', error: 'Insufficient permissions for container logs',
+    });
+  });
+
   it('reassembles a Docker multiplex frame split across chunks', async () => {
     const ws = makeClient();
     await wsServer._handleMessage(ws, Buffer.from(JSON.stringify({

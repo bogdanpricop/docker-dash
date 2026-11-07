@@ -47,6 +47,12 @@ router.get('/', requireAuth, asyncHandler(async (req, res) => {
   let containers = await dockerService.listContainers(req.resolvedHostId ?? req.hostId);
   // Apply per-stack permission filtering
   containers = permService.filterContainers(containers, req.user.id, req.user.role);
+  if (req.query.context === '1') {
+    return res.json({
+      containers,
+      host: { id: req.resolvedHostId ?? req.hostId, name: req.hostName, connectionType: req.hostConnectionType },
+    });
+  }
   res.json(containers);
 }));
 
@@ -296,7 +302,7 @@ router.get('/:id/logs', requireAuth, asyncHandler(async (req, res) => {
     let lines = await dockerService.getContainerLogs(req.params.id, {
       tail: parseInt(tail) || 100,
       since, until,
-    }, req.hostId);
+    }, req.resolvedHostId ?? req.hostId);
 
     // Server-side full-text search
     if (search) {

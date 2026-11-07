@@ -95,10 +95,6 @@ const ContainersPage = {
             <button class="btn-icon view-toggle" id="expand-all" title="${i18n.t('pages.containers.expandAll')}">
               <i class="fas fa-expand-alt"></i>
             </button>
-            <span class="toggle-divider" id="split-view-divider" style="${document.documentElement.getAttribute('data-uimode') === 'enterprise' ? '' : 'display:none'}"></span>
-            <button class="btn-icon view-toggle" id="split-view-toggle" title="Split view (Enterprise)" style="${document.documentElement.getAttribute('data-uimode') === 'enterprise' ? '' : 'display:none'}">
-              <i class="fas fa-columns"></i>
-            </button>
           </div>
           <button class="btn btn-sm btn-primary" id="container-create">
             <i class="fas fa-plus"></i> ${i18n.t('common.new')}
@@ -128,6 +124,12 @@ const ContainersPage = {
           </button>
         </div>
       </div>
+      <div class="container-host-bar" id="container-host-bar" aria-live="polite">
+        <i class="fas fa-server" aria-hidden="true"></i>
+        <strong data-container-host-name></strong>
+        <span class="text-muted" data-container-host-transport></span>
+        <span class="container-connection" data-container-host-status></span>
+      </div>
       <div id="container-filter-bar" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px">
         <div id="container-filter-presets" style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">
           <button class="btn btn-xs filter-preset active" data-filter-preset="">All</button>
@@ -140,12 +142,27 @@ const ContainersPage = {
         <div id="container-summary-inline" style="margin-left:auto;display:flex;align-items:center;gap:0"></div>
       </div>
       <div id="container-groups-section"></div>
-      <div id="containers-grouped" class="${this._layout === '2col' ? 'stacks-grid-2col' : ''}"></div>
+      <div id="containers-workspace">
+        <div id="containers-grouped" class="${this._layout === '2col' ? 'stacks-grid-2col' : ''}"></div>
+        <aside id="container-inspector" aria-labelledby="container-inspector-title" hidden></aside>
+      </div>
     `;
 
-    container.querySelector('#container-search').addEventListener('input',
-      Utils.debounce(e => { this._filter = (e.target.value || '').toLowerCase(); this._renderGrouped(); }, 200));
-    container.querySelector('#show-all').addEventListener('change', () => this._loadList());
+    this._containers = [];
+    this._lastContainers = [];
+    const workspace = container.querySelector('#containers-workspace');
+    const requestedHostId = Api.getHostId();
+    const host = App._hostSelectorHosts?.find(item => item.id === requestedHostId || (!requestedHostId && item.isDefault));
+    const context = this._listContext = { workspace, banner: container.querySelector('#container-host-bar'), requestedHostId, host, status: 'connecting' };
+    this._inspector = new ContainerInspector(workspace, () => this._syncInspectorRows());
+    this._updateListConnection();
+
+    container.querySelector('#container-search').addEventListener('input', Utils.debounce(e => {
+      if (this._listContext !== context) return;
+      this._filter = (e.target.value || '').toLowerCase();
+      this._renderGrouped();
+    }, 200));
+    container.querySelector('#show-all').addEventListener('change', () => this._renderGrouped());
     container.querySelector('#containers-refresh').addEventListener('click', () => this._loadList());
     container.querySelector('#container-create').addEventListener('click', () => this._createContainerDialog());
     container.querySelector('#container-sandbox').addEventListener('click', () => this._sandboxDialog());
@@ -205,24 +222,6 @@ const ContainersPage = {
       });
     });
 
-    // Split view toggle (Enterprise only)
-    this._splitView = false;
-    container.querySelector('#split-view-toggle')?.addEventListener('click', () => {
-      this._splitView = !this._splitView;
-      container.querySelector('#split-view-toggle')?.classList.toggle('active', this._splitView);
-      const panel = document.getElementById('split-detail-panel');
-      if (this._splitView) {
-        if (!panel) {
-          const p = document.createElement('div');
-          p.id = 'split-detail-panel';
-          p.style.cssText = 'border-top:2px solid var(--border);margin-top:12px;padding-top:12px;max-height:40vh;overflow-y:auto;display:none';
-          document.getElementById('containers-grouped')?.after(p);
-        }
-      } else {
-        if (panel) panel.remove();
-      }
-    });
-
     // Filter preset buttons
     container.querySelectorAll('[data-filter-preset]').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -249,16 +248,15 @@ const ContainersPage = {
     });
 
     await this._loadList();
+    if (this._listContext !== context) return;
     this._refreshTimer = setInterval(() => this._loadList(), 10000);
     this._startStatsPolling();
     this._loadSparklines();
   },
 
   _onKeyNav(e) {
-    // Ignore if focus is inside an input/textarea/select
-    const tag = document.activeElement?.tagName?.toLowerCase();
-    if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
-    if (this._view !== 'list') return;
+    if (this._view !== 'list' || e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.target.closest?.('input, textarea, select, button, a, [contenteditable], #container-inspector')) return;
 
     this._kbRows = Array.from(document.querySelectorAll('#containers-grouped tr[data-cid]'));
     if (!this._kbRows.length) return;
@@ -277,7 +275,8 @@ const ContainersPage = {
       if (!cid) return;
       if (e.key === 'Enter') {
         e.preventDefault();
-        App.navigate(`/containers/${cid}`);
+        if (this._inspector?.item) this._openInspector(cid);
+        else App.navigate(`/containers/${cid}`);
       } else if (e.key === 'r' || e.key === 'R') {
         e.preventDefault();
         const btn = row.querySelector('[data-action="restart"]');
@@ -290,11 +289,7 @@ const ContainersPage = {
         else if (startBtn) { startBtn.click(); Toast.info('Starting…'); }
       } else if (e.key === 'l' || e.key === 'L') {
         e.preventDefault();
-        App.navigate(`/containers/${cid}`);
-        // Switch to logs tab after navigation (slight delay for render)
-        setTimeout(() => {
-          document.querySelector('[data-tab="logs"]')?.click();
-        }, 300);
+        this._openInspector(cid, 'logs');
       }
     }
   },
@@ -307,15 +302,49 @@ const ContainersPage = {
     if (focused) focused.scrollIntoView({ block: 'nearest' });
   },
 
+  _updateListConnection() {
+    const context = this._listContext;
+    ContainerInspector.renderHost(context.banner, context);
+    this._inspector.sync(this._containers, context);
+  },
+
+  _openInspector(id, tab, origin) {
+    const item = this._containers.find(container => container.id === id);
+    if (item && this._listContext?.confirmed) this._inspector.open(item, tab, origin);
+  },
+
+  _syncInspectorRows() {
+    const item = this._inspector?.item;
+    document.querySelectorAll('#containers-grouped tr[data-cid]').forEach(row => {
+      const selected = row.dataset.cid === item?.id;
+      row.classList.toggle('container-inspected', selected);
+      row.querySelectorAll('[data-container-inspect]').forEach(button => {
+        button.setAttribute('aria-pressed', String(selected && button.dataset.containerInspect === this._inspector.tab));
+      });
+    });
+  },
+
   async _loadList() {
+    const context = this._listContext;
+    if (!context) return;
+    context.request?.abort();
+    const request = context.request = new AbortController();
+    const current = () => this._listContext === context && !request.signal.aborted;
     try {
-      const showAll = document.getElementById('show-all')?.checked ?? true;
-      const [containers, metaMap, userGroups, myPerms] = await Promise.all([
-        Api.getContainers(showAll),
+      const [result, metaMap, userGroups, myPerms] = await Promise.all([
+        Api.request('GET', `/containers?context=1&hostId=${context.requestedHostId}`, null, { signal: request.signal }),
         Api.getAllContainerMeta().catch(() => ({})),
         Api.getGroups().catch(() => []),
         Api.getMyPermissions().catch(() => ({ permissions: [] })),
       ]);
+      if (!current()) return;
+      const { containers, host } = result;
+      if (context.confirmed && context.host.id !== host.id) {
+        this._inspector.close(false);
+        this._selectedIds.clear();
+        this._updateBulkBar();
+      }
+      Object.assign(context, { host, confirmed: true, status: 'connected', checked: new Date() });
       this._containers = containers;
       this._lastContainers = containers;
       this._metaMap = metaMap || {};
@@ -326,9 +355,25 @@ const ContainersPage = {
         this._stackPerms[p.stack_name] = p.permission;
       }
       this._renderGrouped();
-      this._renderUserGroups();
+      this._renderUserGroups(request.signal);
+      this._updateListConnection();
     } catch (err) {
-      Toast.error(i18n.t('pages.containers.loadFailed', { message: err.message }));
+      if (!current()) return;
+      const inaccessible = [401, 403, 404].includes(err.status);
+      const shouldNotify = context.status === 'connecting';
+      if (inaccessible) {
+        this._inspector.close(false);
+        this._containers = this._lastContainers = [];
+        this._selectedIds.clear();
+        this._renderGrouped();
+        this._renderUserGroups(request.signal);
+        this._updateBulkBar();
+        context.confirmed = false;
+        context.checked = null;
+      }
+      Object.assign(context, { status: context.checked ? 'stale' : 'unavailable', error: err.message });
+      this._updateListConnection();
+      if (shouldNotify) Toast.error(i18n.t('pages.containers.loadFailed', { message: err.message }));
     }
   },
 
@@ -479,6 +524,9 @@ const ContainersPage = {
     else el.classList.remove('stacks-grid-2col');
 
     let containers = this._containers || [];
+    if (document.getElementById('show-all')?.checked === false) {
+      containers = containers.filter(c => c.state === 'running' || c.state === 'paused' || c.state === 'restarting');
+    }
 
     if (this._filter) {
       containers = containers.filter(c => {
@@ -559,6 +607,8 @@ const ContainersPage = {
       return a.localeCompare(b);
     });
 
+    const focusedAction = el.contains(document.activeElement) && document.activeElement.closest('[data-container-inspect]');
+    const focusedId = focusedAction && focusedAction.closest('tr').dataset.cid;
     el.innerHTML = summaryHtml + sortedKeys.map(stack => {
       const items = groups[stack];
       const isStandalone = stack === '_standalone';
@@ -651,59 +701,19 @@ const ContainersPage = {
       });
     });
 
+    this._syncInspectorRows();
+    if (focusedId) {
+      const row = [...el.querySelectorAll('tr[data-cid]')].find(item => item.dataset.cid === focusedId);
+      row?.querySelector(`[data-container-inspect="${focusedAction.dataset.containerInspect}"]`)?.focus({ preventScroll: true });
+    }
     el.querySelectorAll('tr[data-cid]').forEach(tr => {
-      tr.addEventListener('click', async (e) => {
-        if (e.target.closest('.action-btn, button, .bulk-checkbox')) return;
+      tr.addEventListener('click', (e) => {
+        const quickAction = e.target.closest('[data-container-inspect]');
         const cid = tr.dataset.cid;
-        if (this._splitView) {
-          const panel = document.getElementById('split-detail-panel');
-          if (panel) {
-            panel.style.display = '';
-            panel.innerHTML = '<div class="text-muted"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
-            try {
-              const data = await Api.getContainer(cid);
-              const name = data.Name?.replace(/^\//, '') || cid;
-              const statusClass = Utils.statusBadgeClass(data.State?.Status || 'unknown');
-              const networks = Object.keys(data.NetworkSettings?.Networks || {}).join(', ') || '—';
-              const ports = Object.keys(data.NetworkSettings?.Ports || {}).filter(p => data.NetworkSettings.Ports[p]).join(', ') || '—';
-              const mounts = (data.Mounts || []).length;
-              panel.innerHTML = `
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-                  <h4 style="margin:0"><i class="fas fa-cube" style="color:var(--accent);margin-right:6px"></i>${Utils.escapeHtml(name)}</h4>
-                  <div style="display:flex;gap:6px" id="split-panel-btns"></div>
-                </div>
-                <div class="info-grid" style="grid-template-columns:1fr 1fr">
-                  <table class="info-table">
-                    <tr><td>Image</td><td class="mono text-sm">${Utils.escapeHtml(data.Config?.Image || '')}</td></tr>
-                    <tr><td>Status</td><td><span class="badge ${statusClass}">${data.State?.Status || 'unknown'}</span></td></tr>
-                    <tr><td>Created</td><td>${data.Created ? Utils.timeAgo(data.Created) : '—'}</td></tr>
-                    <tr><td>Restart Count</td><td>${data.RestartCount || 0}</td></tr>
-                  </table>
-                  <table class="info-table">
-                    <tr><td>Network</td><td class="mono text-sm">${Utils.escapeHtml(networks)}</td></tr>
-                    <tr><td>Ports</td><td class="mono text-sm">${Utils.escapeHtml(ports)}</td></tr>
-                    <tr><td>Mounts</td><td>${mounts} volume(s)</td></tr>
-                    <tr><td>PID</td><td class="mono">${data.State?.Pid || '—'}</td></tr>
-                  </table>
-                </div>
-              `;
-              const btnContainer = panel.querySelector('#split-panel-btns');
-              const fullViewBtn = document.createElement('button');
-              fullViewBtn.className = 'btn btn-xs btn-secondary';
-              fullViewBtn.innerHTML = '<i class="fas fa-external-link-alt"></i> Full View';
-              fullViewBtn.addEventListener('click', () => App.navigate(`/containers/${cid}`));
-              const closeBtn = document.createElement('button');
-              closeBtn.className = 'btn btn-xs btn-secondary';
-              closeBtn.innerHTML = '<i class="fas fa-times"></i>';
-              closeBtn.addEventListener('click', () => { panel.style.display = 'none'; });
-              btnContainer.appendChild(fullViewBtn);
-              btnContainer.appendChild(closeBtn);
-            } catch (err) {
-              panel.innerHTML = `<div class="text-muted" style="color:var(--red)">${err.message}</div>`;
-            }
-          }
-        } else {
-          App.navigate(`/containers/${cid}`);
+        if (quickAction) this._openInspector(cid, quickAction.dataset.containerInspect, quickAction);
+        else if (!e.target.closest('button, input, a, [data-stop-propagation]')) {
+          if (this._inspector?.item) this._openInspector(cid);
+          else App.navigate(`/containers/${cid}`);
         }
       });
       tr.addEventListener('contextmenu', (e) => {
@@ -716,8 +726,10 @@ const ContainersPage = {
 
         ContextMenu.show(e, [
           { label: 'Open Details', icon: 'fa-external-link-alt', action: () => App.navigate(`/containers/${cid}`) },
+          { label: ContainerInspector.label('overview'), icon: 'fa-circle-info', action: () => this._openInspector(cid, 'overview') },
           { label: 'Open Terminal', icon: 'fa-terminal', action: () => { App.navigate(`/containers/${cid}`); setTimeout(() => document.querySelector('[data-tab="terminal"]')?.click(), 400); }, disabled: !running },
-          { label: 'View Logs', icon: 'fa-file-alt', action: () => { App.navigate(`/containers/${cid}`); setTimeout(() => document.querySelector('[data-tab="logs"]')?.click(), 400); } },
+          { label: ContainerInspector.label('logs'), icon: 'fa-file-alt', action: () => this._openInspector(cid, 'logs') },
+          { label: ContainerInspector.label('stats'), icon: 'fa-chart-line', action: () => this._openInspector(cid, 'stats') },
           { type: 'separator' },
           { label: running ? 'Stop' : 'Start', icon: running ? 'fa-stop' : 'fa-play', action: () => this._containerAction(cid, running ? 'stop' : 'start') },
           { label: 'Restart', icon: 'fa-redo', action: () => this._containerAction(cid, 'restart'), disabled: !running },
@@ -1457,6 +1469,10 @@ const ContainersPage = {
           <span class="mono">${Utils.escapeHtml(isStandalone ? (c.name || service) : service)}</span>
           ${metaLine ? `<div class="container-meta-line">${metaLine}</div>` :
             (!isStandalone && service !== c.name ? `<div class="text-muted text-xs mono">${Utils.escapeHtml(c.name)}</div>` : `<div class="text-muted text-xs mono">${Utils.shortId(c.id)}</div>`)}
+          <div class="container-quick-actions">
+            ${ContainerInspector.rowAction('logs', 'fa-file-alt', c.name)}
+            ${ContainerInspector.rowAction('stats', 'fa-chart-line', c.name)}
+          </div>
         </td>
         <td><span class="mono text-sm">${Utils.escapeHtml(imgName)}</span></td>
         <td><span class="badge badge-version">${Utils.escapeHtml(version)}</span></td>
@@ -2153,7 +2169,7 @@ const ContainersPage = {
   // ─── Container Groups ───────────────────────────
   _userGroups: [],
 
-  async _renderUserGroups() {
+  async _renderUserGroups(signal) {
     const section = document.getElementById('container-groups-section');
     if (!section || !this._userGroups.length) {
       if (section) section.innerHTML = '';
@@ -2168,6 +2184,7 @@ const ContainersPage = {
     for (const g of this._userGroups) {
       let groupDetail;
       try { groupDetail = await Api.getGroup(g.id); } catch { continue; }
+      if (signal.aborted) return;
       const members = (groupDetail.members || []).map(cid => containerMap[cid]).filter(Boolean);
       const running = members.filter(c => c.state === 'running').length;
       const collapsed = this._collapsed[`group_${g.id}`] || false;
@@ -2822,8 +2839,10 @@ const ContainersPage = {
   },
 
   async _loadSparklines() {
+    const host = this._listContext?.host;
     try {
       const data = await Api.getSparklines();
+      if (!host || this._listContext?.host?.id !== host.id) return;
       Object.entries(data).forEach(([containerId, points]) => {
         const canvas = document.querySelector(`[data-sparkline-id="${containerId}"]`);
         if (!canvas || !points.length) return;
@@ -2940,9 +2959,12 @@ const ContainersPage = {
   },
 
   async _tickStats() {
-    if (this._view !== 'list') return;
+    const context = this._listContext;
+    if (!context?.confirmed || context.status !== 'connected') return;
+    const hostId = context.host.id;
     try {
       const data = await Api.getStatsOverview();
+      if (this._listContext !== context || context.host.id !== hostId || context.status !== 'connected') return;
       const containers = data.containers || [];
       containers.forEach(s => {
         const cpuEl = document.querySelector(`[data-stats-cpu="${s.container_id}"]`);
@@ -3162,6 +3184,10 @@ const ContainersPage = {
   },
 
   destroy() {
+    this._listContext?.request?.abort();
+    this._listContext = null;
+    this._inspector?.destroy();
+    this._inspector = null;
     clearInterval(this._refreshTimer);
     clearInterval(this._statsTimer);
     if (this._logStream) this._logStream();

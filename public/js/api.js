@@ -99,7 +99,7 @@ const Api = {
       }
       return data;
     } catch (err) {
-      if (err.message !== 'Unauthorized') {
+      if (err.message !== 'Unauthorized' && err.name !== 'AbortError') {
         console.error(`API ${method} ${path}:`, err.message);
       }
       throw err;

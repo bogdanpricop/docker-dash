@@ -4,6 +4,9 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Open live logs and resource stats from the Containers list while keeping
+  search, filters and selections in place. Keep the Docker host and its
+  connection status visible, with snapshot logs when live streaming is unavailable.
 - Pin a request to its resolved host across nested routes and Docker operations.
 - Claim scheduled actions once per minute in SQLite, and apply the same cron
   rules to preview and execution.

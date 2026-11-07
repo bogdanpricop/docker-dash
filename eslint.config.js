@@ -10,7 +10,7 @@ module.exports = [
         process: 'readonly', console: 'readonly',
         Buffer: 'readonly', setTimeout: 'readonly', setInterval: 'readonly',
         clearTimeout: 'readonly', clearInterval: 'readonly', setImmediate: 'readonly', clearImmediate: 'readonly',
-        fetch: 'readonly', URL: 'readonly', URLSearchParams: 'readonly', AbortController: 'readonly',
+        fetch: 'readonly', URL: 'readonly', URLSearchParams: 'readonly', AbortController: 'readonly', AbortSignal: 'readonly',
         TextEncoder: 'readonly', TextDecoder: 'readonly',
       },
     },

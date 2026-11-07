@@ -9,6 +9,10 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.96.30', date: '2026-11-07', title: 'Logs and stats in the Containers list', changes: [
+      { type: 'feature', text: 'Open live logs or resource stats beside the list. Switch containers without losing search, filters, or bulk selection.' },
+      { type: 'improvement', text: 'Keep the Docker host and connection status visible. Search or pause logs and see recent snapshots when live streaming is unavailable.' },
+    ] },
     { version: '8.96.29', date: '2026-11-07', title: 'Safer multi-host operations', changes: [
       { type: 'fix', text: 'Keep Docker operations on the selected host, including after a lookup failure or a default-host change.' },
       { type: 'improvement', text: 'Show partial prune results, protect scheduled actions from duplicate automatic dispatch, and harden Docker event streams.' },

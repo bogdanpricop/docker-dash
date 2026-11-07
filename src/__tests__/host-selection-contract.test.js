@@ -139,6 +139,24 @@ test('admin default changes take effect on the next daemon lookup and preserve i
   }
 });
 
+test('Containers can request the resolved host without changing the legacy list shape or host grants', async () => {
+  const rows = [{ id: 'fixture', name: 'demo', labels: {} }];
+  const list = jest.spyOn(docker, 'listContainers').mockResolvedValue(rows);
+  try {
+    const legacy = await request(app).get('/containers').expect(200);
+    expect(legacy.body).toEqual(rows);
+    const local = await request(app).get('/containers?context=1&hostId=0').expect(200);
+    expect(local.body).toMatchObject({ containers: rows, host: { id: 1, connectionType: 'socket' } });
+    const selected = await request(app).get('/containers?context=1&hostId=71').expect(200);
+    expect(selected.body).toEqual({ containers: rows, host: { id: 71, name: 'secondary-fixture', connectionType: 'socket' } });
+    expect(list.mock.calls.map(([id]) => id)).toEqual([1, 1, 71]);
+    await request(app).get('/containers?context=1&hostId=72').expect(400);
+    expect(list).toHaveBeenCalledTimes(3);
+  } finally {
+    list.mockRestore();
+  }
+});
+
 test('event history only returns records for the authorized daemon', async () => {
   const getHistory = query => request(app).get('/system/events' + query).set('X-Test-Role', 'viewer');
   dockerEvents.store({ hostId: 1, eventType: 'container', action: 'start', actorName: 'hidden' });

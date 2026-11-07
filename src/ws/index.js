@@ -289,7 +289,7 @@ class WsServer {
     return stackPermissions.hasPermission(effectiveRole, 'view');
   }
 
-  async _subscribeClientLogs(ws, client, { containerId, hostId, tail }) {
+  async _subscribeClientLogs(ws, client, { containerId, hostId, tail, requestId }) {
     if (!this._authorizeClient(ws, client)) return;
     const id = String(containerId || '').trim();
     if (!id) throw Object.assign(new Error('containerId is required'), { status: 400 });
@@ -324,7 +324,7 @@ class WsServer {
     let pending = Buffer.alloc(0);
     const send = (type, data = {}) => {
       if (ws.readyState !== 1) return;
-      const payload = { containerId: id, ...data };
+      const payload = { containerId: id, ...(requestId ? { requestId, hostId } : {}), ...data };
       try { ws.send(JSON.stringify({ type, ...payload, data: payload })); } catch { /* disconnected */ }
     };
     const flushPending = () => {
@@ -454,6 +454,8 @@ class WsServer {
       case 'logs:subscribe': {
         const client2 = this.clients.get(ws);
         if (!client2) break;
+        const requestId = typeof msg.requestId === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(msg.requestId)
+          ? msg.requestId : undefined;
         try {
           const hostId = msg.hostId === undefined ? 0 : parseHostId(msg.hostId);
           if (hostId === null) throw new Error('Invalid hostId');
@@ -462,10 +464,11 @@ class WsServer {
           await this._subscribeClientLogs(ws, client2, {
             containerId: msg.containerId,
             hostId,
+            requestId,
             tail: Number.isInteger(parsedTail) ? Math.min(Math.max(parsedTail, 0), 2_000) : 100,
           });
         } catch (err) {
-          const payload = { containerId: String(msg.containerId || ''), error: err.message };
+          const payload = { containerId: String(msg.containerId || ''), error: err.message, ...(requestId ? { requestId } : {}) };
           ws.send(JSON.stringify({ type: 'logs:error', ...payload, data: payload }));
         }
         break;

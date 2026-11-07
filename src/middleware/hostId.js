@@ -25,7 +25,7 @@ function extractHostId(req, res, next) {
 
   try {
     const db = getDb();
-    const host = hostId === 0 ? defaultHost(db) : db.prepare('SELECT id, is_active, name FROM docker_hosts WHERE id = ?').get(hostId);
+    const host = hostId === 0 ? defaultHost(db) : db.prepare('SELECT id, is_active, name, connection_type FROM docker_hosts WHERE id = ?').get(hostId);
     if (hostId !== 0 && !host) {
       return res.status(404).json({ error: `Docker host ${hostId} not found`, code: 'HOST_NOT_FOUND' });
     }
@@ -35,6 +35,7 @@ function extractHostId(req, res, next) {
     req.hostId = hostId;
     req.resolvedHostId = host?.id ?? hostId;
     req.hostName = host?.name;
+    req.hostConnectionType = host?.connection_type;
     req[selected] = true;
   } catch {
     return res.status(503).json({ error: 'Docker host selection is temporarily unavailable', code: 'HOST_LOOKUP_UNAVAILABLE' });
