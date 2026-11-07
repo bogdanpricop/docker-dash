@@ -12,7 +12,7 @@
 'use strict';
 
 const ContainersPageDetail = {
-  async _renderDetail(container) {
+  async _renderDetail(container, initialTab = 'info') {
     container.innerHTML = `
       <div class="page-header">
         <div class="breadcrumb">
@@ -51,10 +51,10 @@ const ContainersPageDetail = {
       });
     });
 
-    await this._loadDetail();
+    await this._loadDetail(initialTab);
   },
 
-  async _loadDetail() {
+  async _loadDetail(initialTab = 'info') {
     try {
       const info = await Api.getContainer(this._detailId);
       this._detailData = info;
@@ -74,7 +74,9 @@ const ContainersPageDetail = {
       }
 
       this._renderDetailActions(info);
-      this._renderTab('info');
+      const tab = initialTab === 'terminal' && App.user?.role === 'viewer' ? 'info' : initialTab;
+      document.querySelectorAll('#detail-tabs .tab').forEach(button => button.classList.toggle('active', button.dataset.tab === tab));
+      this._renderTab(tab);
     } catch (err) {
       Toast.error(i18n.t('pages.containers.loadContainerFailed', { message: err.message }));
       document.getElementById('detail-content').innerHTML =
@@ -860,6 +862,7 @@ const ContainersPageDetail = {
   _renderTab(tab) {
     const content = document.getElementById('detail-content');
     if (!content || !this._detailData) return;
+    this._stopLogFollow();
 
     if (tab === 'info') this._renderInfoTab(content);
     else if (tab === 'logs') this._renderLogsTab(content);
@@ -1553,163 +1556,137 @@ const ContainersPageDetail = {
   _allLogLines: [],
 
   async _renderLogsTab(el) {
+    const id = this._detailId;
+    const hostId = this._detailData?.hostId ?? Api.getHostId();
     el.innerHTML = `
       <div class="log-toolbar">
-        <select id="log-tail">
-          <option value="100">${i18n.t('pages.containers.last', { n: 100 })}</option>
-          <option value="500" selected>${i18n.t('pages.containers.last', { n: 500 })}</option>
-          <option value="2000">${i18n.t('pages.containers.last', { n: 2000 })}</option>
+        <select id="log-tail" aria-label="Log lines">
+          <option value="100">Last 100</option><option value="500" selected>Last 500</option><option value="2000">Last 2000</option>
         </select>
-        <select id="log-since" title="Time range">
-          <option value="">All time</option>
-          <option value="1h">Last 1h</option>
-          <option value="6h">Last 6h</option>
-          <option value="24h">Last 24h</option>
-          <option value="168h">Last 7d</option>
+        <select id="log-since" aria-label="Time range">
+          <option value="">All time</option><option value="1">Last 1h</option><option value="6">Last 6h</option>
+          <option value="24">Last 24h</option><option value="168">Last 7d</option>
         </select>
-        <label class="toggle-label"><input type="checkbox" id="log-follow" checked> ${i18n.t('pages.containers.follow')}</label>
-        <div class="search-box" style="flex:1;max-width:260px">
-          <i class="fas fa-search"></i>
-          <input type="text" id="log-search" placeholder="${i18n.t('pages.containers.searchLogs')}" class="input-sm">
+        <div class="search-box"><i class="fas fa-search"></i>
+          <input type="search" id="log-search" placeholder="${i18n.t('pages.containers.searchLogs')}" aria-label="Search logs">
         </div>
-        <span id="log-search-count" class="text-muted text-sm" style="min-width:60px"></span>
-        <button class="btn btn-sm btn-secondary" id="log-download" title="${i18n.t('pages.containers.downloadLogs')}"><i class="fas fa-download"></i></button>
-        <button class="btn btn-sm btn-secondary" id="log-refresh"><i class="fas fa-sync-alt"></i></button>
+        <a class="btn btn-sm btn-secondary" href="#/logs/container/${encodeURIComponent(id)}">Log Explorer</a>
+        <button class="btn btn-sm btn-secondary" type="button" id="log-download" aria-label="Download logs"><i class="fas fa-download"></i></button>
+        <button class="btn btn-sm btn-secondary" type="button" id="log-refresh" aria-label="Refresh logs"><i class="fas fa-sync-alt"></i></button>
       </div>
-      <pre class="log-viewer" id="log-output">${i18n.t('common.loading')}</pre>
+      <div class="log-viewer-controls"></div>
+      <p class="text-xs text-muted" data-detail-log-status role="status"></p>
+      <pre class="log-viewer" id="log-output" tabindex="0">Loading…</pre>
     `;
-
-    this._allLogLines = [];
-
-    const renderLogLines = (lines, searchTerm) => {
-      const output = el.querySelector('#log-output');
-      if (!output) return;
-      if (!lines || lines.length === 0) { output.innerHTML = i18n.t('pages.containers.logsEmpty'); return; }
-
-      const html = lines.map(line => {
-        let cls = '';
-        const lower = line.toLowerCase();
-        if (/\b(error|fatal|panic|exception|fail)\b/i.test(line)) cls = 'log-error';
-        else if (/\b(warn|warning)\b/i.test(line)) cls = 'log-warn';
-        else if (/\b(info)\b/i.test(line)) cls = 'log-info';
-        else if (/\b(debug|trace)\b/i.test(line)) cls = 'log-debug';
-
-        let escaped = Utils.escapeHtml(line);
-        if (searchTerm) {
-          const regex = new RegExp(`(${searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-          escaped = escaped.replace(regex, '<mark class="log-highlight">$1</mark>');
-        }
-        return `<span class="log-line ${cls}">${escaped}</span>`;
-      }).join('\n');
-
-      output.innerHTML = html;
-      if (el.querySelector('#log-follow')?.checked) output.scrollTop = output.scrollHeight;
+    const output = el.querySelector('#log-output');
+    const status = el.querySelector('[data-detail-log-status]');
+    const search = el.querySelector('#log-search');
+    const tail = el.querySelector('#log-tail');
+    const since = el.querySelector('#log-since');
+    let rows = [];
+    let streamId;
+    let controller;
+    let fallback = false;
+    let frame = null;
+    let disposed = false;
+    const severity = message => /\b(error|fatal|panic|exception|fail)\b/i.test(message) ? 'error'
+      : /\b(warn|warning)\b/i.test(message) ? 'warn'
+      : /\b(debug|trace)\b/i.test(message) ? 'debug' : 'info';
+    const paint = () => {
+      const term = search.value.trim().toLowerCase();
+      const shown = term ? rows.filter(row => row.msg.toLowerCase().includes(term)) : rows;
+      viewer.set(shown, term);
+      if (!shown.length) output.textContent = term ? 'No matching logs.' : 'No log lines yet.';
     };
-
-    const loadLogs = async () => {
-      const tail = el.querySelector('#log-tail').value;
-      const since = el.querySelector('#log-since')?.value || '';
-      const searchInput = el.querySelector('#log-search');
-      const search = searchInput?.value?.trim() || '';
+    const append = lines => {
+      for (const text of lines || []) {
+        for (const msg of String(text).trimEnd().split(/\r?\n/)) rows.push({ msg, severity: severity(msg) });
+      }
+      rows = rows.slice(-2000);
+      if (frame === null) frame = requestAnimationFrame(() => { frame = null; if (!disposed) paint(); });
+    };
+    const stopStream = () => {
+      if (streamId) WS.send('logs:unsubscribe', { containerId: id });
+      streamId = null;
+    };
+    const query = () => {
+      const params = new URLSearchParams({ hostId, tail: tail.value });
+      const hours = Number(since.value);
+      if (hours) params.set('since', new Date(Date.now() - hours * 3600000).toISOString());
+      return params;
+    };
+    const load = async ({ reconnect = true } = {}) => {
+      if (disposed || viewer.paused) return;
+      stopStream();
+      controller?.abort();
+      const request = controller = new AbortController();
       try {
-        const data = await Api.getContainerLogs(this._detailId, tail, search, since);
-        const lines = Array.isArray(data.lines) ? data.lines : [];
-        if (!search) this._allLogLines = lines;
-        const countEl = el.querySelector('#log-search-count');
-        if (countEl) countEl.textContent = search ? `${lines.length} ${i18n.t('pages.containers.matches')}` : '';
-        renderLogLines(lines, search);
-      } catch (err) {
-        const output = el.querySelector('#log-output');
-        if (output) output.textContent = i18n.t('pages.containers.logsError', { message: err.message });
+        const data = await Api.request('GET', `/containers/${encodeURIComponent(id)}/logs?${query()}`, null, { signal: request.signal });
+        if (request.signal.aborted || disposed || !output.isConnected) return;
+        rows = [];
+        append(data.lines);
+        status.textContent = `Snapshot at ${new Date().toLocaleTimeString()}`;
+        if (reconnect && WS.isConnected && this._detailData?.state?.Running && !this._detailData?.state?.Paused) {
+          streamId = 'detail-' + ++ContainerInspector.nextRequest;
+          WS.send('logs:subscribe', { containerId: id, hostId, requestId: streamId, tail: 0 });
+        }
+      } catch (error) {
+        if (!request.signal.aborted && !disposed) status.textContent = error.message;
       }
     };
-
-    el.querySelector('#log-tail').addEventListener('change', loadLogs);
-    el.querySelector('#log-since').addEventListener('change', loadLogs);
-    el.querySelector('#log-refresh').addEventListener('click', loadLogs);
-
-    // Server-side search
-    el.querySelector('#log-search').addEventListener('input', Utils.debounce(() => loadLogs(), 400));
-
-    // Download
+    const viewer = new LogViewer(el.querySelector('.log-viewer-controls'), output, paused => {
+      if (paused) {
+        controller?.abort();
+        stopStream();
+        status.textContent = 'Paused';
+      } else { fallback = false; load(); }
+    });
+    const receive = (type, message) => {
+      const data = message.data || message;
+      if (!streamId || data.requestId !== streamId || data.containerId !== id
+        || (data.hostId !== undefined && data.hostId !== hostId)) return;
+      if (type === 'data') append(data.lines);
+      else if (type === 'subscribed') status.textContent = 'Live · following Docker output';
+      else {
+        fallback = true;
+        stopStream();
+        status.textContent = data.error || 'Live stream ended. Snapshots will refresh.';
+      }
+    };
+    const handlers = [
+      ...['subscribed', 'data', 'error', 'end'].map(type => WS.on('logs:' + type, message => receive(type, message))),
+      WS.on('_connected', () => { fallback = false; load(); }),
+      WS.on('_disconnected', () => { stopStream(); status.textContent = viewer.paused ? 'Paused' : 'Live connection lost'; }),
+    ];
+    const timer = setInterval(() => {
+      if (!WS.isConnected || fallback) load({ reconnect: false });
+    }, 8000);
+    this._logViewDispose = () => {
+      disposed = true;
+      clearInterval(timer);
+      if (frame !== null) cancelAnimationFrame(frame);
+      controller?.abort();
+      stopStream();
+      handlers.forEach(off => off());
+    };
+    search.addEventListener('input', Utils.debounce(paint, 120));
+    [tail, since, el.querySelector('#log-refresh')].forEach(control =>
+      control.addEventListener(control.tagName === 'SELECT' ? 'change' : 'click', () => { fallback = false; load(); }));
     el.querySelector('#log-download').addEventListener('click', () => {
-      const tail = el.querySelector('#log-tail').value;
-      const since = el.querySelector('#log-since')?.value || '';
-      const search = el.querySelector('#log-search')?.value?.trim() || '';
-      let url = `/api/containers/${this._detailId}/logs?tail=${tail}&download=true`;
-      if (search) url += `&search=${encodeURIComponent(search)}`;
-      if (since) url += `&since=${encodeURIComponent(since)}`;
-      const a = document.createElement('a');
-      a.href = url; a.download = ''; document.body.appendChild(a); a.click(); a.remove();
+      const params = query();
+      params.set('download', 'true');
+      if (search.value.trim()) params.set('search', search.value.trim());
+      const link = document.createElement('a');
+      link.href = `/api/containers/${encodeURIComponent(id)}/logs?${params}`;
+      link.download = '';
+      link.click();
     });
-
-    // Follow toggle: use WebSocket-based log streaming
-    el.querySelector('#log-follow').addEventListener('change', (e) => {
-      if (e.target.checked) {
-        this._startLogFollow();
-      } else {
-        this._stopLogFollow();
-      }
-    });
-
-    // Start follow by default since checkbox is checked
-    await loadLogs();
-    if (el.querySelector('#log-follow')?.checked) {
-      this._startLogFollow();
-    }
-  },
-
-  _startLogFollow() {
-    if (this._logFollowing) this._stopLogFollow();
-    this._logFollowing = true;
-    WS.send('logs:subscribe', { containerId: this._detailId, tail: 50, hostId: Api.getHostId() });
-
-    this._logDataHandler = WS.on('logs:data', (msg) => {
-      const data = msg.data || msg;
-      if (data.containerId !== this._detailId) return;
-      const el = document.getElementById('log-output');
-      if (!el) return;
-      const lines = data.lines || [];
-      for (const line of lines) {
-        let cls = '';
-        if (/\b(error|fatal|panic|exception|fail)\b/i.test(line)) cls = 'log-error';
-        else if (/\b(warn|warning)\b/i.test(line)) cls = 'log-warn';
-        else if (/\b(info)\b/i.test(line)) cls = 'log-info';
-        else if (/\b(debug|trace)\b/i.test(line)) cls = 'log-debug';
-        el.innerHTML += `\n<span class="log-line ${cls}">${Utils.escapeHtml(line)}</span>`;
-        this._allLogLines.push(line);
-      }
-      // Auto-scroll
-      el.scrollTop = el.scrollHeight;
-      // Trim if too long
-      if (el.innerHTML.length > 500000) {
-        const allLines = el.querySelectorAll('.log-line');
-        const removeCount = Math.floor(allLines.length / 3);
-        for (let i = 0; i < removeCount; i++) allLines[i].remove();
-      }
-    });
-
-    this._logEndHandler = WS.on('logs:end', (msg) => {
-      const data = msg.data || msg;
-      if (data.containerId !== this._detailId) return;
-      const el = document.getElementById('log-output');
-      if (el) el.innerHTML += '\n<span class="log-line log-warn">[Stream ended — container may have stopped]</span>';
-      this._logFollowing = false;
-    });
-    this._logErrorHandler = WS.on('logs:error', (msg) => {
-      const data = msg.data || msg;
-      if (data.containerId && data.containerId !== this._detailId) return;
-      const el = document.getElementById('log-output');
-      if (el) el.innerHTML += `\n<span class="log-line log-error">${Utils.escapeHtml(data.error || 'Log stream failed')}</span>`;
-    });
+    return load();
   },
 
   _stopLogFollow() {
-    this._logFollowing = false;
-    WS.send('logs:unsubscribe', {});
-    if (this._logDataHandler) { this._logDataHandler(); this._logDataHandler = null; }
-    if (this._logEndHandler) { this._logEndHandler(); this._logEndHandler = null; }
-    if (this._logErrorHandler) { this._logErrorHandler(); this._logErrorHandler = null; }
+    this._logViewDispose?.();
+    this._logViewDispose = null;
   },
 
   // ─── Terminal Tab (exec) ────────────────────

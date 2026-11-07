@@ -24,6 +24,10 @@ router.use(extractHostId);
 
 // ─── Database Info & Maintenance ─────────────────────────────
 
+router.get('/target', requireAuth, requireHostAccess(), (req, res) => {
+  res.json({ id: req.resolvedHostId ?? req.hostId, name: req.hostName });
+});
+
 router.get('/info', requireAuth, requireHostAccess(), async (req, res) => {
   try { res.json(await dockerService.getInfo(req.resolvedHostId ?? req.hostId)); }
   catch (err) { res.status(500).json({ error: 'Internal server error' }); }
@@ -1650,6 +1654,7 @@ router.get('/ssl/certificates', requireAuth, requireRole('admin'), async (req, r
 // ─── Sub-routers (v8.2.x post-audit further-split) ────────────────────
 // External URLs unchanged — mounts replicate original path prefixes.
 router.use('/backup', require('./system-backup'));       // 17 routes (S3/pCloud/DB)
+router.use('/docker-activity', require('./system-docker-activity'));
 router.use('/', require('./system-stacks'));             // 9 routes (/stacks + /compose)
 router.use('/schedules', require('./system-schedules')); // 7 routes (/schedules/*)
 router.use('/database', require('./system-database'));   // 5 routes (/database/*)

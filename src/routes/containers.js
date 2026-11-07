@@ -24,6 +24,7 @@ const containerHistory = require('../services/container-history');
 const containerReplacement = require('../services/container-replacement');
 const { imageReference } = require('../utils/container-config');
 const requireContainerAccess = require('../middleware/containerAccess');
+const { logReader } = require('../utils/docker-log-reader');
 
 const router = Router();
 router.use(requireAuth);
@@ -103,15 +104,15 @@ router.get('/logs/multi', requireAuth, asyncHandler(async (req, res) => {
       const opts = { stdout: true, stderr: true, tail: safeTail, timestamps: true };
       if (since) opts.since = Math.floor(new Date(since).getTime() / 1000);
 
-      const logBuffer = await container.logs(opts);
-      const lines = logBuffer.toString('utf8').replace(/[\x00-\x08]/g, '').trim().split('\n').filter(Boolean);
+      const logBuffer = Buffer.from(await container.logs(opts));
+      const lines = [];
+      const hasHeader = logBuffer.length >= 8 && [1, 2].includes(logBuffer[0])
+        && !logBuffer[1] && !logBuffer[2] && !logBuffer[3];
+      const reader = logReader(!hasHeader || inspect.Config?.Tty, entry => lines.push(entry));
+      reader.write(logBuffer);
+      reader.end();
 
-      return lines.map(line => {
-        // Parse timestamp from Docker log format: 2026-04-05T12:00:00.123456789Z message
-        const tsMatch = line.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})/);
-        const ts = tsMatch ? tsMatch[1] : '';
-        const msg = tsMatch ? line.substring(tsMatch[0].length).replace(/^[.\d]*Z\s*/, '') : line;
-
+      return lines.map(({ timestamp: ts, line: msg }) => {
         // Detect severity
         let severity = 'info';
         if (/\b(error|fatal|panic|exception|fail|critical)\b/i.test(msg)) severity = 'error';
@@ -414,7 +415,7 @@ router.post('/:id/:action', (req, res, next) => {
     auditService.log({
       userId: req.user.id, username: req.user.username,
       action: `container_${action}`, targetType: 'container', targetId: id,
-      details: _cliDetails(`container.${action}`, { name: inspect.name || id }),
+      details: { hostId: req.resolvedHostId ?? req.hostId, stack, ..._cliDetails(`container.${action}`, { name: inspect.name || id }) },
       ip: getClientIp(req),
     });
     res.json({ ok: true, action });
@@ -441,12 +442,12 @@ router.delete('/:id', requireAuth, requireRole('admin'), writeable, requireFeatu
     const { force, v } = req.query;
     await dockerService.removeContainer(req.params.id, {
       force: force === 'true', v: v === 'true',
-    }, req.hostId);
+    }, req.resolvedHostId ?? req.hostId);
     auditService.log({
       userId: req.user.id, username: req.user.username,
       action: 'container_remove', targetType: 'container', targetId: req.params.id,
       details: {
-        force, removeVolumes: v,
+        force, removeVolumes: v, hostId: req.resolvedHostId ?? req.hostId, stack,
         ..._cliDetails('container.remove', {
           name: inspect.name || req.params.id, force: force === 'true', volumes: v === 'true',
         }),
@@ -918,33 +919,50 @@ router.post('/:id/clone', requireAuth, requireRole('admin'), writeable, requireF
 
 // Bulk actions
 router.post('/bulk', requireAuth, requireRole('admin', 'operator'), writeable, async (req, res) => {
-  const { ids, action } = req.body;
+  const { ids, action, preview, requireEligible } = req.body;
   if (!Array.isArray(ids) || !ids.length || ids.length > 100 || ids.some(id => typeof id !== 'string' || !id || id.length > 128)
     || ![...CONTAINER_ACTIONS, 'remove'].includes(action)) {
     return res.status(400).json({ error: 'Provide up to 100 container IDs and a supported action' });
   }
   if (action === 'remove' && req.user.role !== 'admin') return res.status(403).json({ error: 'Administrator role required to remove containers' });
 
+  const hostId = req.resolvedHostId ?? req.hostId;
+  const host = { id: hostId, name: req.hostName };
+  const stateAllows = state => {
+    if (action === 'start') return ['created', 'exited'].includes(state);
+    if (['stop', 'restart', 'pause', 'kill'].includes(action)) return state === 'running';
+    if (action === 'unpause') return state === 'paused';
+    return true;
+  };
   const results = [];
   for (const id of [...new Set(ids)]) {
     try {
-      const inspection = await dockerService.inspectContainer(id, req.resolvedHostId ?? req.hostId);
+      const inspection = await dockerService.inspectContainer(id, hostId);
       const stack = inspection.labels?.['com.docker.compose.project'] || '_standalone';
       const role = permService.getEffectiveRole(req.user.id, stack, req.user.role);
       if (!permService.hasPermission(role, action === 'remove' ? 'admin' : 'operate')) {
         results.push({ id, ok: false, error: 'Insufficient stack permissions for this container' });
         continue;
       }
+      if ((preview || requireEligible) && (dockerService.isSelf(inspection.id) || !stateAllows(inspection.state?.Status))) {
+        results.push({ id, name: inspection.name, ok: false, error: 'Current container state does not allow this action' });
+        continue;
+      }
+      if (preview) {
+        results.push({ id, name: inspection.name, ok: true });
+        continue;
+      }
       if (action === 'remove') {
-        await dockerService.removeContainer(id, { force: true }, req.resolvedHostId ?? req.hostId);
+        await dockerService.removeContainer(id, { force: true }, hostId);
       } else {
-        await dockerService.containerAction(id, action, req.resolvedHostId ?? req.hostId);
+        await dockerService.containerAction(id, action, hostId);
       }
       results.push({ id, ok: true });
     } catch (err) {
       results.push({ id, ok: false, error: err.message });
     }
   }
+  if (preview) return res.json({ host, results });
 
   // Render only what actually ran — a failed subject never produced a command,
   // and the audit entry should read as history, not intent.
@@ -955,7 +973,7 @@ router.post('/bulk', requireAuth, requireRole('admin', 'operator'), writeable, a
     userId: req.user.id, username: req.user.username,
     action: `bulk_${action}`, targetType: 'container',
     details: {
-      ids, results: results.filter(r => !r.ok),
+      ids, hostId, results: results.filter(r => !r.ok),
       ..._cliDetails('container.bulk', { action, subjects: applied }),
     },
     ip: getClientIp(req),

@@ -270,7 +270,7 @@ function _auditCompose(req, stack, action, workingDir, status, result) {
     userId: req.user.id, username: req.user.username,
     action: `compose_${action}`, targetType: 'stack', targetId: stack,
     details: {
-      workingDir, hostId: req.hostId, status,
+      workingDir, hostId: req.resolvedHostId ?? req.hostId, status,
       exitCode: result?.exitCode ?? null,
       durationMs: result?.durationMs ?? null,
       outputTail: auditTail(result),
@@ -650,7 +650,9 @@ router.get('/stacks', requireAuth, hostAccess, async (req, res) => {
       });
     }
 
-    res.json([...stacks.values()].sort((a, b) => a.name.localeCompare(b.name)));
+    const list = [...stacks.values()].sort((a, b) => a.name.localeCompare(b.name));
+    res.json(req.query.context === '1'
+      ? { stacks: list, host: { id: req.resolvedHostId ?? req.hostId, name: req.hostName } } : list);
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }

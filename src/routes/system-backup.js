@@ -20,13 +20,38 @@ const config = require('../config');
 
 const router = Router();
 
+function configRestorePlan(db, data) {
+  const input = data?.settings ?? [];
+  if (typeof data?.version !== 'string' || !data.version || !Array.isArray(input)
+    || input.length > 5000 || input.some(entry => !entry || typeof entry.key !== 'string'
+      || !entry.key || entry.key.length > 512 || typeof entry.value !== 'string')) {
+    throw Object.assign(new Error('Invalid backup file'), { status: 400 });
+  }
+  const settings = [...new Map(input.map(entry => [entry.key, entry.value]))];
+  const current = db.prepare('SELECT value FROM settings WHERE key = ?');
+  const values = settings.map(([key, value]) => ({ key, value, previous: current.get(key)?.value }));
+  const apiKeys = Array.isArray(data.apiKeys) ? data.apiKeys : [];
+  const planId = crypto.createHmac('sha256', config.app.secret)
+    .update(JSON.stringify({ values, version: data.version })).digest('hex');
+  return {
+    settings, plan: {
+      planId, version: data.version,
+      creates: values.filter(entry => entry.previous === undefined).map(entry => entry.key),
+      replaces: values.filter(entry => entry.previous !== undefined && entry.previous !== entry.value).map(entry => entry.key),
+      unchanged: values.filter(entry => entry.previous === entry.value).length,
+      apiKeysSkipped: apiKeys.length,
+      usersSkipped: Array.isArray(data.users) ? data.users.length : 0,
+    },
+  };
+}
+
 // ─── Backup Config + Restore ──────────────────────────────
 router.get('/config', requireAuth, requireRole('admin'), (req, res) => {
   try {
     const db = getDb();
     const settings = db.prepare('SELECT key, value FROM settings').all();
-    const apiKeys = db.prepare('SELECT id, name, prefix, created_at, created_by, last_used_at FROM api_keys').all();
-    const users = db.prepare('SELECT id, username, role, mfa_enabled, must_change_password, locked_until, failed_attempts, created_at, last_login_at FROM users').all();
+    const apiKeys = db.prepare('SELECT id, name, key_prefix AS prefix, created_at, user_id AS created_by, last_used_at FROM api_keys').all();
+    const users = db.prepare('SELECT id, username, role, totp_enabled AS mfa_enabled, must_change_password, locked_until, failed_attempts, created_at, last_login_at FROM users').all();
 
     const backup = {
       version: require('../version'),
@@ -37,11 +62,17 @@ router.get('/config', requireAuth, requireRole('admin'), (req, res) => {
     };
 
     res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Content-Disposition', `attachment; filename="docker-dash-backup-${new Date().toISOString().substring(0, 10)}.json"`);
     res.send(JSON.stringify(backup, null, 2));
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }
+});
+
+router.post('/restore/plan', requireAuth, requireRole('admin'), (req, res) => {
+  try { res.json(configRestorePlan(getDb(), req.body).plan); }
+  catch (error) { res.status(error.status || 500).json({ error: error.status ? error.message : 'Could not prepare the restore plan' }); }
 });
 
 router.post('/restore', requireAuth, requireRole('admin'), writeable, (req, res) => {
@@ -50,40 +81,21 @@ router.post('/restore', requireAuth, requireRole('admin'), writeable, (req, res)
     if (!data || !data.version) return res.status(400).json({ error: 'Invalid backup file' });
 
     const db = getDb();
-    // v8.7.20 — counters dropped `users` because the route never restored
-    // them (the backup exports id/username/role for inspection but omits
-    // password_hash/mfa_secret/recovery_codes, so a restored row would be
-    // an account that can never log in). Reporting `users: 0` made it
-    // look like a silent loss bug; an explicit `note` in the response
-    // tells operators the file contains user metadata that was not
-    // applied. Hash-bearing fields are deliberately not in the backup
-    // format, so restore for users would need a separate flow.
+    // Configuration exports contain only metadata for identities and API keys.
+    // Credential-bearing restores use the separately reviewed database flow.
     const restored = { settings: 0, apiKeys: 0 };
+    let reviewed;
 
-    // v8.7.20 RELIABILITY — wrap in a SQLite transaction so a crash mid-
-    // restore (process killed by OOM/SIGTERM, file-system error, schema
-    // mismatch on a single row) doesn't leave the settings table half-
-    // applied. better-sqlite3's db.transaction(fn)() opens BEGIN, calls
-    // fn synchronously, COMMITs on return, ROLLBACKs on throw. The
-    // apiKeys per-row try/catch is preserved INSIDE the transaction —
-    // an individual bad-row error is silently skipped (the previous
-    // behavior), but a non-row error (out of disk, prepare failure)
-    // rolls back the entire restore.
+    // Lock writers before reviewing the plan again and applying changes.
     db.transaction(() => {
-      if (Array.isArray(data.settings)) {
-        const upsert = db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
-        for (const s of data.settings) {
-          upsert.run(s.key, s.value);
-          restored.settings++;
-        }
+      reviewed = configRestorePlan(db, data);
+      if (data.planId !== undefined && data.planId !== reviewed.plan.planId) {
+        throw Object.assign(new Error('Settings changed since review. Open a new restore plan.'), { status: 409 });
       }
-      if (Array.isArray(data.apiKeys)) {
-        const upsert = db.prepare('INSERT OR REPLACE INTO api_keys (id, name, prefix, created_at, created_by, last_used_at, hash) VALUES (?, ?, ?, ?, ?, ?, ?)');
-        for (const k of data.apiKeys) {
-          try { upsert.run(k.id, k.name, k.prefix, k.created_at, k.created_by, k.last_used_at, k.hash || ''); restored.apiKeys++; } catch { /* skip individual bad row */ }
-        }
-      }
-    })();
+      const upsertSettings = db.prepare(`INSERT INTO settings (key, value) VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value WHERE settings.value IS NOT excluded.value`);
+      for (const [key, value] of reviewed.settings) restored.settings += upsertSettings.run(key, value).changes;
+    }).immediate();
 
     auditService.log({
       userId: req.user.id, username: req.user.username,
@@ -91,13 +103,13 @@ router.post('/restore', requireAuth, requireRole('admin'), writeable, (req, res)
       details: JSON.stringify(restored), ip: getClientIp(req),
     });
 
-    const response = { ok: true, restored };
+    const response = { ok: true, restored, skipped: { apiKeys: reviewed.plan.apiKeysSkipped, users: reviewed.plan.usersSkipped } };
     if (Array.isArray(data.users) && data.users.length > 0) {
       response.note = `${data.users.length} users in the backup file were not restored. User data is exported for inspection/audit purposes only; the backup format omits password_hash and mfa_secret, so restoring would create accounts that cannot authenticate. Re-create users manually after restore.`;
     }
     res.json(response);
   } catch (err) {
-    res.status(500).json({ error: 'Restore failed: ' + err.message });
+    res.status(err.status || 500).json({ error: err.status ? err.message : 'Restore failed' });
   }
 });
 
@@ -239,17 +251,18 @@ router.get('/list', requireAuth, requireRole('admin'), (req, res) => {
     const backupDir = process.env.DATA_DIR || '/data';
 
     const files = [];
-    if (fs.existsSync(backupDir)) {
-      const entries = fs.readdirSync(backupDir).filter(f => f.startsWith('backup-') && f.endsWith('.db'));
-      for (const f of entries.sort().reverse()) {
+    for (const [location, directory] of [['local', backupDir], ['scheduled', path.join(backupDir, 'backups')]]) {
+      if (!fs.existsSync(directory)) continue;
+      const entries = fs.readdirSync(directory).filter(f => /^backup-.*\.db(?:\.enc)?$/.test(f));
+      for (const f of entries) {
         try {
-          const stat = fs.statSync(path.join(backupDir, f));
-          files.push({ name: f, size: stat.size, created: stat.mtime.toISOString() });
+          const stat = fs.lstatSync(path.join(directory, f));
+          if (stat.isFile()) files.push({ name: f, size: stat.size, created: stat.mtime.toISOString(), location, encrypted: f.endsWith('.enc') });
         } catch { /* skip unreadable */ }
       }
     }
 
-    res.json({ files, dir: backupDir });
+    res.json({ files: files.sort((a, b) => b.created.localeCompare(a.created)).slice(0, 250), dir: backupDir });
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }

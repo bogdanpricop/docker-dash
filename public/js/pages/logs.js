@@ -11,11 +11,16 @@ const LogsPage = {
   _collapsed: {},
   _sidebarTab: 'tree', // 'tree' | 'tags'
 
-  async render(container) {
+  async render(container, params = {}) {
+    const target = /^container\/([a-f0-9]{12,64})$/.exec(params.id || '')?.[1];
+    this._mode = target ? 'single' : 'multi';
     container.innerHTML = `
       <div class="page-header">
         <h2><i class="fas fa-scroll" style="color:var(--accent)"></i> Log Explorer</h2>
         <div class="page-actions">
+          <select id="logs-mode" class="form-control" aria-label="Log view">
+            <option value="single">Single</option><option value="multi">Multi</option><option value="grouped">Grouped</option>
+          </select>
           <select id="logs-level" class="form-control" style="width:auto;padding:4px 8px;font-size:12px">
             <option value="all">All Levels</option>
             <option value="error">Error</option>
@@ -37,12 +42,14 @@ const LogsPage = {
           </select>
           <div class="search-box" style="max-width:220px">
             <i class="fas fa-search"></i>
-            <input type="text" id="logs-search" placeholder="Search / regex...">
+            <input type="text" id="logs-search" placeholder="Search logs…" aria-label="Search logs">
           </div>
           <button class="btn btn-sm btn-secondary" id="logs-refresh"><i class="fas fa-sync-alt"></i></button>
           <button class="btn btn-sm btn-secondary" id="logs-download" title="Download logs"><i class="fas fa-download"></i></button>
         </div>
       </div>
+      <div class="log-viewer-controls" id="explorer-log-controls"></div>
+      <div class="text-xs text-muted" id="logs-refresh-status"></div>
       <div style="display:flex;gap:0;height:calc(100vh - 160px);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
         <div id="logs-sidebar" style="width:20%;min-width:180px;max-width:280px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden">
           <div style="display:flex;border-bottom:1px solid var(--border)">
@@ -65,13 +72,35 @@ const LogsPage = {
       </div>
     `;
 
+    const output = container.querySelector('#logs-output');
+    this._viewer = new LogViewer(container.querySelector('#explorer-log-controls'), output, paused => {
+      if (paused) {
+        this._loadSequence = (this._loadSequence || 0) + 1;
+        container.querySelector('#logs-refresh-status').textContent = 'Paused';
+      } else this._loadLogs();
+    });
+    const mode = container.querySelector('#logs-mode');
+    mode.value = this._mode;
+    mode.addEventListener('change', () => {
+      this._mode = mode.value;
+      if (this._mode === 'single') this._selectedContainers = new Set([...this._selectedContainers].slice(0, 1));
+      this._renderSidebar();
+      this._loadLogs();
+    });
+
     // Load containers and build tree
     try {
-      this._allContainers = await Api.getContainers(false);
-      this._allContainers = this._allContainers.filter(c => c.state === 'running');
-      this._selectedContainers = new Set(this._allContainers.map(c => c.id?.substring(0, 12)));
+      const { containers, host } = await Api.get('/containers?context=1');
+      if (!output.isConnected) return;
+      this._hostId = host.id;
+      this._allContainers = containers.filter(c => c.state === 'running' || c.id.startsWith(target || '__none__'));
+      const candidates = target ? this._allContainers.filter(c => c.id.startsWith(target)) : this._allContainers.slice(0, 25);
+      this._selectedContainers = new Set(candidates.map(c => c.id.substring(0, 12)));
       this._renderSidebar();
-    } catch { /* ignore */ }
+    } catch (error) {
+      if (output.isConnected) output.textContent = error.message;
+      return;
+    }
 
     // Sidebar tab switching
     container.querySelectorAll('.logs-sidebar-tab').forEach(tab => {
@@ -91,7 +120,7 @@ const LogsPage = {
 
     // Toolbar buttons
     container.querySelector('#logs-select-all').addEventListener('click', () => {
-      this._selectedContainers = new Set(this._allContainers.map(c => c.id?.substring(0, 12)));
+      this._selectedContainers = new Set(this._allContainers.slice(0, this._mode === 'single' ? 1 : 25).map(c => c.id.substring(0, 12)));
       this._renderSidebar();
       this._loadLogs();
     });
@@ -122,6 +151,13 @@ const LogsPage = {
     container.querySelector('#logs-download').addEventListener('click', () => this._downloadLogs());
 
     await this._loadLogs();
+    if (output.isConnected) this._refreshTimer = setInterval(() => this._loadLogs(), 8000);
+  },
+
+  _selectContainer(id, selected) {
+    if (!selected) this._selectedContainers.delete(id);
+    else if (this._mode === 'single') this._selectedContainers = new Set([id]);
+    else if (this._selectedContainers.size < 25) this._selectedContainers.add(id);
   },
 
   _renderSidebar() {
@@ -199,11 +235,8 @@ const LogsPage = {
       cb.addEventListener('change', () => {
         const stack = cb.dataset.stack;
         const containers = stacks[stack] || [];
-        containers.forEach(c => {
-          const cid = c.id?.substring(0, 12);
-          if (cb.checked) this._selectedContainers.add(cid);
-          else this._selectedContainers.delete(cid);
-        });
+        const candidates = cb.checked && this._mode === 'single' ? containers.slice(0, 1) : containers;
+        candidates.forEach(c => this._selectContainer(c.id.substring(0, 12), cb.checked));
         this._renderSidebar();
         this._loadLogs();
       });
@@ -213,8 +246,7 @@ const LogsPage = {
     panel.querySelectorAll('.logs-leaf-check').forEach(cb => {
       cb.addEventListener('change', () => {
         const cid = cb.dataset.cid;
-        if (cb.checked) this._selectedContainers.add(cid);
-        else this._selectedContainers.delete(cid);
+        this._selectContainer(cid, cb.checked);
         this._renderSidebar();
         this._loadLogs();
       });
@@ -225,8 +257,7 @@ const LogsPage = {
       leaf.addEventListener('click', (e) => {
         if (e.target.type === 'checkbox') return;
         const cid = leaf.dataset.cid;
-        if (this._selectedContainers.has(cid)) this._selectedContainers.delete(cid);
-        else this._selectedContainers.add(cid);
+        this._selectContainer(cid, !this._selectedContainers.has(cid));
         this._renderSidebar();
         this._loadLogs();
       });
@@ -251,10 +282,9 @@ const LogsPage = {
         const cid = tag.dataset.logTag;
         if (cid === '') {
           // Select all
-          this._selectedContainers = new Set(this._allContainers.map(c => c.id?.substring(0, 12)));
+          this._selectedContainers = new Set(this._allContainers.slice(0, this._mode === 'single' ? 1 : 25).map(c => c.id.substring(0, 12)));
         } else {
-          if (this._selectedContainers.has(cid)) this._selectedContainers.delete(cid);
-          else this._selectedContainers.add(cid);
+          this._selectContainer(cid, !this._selectedContainers.has(cid));
         }
         this._renderSidebar();
         this._loadLogs();
@@ -263,70 +293,37 @@ const LogsPage = {
   },
 
   async _loadLogs() {
-    const output = document.getElementById('logs-output');
-    if (!output) return;
-    output.innerHTML = '<span class="text-muted"><i class="fas fa-spinner fa-spin"></i> Loading logs...</span>';
-
-    const level = document.getElementById('logs-level')?.value || 'all';
-    const sinceVal = document.getElementById('logs-since')?.value || '';
-    const tail = document.getElementById('logs-tail')?.value || '100';
-    const search = document.getElementById('logs-search')?.value?.trim() || '';
-
-    // Get selected container IDs
-    const containerIds = [...this._selectedContainers].join(',');
-
-    // Calculate since timestamp
-    let since = '';
-    if (sinceVal) {
-      const hours = { '1h': 1, '6h': 6, '24h': 24 }[sinceVal] || 0;
-      if (hours) since = new Date(Date.now() - hours * 3600000).toISOString();
-    }
-
-    if (!containerIds) {
-      output.innerHTML = '<span class="text-muted">Select at least one container from the sidebar.</span>';
+    const viewer = this._viewer;
+    if (!viewer?.output.isConnected || viewer.paused) return;
+    const output = viewer.output;
+    const status = document.getElementById('logs-refresh-status');
+    const sequence = this._loadSequence = (this._loadSequence || 0) + 1;
+    const level = document.getElementById('logs-level').value;
+    const range = Number.parseInt(document.getElementById('logs-since').value, 10);
+    const since = range ? new Date(Date.now() - range * 3600000).toISOString() : '';
+    const tail = document.getElementById('logs-tail').value;
+    const search = document.getElementById('logs-search').value.trim();
+    const containers = [...this._selectedContainers].join(',');
+    if (!containers) {
+      this._lastLogs = [];
+      viewer.set([], search, this._mode);
+      output.textContent = 'Select a container from the sidebar.';
+      status.textContent = '';
       return;
     }
-
     try {
-      const data = await Api.getMultiLogs({ containers: containerIds, tail, since, search, level });
-      const logs = data.logs || [];
-
-      if (logs.length === 0) {
-        output.innerHTML = '<span class="text-muted">No log entries found matching your filters.</span>';
-        return;
+      const { logs } = await Api.getMultiLogs({ containers, tail, since, search, level, hostId: this._hostId });
+      if (!output.isConnected || this._loadSequence !== sequence) return;
+      if (JSON.stringify(logs) !== JSON.stringify(this._lastLogs) || this._renderedMode !== this._mode || this._renderedSearch !== search) {
+        this._lastLogs = logs;
+        this._renderedMode = this._mode;
+        this._renderedSearch = search;
+        viewer.set(logs, search, this._mode);
+        if (!logs.length) output.textContent = 'No log entries match your filters.';
       }
-
-      // Assign colors per container
-      const containerColors = {};
-      const palette = ['#58a6ff', '#3fb950', '#d29922', '#f85149', '#a371f7', '#79c0ff', '#56d364', '#e3b341', '#ff7b72', '#bc8cff'];
-      let colorIdx = 0;
-      logs.forEach(l => {
-        if (!containerColors[l.container]) {
-          containerColors[l.container] = palette[colorIdx % palette.length];
-          colorIdx++;
-        }
-      });
-
-      this._lastLogs = logs;
-
-      output.innerHTML = logs.map(l => {
-        const color = containerColors[l.container] || 'var(--text-dim)';
-        const severityClass = l.severity === 'error' ? 'log-error' : l.severity === 'warn' ? 'log-warn' : l.severity === 'debug' ? 'log-debug' : '';
-        const ts = l.ts ? `<span class="text-muted" style="font-size:10px;min-width:19ch;display:inline-block">${Utils.escapeHtml(l.ts)}</span>` : '';
-        const tag = `<span style="color:${color};font-weight:600;min-width:16ch;display:inline-block;font-size:11px">[${Utils.escapeHtml(l.container)}]</span>`;
-        let msg = Utils.escapeHtml(l.msg);
-        if (search) {
-          try {
-            const regex = new RegExp(`(${search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-            msg = msg.replace(regex, '<mark class="log-highlight">$1</mark>');
-          } catch { /* invalid regex */ }
-        }
-        return `<span class="log-line ${severityClass}">${ts} ${tag} ${msg}</span>`;
-      }).join('\n');
-
-      output.scrollTop = output.scrollHeight;
-    } catch (err) {
-      output.innerHTML = `<span style="color:var(--red)"><i class="fas fa-exclamation-triangle"></i> ${Utils.escapeHtml(err.message)}</span>`;
+      status.textContent = `Snapshot at ${new Date().toLocaleTimeString()} · up to 25 containers`;
+    } catch (error) {
+      if (output.isConnected && this._loadSequence === sequence) status.textContent = 'Could not refresh logs · ' + error.message;
     }
   },
 
@@ -338,12 +335,16 @@ const LogsPage = {
     a.href = URL.createObjectURL(blob);
     a.download = `docker-dash-logs-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.log`;
     a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     Toast.success('Logs downloaded');
   },
 
   destroy() {
     clearInterval(this._refreshTimer);
     this._selectedContainers.clear();
+    this._lastLogs = null;
+    this._viewer = null;
+    this._loadSequence = (this._loadSequence || 0) + 1;
   },
 };
 

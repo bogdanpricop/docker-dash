@@ -137,6 +137,7 @@ const SettingsPageLogforwarding = {
     if (!delivery?.lastError) return;
     const esc = Utils.escapeHtml;
     const { lastError: details, lastErrorAt } = delivery;
+    const sources = Array.isArray(details.sources) ? details.sources : [];
     const entries = [
       ['Destination', name],
       ['Failed at', Utils.formatDate(lastErrorAt)],
@@ -154,10 +155,20 @@ const SettingsPageLogforwarding = {
       <div class="modal-header"><h3>Log delivery error</h3></div>
       <div class="modal-body"><dl>
         ${entries.map(([label, value]) => `<dt><strong>${esc(label)}</strong></dt><dd>${esc(String(value))}</dd>`).join('')}
-      </dl></div>
+      </dl>${sources.length ? `<h4>Containers in this batch</h4><div class="schedule-controls">
+        ${sources.map((source, index) => `<button type="button" class="btn btn-xs btn-secondary" data-lf-source="${index}">${esc(source.containerName || Utils.shortId(source.containerId))} · logs</button>`).join('')}
+      </div>` : ''}</div>
       <div class="modal-footer"><button type="button" class="btn btn-primary" id="lf-error-close">Close</button></div>
     `, { width: '520px' });
     Modal._content.querySelector('#lf-error-close').addEventListener('click', () => Modal.close());
+    Modal._content.querySelectorAll('[data-lf-source]').forEach(button => button.addEventListener('click', () => {
+      const source = sources[Number(button.dataset.lfSource)];
+      if (!source || !/^[a-f0-9]{12,64}$/i.test(source.containerId)) return;
+      const route = '#/logs/container/' + encodeURIComponent(source.containerId);
+      Modal.close();
+      if (source.hostId) App._activateHost(source.hostId, route);
+      else location.hash = route;
+    }));
   },
 
   async _openLogForwarder(forwarder = null) {

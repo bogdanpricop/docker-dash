@@ -8,6 +8,10 @@ const auditService = require('../services/audit');
 const { requireAuth, requireRole, writeable } = require('../middleware/auth');
 const { getClientIp } = require('../utils/helpers');
 const asyncHandler = require('../utils/asyncHandler');
+const { parseHostId } = require('../utils/host-id');
+const { getDb } = require('../db');
+const permissions = require('../services/permissions');
+const config = require('../config');
 
 const router = Router();
 
@@ -58,6 +62,34 @@ router.get('/effective', requireAuth, asyncHandler(async (req, res) => {
   const isAdmin = req.user.role === 'admin' || (Array.isArray(req.user.roles) && req.user.roles.includes('admin'));
   const permission = svc.resolveEffectivePermission(req.user.id, hostId, isAdmin);
   res.json({ hostId, userId: req.user.id, permission });
+}));
+
+router.get('/explain', requireAuth, requireRole('admin'), asyncHandler((req, res) => {
+  const requestedHost = parseHostId(req.query.hostId);
+  const userId = parseHostId(req.query.userId);
+  const stack = req.query.stack || '_standalone';
+  if (requestedHost === null || !userId || typeof stack !== 'string' || stack.length > 200) {
+    return res.status(400).json({ error: 'Valid user, host and optional stack are required' });
+  }
+  const db = getDb();
+  const host = db.prepare('SELECT id, name, is_active FROM docker_hosts WHERE id = ?').get(svc.normalizeHostId(requestedHost));
+  const user = db.prepare('SELECT id, username, role, is_active FROM users WHERE id = ?').get(userId);
+  if (!user || !host) return res.status(404).json({ error: 'User or host not found' });
+  const grant = svc.describeGrantResolution(userId, host.id, user.role === 'admin');
+  const role = permissions.getEffectiveRole(userId, stack, user.role);
+  const enabled = Boolean(user.is_active && host.is_active);
+  res.json({
+    host: { id: host.id, name: host.name, active: Boolean(host.is_active) },
+    user: { id: user.id, username: user.username, role: user.role, active: Boolean(user.is_active) },
+    stack, stackPermission: role, permission: grant.permission, sources: grant.sources,
+    actions: {
+      viewContainers: enabled && grant.permission !== null && permissions.hasPermission(role, 'view'),
+      operateContainers: enabled && !config.features.readOnly && ['admin', 'operator'].includes(user.role)
+        && ['admin', 'operate'].includes(grant.permission)
+        && permissions.hasPermission(role, 'operate'),
+      manageHostSettings: Boolean(user.is_active && user.role === 'admin' && !config.features.readOnly),
+    },
+  });
 }));
 
 // Legacy default toggle — admin only. When false, users with no grants

@@ -100,6 +100,12 @@ const SettingsPageAccess = {
         </div>
       </div>
 
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header"><h3>Effective access inspector</h3>
+          <button type="button" class="btn btn-sm btn-secondary" id="access-explain" ${hosts.length && users.length ? '' : 'disabled'}>Inspect user access</button>
+        </div>
+        <div class="card-body text-sm text-muted">Review grants from the role, direct assignments, teams and host groups for one user on one host.</div>
+      </div>
       <div class="card">
         <div class="card-header"><h3><i class="fas fa-user-lock" style="margin-right:8px"></i>${Utils.escapeHtml(t('permissions'))}</h3></div>
         <div class="card-body">
@@ -140,6 +146,8 @@ const SettingsPageAccess = {
         </div>
       </div>`;
 
+    el.querySelector('#access-explain').addEventListener('click', () => this._inspectEffectiveAccess(users, hosts));
+
     el.querySelector('#access-legacy')?.addEventListener('change', async (event) => {
       const enabled = event.target.checked;
       if (!enabled) {
@@ -176,6 +184,65 @@ const SettingsPageAccess = {
         if (action === 'grant-delete') return this._accessRevoke(id);
       });
     });
+  },
+
+  async _inspectEffectiveAccess(users, hosts) {
+    const escape = Utils.escapeHtml;
+    const selectedHost = Api.getHostId();
+    const choices = (rows, field, selected) => rows.map(row =>
+      `<option value="${row.id}" ${selected?.(row) ? 'selected' : ''}>${escape(row[field])}</option>`).join('');
+    Modal.open(`
+      <div class="modal-header"><h3>What can this user do?</h3>
+        <button class="modal-close-btn" type="button" aria-label="Close" data-access-close><i class="fas fa-times"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group"><label for="access-inspect-user">User</label><select id="access-inspect-user" class="form-control">${choices(users, 'username')}</select></div>
+        <div class="form-group"><label for="access-inspect-host">Host</label><select id="access-inspect-host" class="form-control">${choices(hosts, 'name', host => host.id === selectedHost || (!selectedHost && host.isDefault))}</select></div>
+        <div class="form-group"><label for="access-inspect-stack">Compose project</label><input id="access-inspect-stack" class="form-control" placeholder="Standalone" maxlength="200"></div>
+        <div data-access-explanation aria-live="polite"></div>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn btn-primary" data-access-refresh>Inspect</button></div>
+    `, { width: '650px' });
+    const content = Modal._content;
+    const output = content.querySelector('[data-access-explanation]');
+    const inspect = async () => {
+      const query = new URLSearchParams({
+        userId: content.querySelector('#access-inspect-user').value,
+        hostId: content.querySelector('#access-inspect-host').value,
+        stack: content.querySelector('#access-inspect-stack').value.trim(),
+      });
+      output.textContent = 'Checking access…';
+      try {
+        const data = await Api.get('/host-permissions/explain?' + query);
+        if (!output.isConnected) return;
+        const sources = data.sources.map(source => {
+          const kind = { global_admin: 'Global administrator', legacy_default: 'Legacy default', direct: 'Direct grant', team: 'Team grant' }[source.kind];
+          return `<li>${escape([kind, source.team, source.hostGroup].filter(Boolean).join(' · '))} <span class="badge">${escape(source.permission)}</span></li>`;
+        }).join('');
+        const allowed = value => value ? '<span class="badge badge-success">Allowed by access rules</span>' : '<span class="badge badge-warning">Denied</span>';
+        output.innerHTML = `
+          <p><strong>${escape(data.user.username)}</strong> · ${escape(data.host.name)}</p>
+          <p class="text-sm text-muted">Role ${escape(data.user.role)} · Host grant ${escape(data.permission || 'none')} · Stack grant ${escape(data.stackPermission)}</p>
+          ${!data.user.active || !data.host.active ? '<p class="text-sm text-muted">The user or host is inactive.</p>' : ''}
+          <ul class="access-sources">${sources || '<li>No applicable host grants</li>'}</ul>
+          <table class="info-table">
+            <tr><td>View containers in project</td><td>${allowed(data.actions.viewContainers)}</td></tr>
+            <tr><td>Start, stop or restart containers</td><td>${allowed(data.actions.operateContainers)}</td></tr>
+            <tr><td>Manage host settings</td><td>${allowed(data.actions.manageHostSettings)}</td></tr>
+          </table>
+          <p class="text-xs text-muted">Actions remain subject to runtime policy and approval checks.</p>`;
+      } catch (error) {
+        if (output.isConnected) output.textContent = error.message;
+      }
+    };
+    content.querySelector('[data-access-close]').addEventListener('click', () => Modal.close());
+    const button = content.querySelector('[data-access-refresh]');
+    button.addEventListener('click', async () => {
+      button.disabled = true;
+      try { await inspect(); }
+      finally { button.disabled = false; }
+    });
+    button.click();
   },
 
   async _accessTeamDialog(team = null) {

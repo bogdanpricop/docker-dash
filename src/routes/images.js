@@ -508,6 +508,42 @@ router.get('/scan-history/:id', requireAuth, asyncHandler((req, res) => {
   res.json(row);
 }));
 
+router.get('/scan-triage', requireAuth, asyncHandler(async (req, res) => {
+  const hostId = req.resolvedHostId ?? req.hostId;
+  const rows = getDb().prepare(`SELECT id, verified_image_id, image_name, scanner, scanned_at, results_json
+    FROM scan_results AS scan
+    WHERE host_id = ? AND verified_image_id IS NOT NULL AND id = (
+      SELECT MAX(id) FROM scan_results WHERE host_id = scan.host_id AND verified_image_id = scan.verified_image_id
+    ) ORDER BY id DESC LIMIT 101`).all(hostId);
+  const containers = require('../services/permissions').filterContainers(
+    await dockerService.listContainers(hostId), req.user.id, req.user.role);
+  const consumers = new Map();
+  for (const container of containers) {
+    if (!consumers.has(container.imageIdFull)) consumers.set(container.imageIdFull, []);
+    consumers.get(container.imageIdFull).push({ id: container.id, name: container.name, stack: container.stack || '_standalone', state: container.state });
+  }
+  const findings = [];
+  const severity = { critical: 0, high: 1, medium: 2, low: 3 };
+  const scans = rows.slice(0, 100).map(row => {
+    const { results_json: json, ...scan } = row;
+    let vulnerabilities;
+    try { vulnerabilities = JSON.parse(json); } catch { vulnerabilities = []; }
+    if (!Array.isArray(vulnerabilities)) vulnerabilities = [];
+    for (const finding of vulnerabilities) {
+      findings.push({
+        scanId: row.id, id: finding.id, package: finding.package, type: finding.type,
+        version: finding.version, fixedIn: finding.fixedIn, severity: finding.severity, target: finding.target,
+      });
+    }
+    return { ...scan, consumers: consumers.get(row.verified_image_id) || [] };
+  });
+  findings.sort((a, b) => (severity[a.severity] ?? 4) - (severity[b.severity] ?? 4) || b.scanId - a.scanId);
+  res.json({
+    host: { id: hostId, name: req.hostName }, scans, findings: findings.slice(0, 5000),
+    truncated: rows.length > 100 || findings.length > 5000,
+  });
+}));
+
 // Delete scan results by IDs (POST to avoid /:id route conflict)
 router.post('/scan-history/delete', requireAuth, requireRole('admin'), writeable, asyncHandler((req, res) => {
   const { ids } = req.body;

@@ -8,6 +8,8 @@ const auditService = require('../services/audit');
 const { requireAuth, requireRole, writeable } = require('../middleware/auth');
 const { getClientIp } = require('../utils/helpers');
 const asyncHandler = require('../utils/asyncHandler');
+const { extractHostId } = require('../middleware/hostId');
+const { getDb } = require('../db');
 
 const router = Router();
 
@@ -44,6 +46,17 @@ router.get('/resolve', requireAuth, asyncHandler(async (req, res) => {
   const hostId = req.query.hostId ? parseInt(req.query.hostId, 10) : undefined;
   const severity = req.query.severity || 'info';
   res.json({ channelIds: svc.resolve({ hostId, severity }) });
+}));
+
+router.get('/matrix', requireAuth, requireRole('admin'), extractHostId, asyncHandler((req, res) => {
+  const hostId = req.resolvedHostId ?? req.hostId;
+  const db = getDb();
+  const channels = db.prepare('SELECT id, name, provider, is_active FROM notification_channels ORDER BY name').all();
+  const events = db.prepare('SELECT id, name, metric, target, severity, is_active FROM alert_rules ORDER BY name').all();
+  const bySeverity = Object.fromEntries(['info', 'warning', 'critical'].map(severity => [severity, svc.resolve({ hostId, severity })]));
+  res.json({ host: { id: hostId, name: req.hostName }, channels, events: events.map(event => ({
+    ...event, channelIds: bySeverity[event.severity] || [],
+  })), bySeverity });
 }));
 
 module.exports = router;

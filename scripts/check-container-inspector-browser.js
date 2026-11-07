@@ -148,7 +148,7 @@ async function main() {
       await openContainers();
     });
     await page.setViewport({ width: 390, height: 844 });
-    await page.click(rowAction('a', 'stats'));
+    await page.locator(rowAction('a', 'stats')).click();
     await page.waitForFunction(() => document.querySelector('#inspector-content').textContent.includes('17.5%'));
     assert.deepEqual(await page.evaluate(() => {
       const panel = document.querySelector('#container-inspector');

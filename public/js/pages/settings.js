@@ -8,7 +8,7 @@ const SettingsPage = {
   _user: null,
   _notificationTests: new Map(),
 
-  async render(container) {
+  async render(container, params = {}) {
     this._user = App.user;
     this._notificationTests = new Map();
     const isAdmin = this._user?.role === 'admin';
@@ -48,6 +48,9 @@ const SettingsPage = {
         this._renderTab();
       });
     });
+    const tabs = [...container.querySelectorAll('#settings-tabs [data-tab]')];
+    this._tab = tabs.find(tab => tab.dataset.tab === (params.id || this._tab))?.dataset.tab || 'profile';
+    tabs.forEach(tab => tab.classList.toggle('active', tab.dataset.tab === this._tab));
 
     await this._renderTab();
   },

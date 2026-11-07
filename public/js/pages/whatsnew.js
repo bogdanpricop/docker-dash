@@ -9,6 +9,12 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.96.32', date: '2026-11-07', title: 'Operator review, recovery and security triage', changes: [
+      { type: 'feature', text: 'Review bulk container actions by host and retry only failures. Pin service names and switch between column presets.' },
+      { type: 'feature', text: 'Explore single, multi and grouped logs with shared controls. Open incident logs from Docker Activity and failed forwarding batches.' },
+      { type: 'feature', text: 'Review backup copies and configuration changes before restoring. Inspect effective user grants and preview host notification routing.' },
+      { type: 'feature', text: 'Filter and compare verified vulnerability scans, see affected containers and export SARIF.' },
+    ] },
     { version: '8.96.31', date: '2026-11-07', title: 'Fleet, Compose and resource workflows', changes: [
       { type: 'feature', text: 'Compare Docker host cards and open filtered container lists. Schedules shows the host, timezone, next run and last result.' },
       { type: 'feature', text: 'Expand stack services, check and plan Compose changes, and see the current YAML relationships in Graph.' },

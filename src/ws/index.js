@@ -985,7 +985,7 @@ class WsServer {
         const permService = require('../services/permissions');
         const inspect = await dockerService.inspectContainer(containerId, hostId);
         if (!this._authorizeClient(ws, client)) return;
-        const stack = inspect.Config?.Labels?.['com.docker.compose.project'] || '_standalone';
+        const stack = inspect.labels?.['com.docker.compose.project'] || inspect.Config?.Labels?.['com.docker.compose.project'] || '_standalone';
         const effectiveRole = permService.getEffectiveRole(client.user.id, stack, client.user.role);
         if (!permService.hasPermission(effectiveRole, 'operate')) {
           ws.send(JSON.stringify({ type: 'exec:error', message: 'Insufficient stack permissions for exec' }));

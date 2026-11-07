@@ -353,6 +353,7 @@ textarea { resize: vertical; min-height: 80px; }
   margin: 0; min-width: 0; color: var(--text-bright); font-size: 16px; overflow-wrap: anywhere;
 }
 .container-inspector-nav { flex-wrap: wrap; }
+.container-inspector-nav [hidden] { display: none; }
 .container-inspector-nav [role="tablist"] { display: flex; flex-wrap: wrap; gap: 4px; }
 .container-inspector-nav [role="tab"][aria-selected="true"] { background: var(--accent-dim); color: var(--accent); }
 .container-inspector-content { min-height: 0; padding: 12px; overflow: auto; }
@@ -428,6 +429,23 @@ textarea { resize: vertical; min-height: 80px; }
 .registry-pull-target { margin-bottom: 12px; }
 .registry-pull-target pre { max-height: 150px; overflow: auto; }
 .registry-pull-target p { overflow-wrap: anywhere; }
+.container-column-mode select { padding: 4px 8px; font-size: 12px; }
+#containers-grouped .containers-table :is(th, td):nth-child(-n+2) { position: sticky; background: var(--surface); }
+#containers-grouped .containers-table :is(th, td):first-child { left: 0; min-width: 32px; width: 32px; z-index: 3; }
+#containers-grouped .containers-table :is(th, td):nth-child(2) { left: 32px; z-index: 2; box-shadow: 1px 0 var(--border); }
+#containers-grouped .containers-table tr:is(.row-selected, .container-inspected) > td:nth-child(-n+2) {
+  background: var(--surface2);
+}
+#containers-workspace:not([data-columns="updates"]) .container-col-digest,
+#containers-workspace[data-columns="compact"] :is(.container-col-image, .container-col-ports, .container-col-created),
+#containers-workspace[data-columns="resources"] :is(.container-col-version, .container-col-created),
+#containers-workspace[data-columns="updates"] .container-col-ports { display: none; }
+#containers-workspace[data-columns="resources"] .stats-bars { min-width: 85px; }
+.bulk-plan-rows { max-height: 250px; overflow: auto; padding-left: 18px; margin: 10px 0; }
+.log-viewer-controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.log-viewer-wrap { white-space: pre-wrap !important; overflow-wrap: anywhere; }
+.log-viewer-group { color: var(--accent); display: inline-block; margin-top: 8px; }
+.log-match-active { outline: 2px solid var(--accent); }
 
 /* ── Cards ───────────────────────────────────────── */
 .card {

@@ -176,6 +176,7 @@ const Api = {
     if (opts.since) params.set('since', opts.since);
     if (opts.search) params.set('search', opts.search);
     if (opts.level) params.set('level', opts.level);
+    if (opts.hostId !== undefined) params.set('hostId', opts.hostId);
     return this.get(`/containers/logs/multi?${params.toString()}`);
   },
   getContainerStats(id) { return this.get(`/containers/${id}/stats`); },
@@ -184,7 +185,9 @@ const Api = {
   containerAction(id, action) { return this.post(`/containers/${id}/${action}`); },
   removeContainer(id, force = false) { return this.delete(`/containers/${id}?force=${force}`); },
   renameContainer(id, name) { return this.post(`/containers/${id}/rename`, { name }); },
-  bulkContainerAction(ids, action) { return this.post('/containers/bulk', { ids, action }); },
+  bulkContainerAction(ids, action, { hostId = this._currentHostId, preview = false, requireEligible = false } = {}) {
+    return this.post(`/containers/bulk?hostId=${hostId}`, { ids, action, preview, requireEligible });
+  },
 
   // ─── Sandbox ─────────────────────────────────────
   createSandbox(data) { return this.post('/containers/sandbox', data); },
@@ -222,7 +225,7 @@ const Api = {
   getSystemInfo() { return this.get('/system/info'); },
   getDiskUsage() { return this.get('/system/disk-usage'); },
   checkUpdates() { return this.get('/system/check-updates'); },
-  prune(type) { return this.post(`/system/prune/${type}`); },
+  prune(type, hostId = this._currentHostId) { return this.post(`/system/prune/${type}?hostId=${hostId}`); },
   getDatabaseInfo() { return this.get('/system/database'); },
   databaseCleanup() { return this.post('/system/database/cleanup'); },
   databaseCleanupAggressive(hours = 24) { return this.post('/system/database/cleanup-aggressive', { hours }); },

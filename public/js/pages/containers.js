@@ -47,7 +47,8 @@ const ContainersPage = {
     const filter = /^filter\/(running|degraded|stopped)$/.exec(params.id || '')?.[1];
     if (params.id && !filter) {
       this._view = 'detail';
-      this._detailId = params.id;
+      const deepLink = /^([a-f0-9]{12,64})\/(terminal|logs)$/.exec(params.id);
+      this._detailId = deepLink ? deepLink[1] : params.id;
       try { await this._loadDetailModule(); }
       catch (err) {
         container.innerHTML = '<div class="empty-msg is-error">Detail view could not load: ' + Utils.escapeHtml(err.message || 'network error') + '. <button class="btn btn-sm" id="dd-reload-btn">Reload</button></div>';
@@ -55,7 +56,7 @@ const ContainersPage = {
         if (reloadBtn) reloadBtn.addEventListener('click', () => location.reload());
         return;
       }
-      await this._renderDetail(container);
+      await this._renderDetail(container, deepLink?.[2]);
     } else {
       this._view = 'list';
       this._stateFilter = filter || '';
@@ -72,6 +73,9 @@ const ContainersPage = {
   _layout: '1col', // '1col' | '2col'
 
   async _renderList(container) {
+    const tableModes = ['standard', 'compact', 'resources', 'updates'];
+    const savedMode = localStorage.getItem('dd-containers-columns');
+    const tableMode = tableModes.includes(savedMode) ? savedMode : 'standard';
     container.innerHTML = `
       <div class="page-header">
         <h2><i class="fas fa-cube"></i> ${i18n.t('pages.containers.title')}</h2>
@@ -83,6 +87,9 @@ const ContainersPage = {
           <label class="toggle-label">
             <input type="checkbox" id="show-all" checked> ${i18n.t('pages.containers.showStopped')}
           </label>
+          <label class="container-column-mode"><span class="sr-only">Table columns</span><select id="container-column-mode" class="form-control" aria-label="Table columns">
+            ${tableModes.map(mode => `<option value="${mode}" ${mode === tableMode ? 'selected' : ''}>${mode[0].toUpperCase() + mode.slice(1)} columns</option>`).join('')}
+          </select></label>
           <div class="view-toggles">
             <button class="btn-icon view-toggle ${this._layout === '1col' ? 'active' : ''}" id="layout-1col" title="${i18n.t('pages.containers.singleColumn')}">
               <i class="fas fa-bars"></i>
@@ -145,7 +152,7 @@ const ContainersPage = {
         <div id="container-summary-inline" style="margin-left:auto;display:flex;align-items:center;gap:0"></div>
       </div>
       <div id="container-groups-section"></div>
-      <div id="containers-workspace">
+      <div id="containers-workspace" data-columns="${tableMode}">
         <div id="containers-grouped" class="${this._layout === '2col' ? 'stacks-grid-2col' : ''}"></div>
         <aside id="container-inspector" aria-labelledby="container-inspector-title" hidden></aside>
       </div>
@@ -154,10 +161,18 @@ const ContainersPage = {
     this._containers = [];
     this._lastContainers = [];
     const workspace = container.querySelector('#containers-workspace');
+    container.querySelector('#container-column-mode').addEventListener('change', event => {
+      workspace.dataset.columns = event.target.value;
+      localStorage.setItem('dd-containers-columns', event.target.value);
+    });
     const requestedHostId = Api.getHostId();
     const host = App._hostSelectorHosts?.find(item => item.id === requestedHostId || (!requestedHostId && item.isDefault));
     const context = this._listContext = { workspace, banner: container.querySelector('#container-host-bar'), requestedHostId, host, status: 'connecting' };
-    this._inspector = new ContainerInspector(workspace, () => this._syncInspectorRows());
+    this._inspector = new ContainerInspector(workspace, () => this._syncInspectorRows(), item => {
+      const level = this._stackPerms?.[item.stack || '_standalone'];
+      return item.state === 'running' && (App.user?.role === 'admin'
+        || (App.user?.role === 'operator' && ['operate', 'admin'].includes(context.terminalGrant) && !['none', 'view'].includes(level)));
+    });
     this._updateListConnection();
 
     container.querySelector('#container-search').addEventListener('input', Utils.debounce(e => {
@@ -348,6 +363,17 @@ const ContainersPage = {
         this._updateBulkBar();
       }
       Object.assign(context, { host, confirmed: true, status: 'connected', checked: new Date() });
+      if (App.user?.role === 'operator') {
+        Api.getEffectiveHostPermission(host.id).then(grant => {
+          if (!current() || context.host.id !== host.id) return;
+          context.terminalGrant = grant.permission;
+          this._inspector.sync(this._containers, context);
+        }).catch(() => {
+          if (!current() || context.host.id !== host.id) return;
+          context.terminalGrant = null;
+          this._inspector.sync(this._containers, context);
+        });
+      }
       this._containers = containers;
       this._lastContainers = containers;
       this._metaMap = metaMap || {};
@@ -664,11 +690,12 @@ const ContainersPage = {
                 <tr>
                   <th style="width:32px"><input type="checkbox" class="bulk-checkbox bulk-select-all" data-stack="${Utils.escapeHtml(stack)}" title="Select all"></th>
                   <th>${i18n.t('pages.containers.service')}</th>
-                  <th>${i18n.t('pages.containers.image')}</th>
-                  <th>${i18n.t('pages.containers.version')}</th>
+                  <th class="container-col-image">${i18n.t('pages.containers.image')}</th>
+                  <th class="container-col-version">${i18n.t('pages.containers.version')}</th>
+                  <th class="container-col-digest">Installed image ID</th>
                   <th>${i18n.t('common.status')}</th>
-                  <th>${i18n.t('pages.containers.ports')}</th>
-                  <th>${i18n.t('pages.containers.created')}</th>
+                  <th class="container-col-ports">${i18n.t('pages.containers.ports')}</th>
+                  <th class="container-col-created">${i18n.t('pages.containers.created')}</th>
                   <th style="width:130px"></th>
                 </tr>
               </thead>
@@ -1375,39 +1402,50 @@ const ContainersPage = {
       return;
     }
 
+    const context = this._listContext;
     const ids = [...this._selectedIds];
-    if (ids.length === 0) return;
-
-    // Get container names for confirmation
-    const names = ids.map(id => {
-      const c = (this._containers || []).find(c => c.id === id);
-      return c ? (c.name || id.substring(0, 12)) : id.substring(0, 12);
-    });
-
-    const confirmMsg = action === 'remove'
-      ? `Remove ${ids.length} container(s)?\n\n${names.join(', ')}\n\nThis cannot be undone.`
-      : `${action.charAt(0).toUpperCase() + action.slice(1)} ${ids.length} container(s)?`;
-
-    const ok = await Modal.confirm(confirmMsg, {
-      danger: action === 'remove',
-      confirmText: action.charAt(0).toUpperCase() + action.slice(1),
-    });
-    if (!ok) return;
-
+    if (!ids.length || !context?.confirmed || this._bulkPending) return;
+    if (ids.length > 100) { Toast.warning('Select up to 100 containers'); return; }
+    this._bulkPending = true;
+    const escape = Utils.escapeHtml;
     try {
-      Toast.info(`${action}... ${ids.length} containers`);
-      const result = await Api.bulkContainerAction(ids, action);
-      const failed = (result.results || []).filter(r => !r.ok);
-      if (failed.length > 0) {
-        Toast.warning(`${action}: ${failed.length} failed`);
-      } else {
-        Toast.success(`${action} completed for ${ids.length} containers`);
-      }
-      this._selectedIds.clear();
+      const plan = await Api.bulkContainerAction(ids, action, { hostId: context.host.id, preview: true });
+      if (this._listContext !== context || plan.host.id !== context.host.id) return;
+      const eligible = plan.results.filter(row => row.ok);
+      const skipped = plan.results.filter(row => !row.ok);
+      const host = plan.host.name || 'Local Docker';
+      const rows = plan.results.map(row => `<li><strong>${escape(row.name || Utils.shortId(row.id))}</strong> · ${escape(row.ok ? 'Eligible' : row.error)}</li>`).join('');
+      const ok = await Modal.confirm(`
+        <p><strong>${escape(host)}</strong> · ${eligible.length} eligible · ${skipped.length} skipped</p>
+        <ul class="bulk-plan-rows">${rows}</ul>
+        ${action === 'remove' ? '<p class="text-danger">Removing containers is irreversible.</p>' : ''}
+      `, { html: true, danger: action === 'remove' && eligible.length > 0,
+        title: `Bulk ${action} plan`, confirmText: eligible.length ? `Run ${action}` : 'Close', width: '650px' });
+      if (!ok || !eligible.length || this._listContext !== context) return;
+      const result = await Api.bulkContainerAction(eligible.map(row => row.id), action, { hostId: plan.host.id, requireEligible: true });
+      const failures = result.results.filter(row => !row.ok);
+      if (this._listContext !== context) return;
+      this._selectedIds = new Set(failures.map(row => row.id));
       this._updateBulkBar();
       await this._loadList();
-    } catch (err) {
-      Toast.error(err.message);
+      if (this._listContext !== context) return;
+      if (!failures.length) {
+        Toast.success(`${action} completed for ${result.results.length} containers on ${host}`);
+        return;
+      }
+      const names = new Map(eligible.map(row => [row.id, row.name]));
+      const retry = await Modal.confirm(`
+        <p>${result.results.length - failures.length} completed · ${failures.length} failed on <strong>${escape(host)}</strong></p>
+        <ul class="bulk-plan-rows">${failures.map(row => `<li><strong>${escape(names.get(row.id) || Utils.shortId(row.id))}</strong> · ${escape(row.error)}</li>`).join('')}</ul>
+      `, { html: true, title: 'Bulk action results', confirmText: 'Review failed only', width: '650px' });
+      if (retry && this._listContext === context) {
+        this._bulkPending = false;
+        return await this._bulkAction(action);
+      }
+    } catch (error) {
+      Toast.error(error.message);
+    } finally {
+      this._bulkPending = false;
     }
   },
 
@@ -1478,8 +1516,9 @@ const ContainersPage = {
             ${ContainerInspector.rowAction('stats', 'fa-chart-line', c.name)}
           </div>
         </td>
-        <td><span class="mono text-sm">${Utils.escapeHtml(imgName)}</span></td>
-        <td><span class="badge badge-version">${Utils.escapeHtml(version)}</span></td>
+        <td class="container-col-image"><span class="mono text-sm">${Utils.escapeHtml(imgName)}</span></td>
+        <td class="container-col-version"><span class="badge badge-version">${Utils.escapeHtml(version)}</span></td>
+        <td class="container-col-digest mono">${c.imageIdFull ? `<a href="#/images/${encodeURIComponent(c.imageIdFull)}" data-stop-propagation title="${Utils.escapeHtml(c.imageIdFull)}">${Utils.shortImageId(c.imageIdFull)}</a>` : '—'}</td>
         <td><span class="badge ${Utils.statusBadgeClass(c.state)}">${c.state}</span> <span class="health-dot" style="background:${hColor}" title="${hScore}/100 — ${hLabel}"></span>
           <div class="text-xs text-muted" style="margin-top:2px">${Utils.escapeHtml(statusStr.replace(/^(Up|Exited \(\d+\))\s*/, '$1 ').trim())}</div>
           ${running ? `<div class="stats-bars" style="display:flex;gap:3px;margin-top:4px">
@@ -1488,8 +1527,8 @@ const ContainersPage = {
           </div>
           <canvas class="sparkline-canvas" data-sparkline-id="${c.id}" width="60" height="16" style="margin-top:2px;display:block"></canvas>` : ''}
           </td>
-        <td>${this._portLinksHtml(c)}</td>
-        <td class="text-sm text-muted">${created}</td>
+        <td class="container-col-ports">${this._portLinksHtml(c)}</td>
+        <td class="container-col-created text-sm text-muted">${created}</td>
         <td>
           <div class="action-btns">
             <button class="action-btn" data-basket-container="${c.id}" data-name="${Utils.escapeHtml(c.name)}" title="Add to persistent selection basket"><i class="fas fa-basket-shopping"></i></button>

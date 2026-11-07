@@ -32,15 +32,20 @@ function _legacyDefaultEnabled() {
  */
 function resolveEffectivePermission(userId, hostId, isAdmin) {
   if (isAdmin) return 'admin';
+  return describeGrantResolution(userId, hostId, false).permission;
+}
+
+function describeGrantResolution(userId, hostId, isAdmin) {
+  if (isAdmin) return { permission: 'admin', sources: [{ kind: 'global_admin', permission: 'admin' }] };
   const effectiveHostId = normalizeHostId(hostId);
-  if (!userId || effectiveHostId === null) return null;
+  if (!userId || effectiveHostId === null) return { permission: null, sources: [] };
   const db = getDb();
   const teamIds = teamsService.teamsForUser(userId);
   // Fetch every relevant grant in one shot.
   const params = [userId, effectiveHostId];
   let teamClause = '', groupClause = '';
   if (teamIds.length) {
-    teamClause = ` OR (team_id IN (${teamIds.join(',')}) AND host_id = ?)`;
+    teamClause = ` OR (hp.team_id IN (${teamIds.join(',')}) AND hp.host_id = ?)`;
     params.push(effectiveHostId);
   }
   // Group-membership: get group ids that hostId belongs to.
@@ -49,19 +54,30 @@ function resolveEffectivePermission(userId, hostId, isAdmin) {
   ).all(effectiveHostId);
   const groupIds = groupRows.map(r => r.group_id);
   if (groupIds.length) {
-    groupClause = ` OR (host_group_id IN (${groupIds.join(',')}) AND (user_id = ? OR ${teamIds.length ? `team_id IN (${teamIds.join(',')})` : '1=0'}))`;
+    groupClause = ` OR (hp.host_group_id IN (${groupIds.join(',')}) AND (hp.user_id = ? OR ${teamIds.length ? `hp.team_id IN (${teamIds.join(',')})` : '1=0'}))`;
     params.push(userId);
   }
   const rows = db.prepare(`
-    SELECT permission FROM host_permissions
-    WHERE ((user_id = ? AND host_id = ?)${teamClause}${groupClause})
+    SELECT hp.permission, hp.team_id, hp.host_group_id, t.name AS team_name, g.name AS host_group_name
+    FROM host_permissions hp
+    LEFT JOIN teams t ON t.id = hp.team_id
+    LEFT JOIN host_groups g ON g.id = hp.host_group_id
+    WHERE ((hp.user_id = ? AND hp.host_id = ?)${teamClause}${groupClause})
   `).all(...params);
   if (rows.length === 0) {
     // Legacy default: pre-upgrade behavior — every user has 'operate'.
-    if (_legacyDefaultEnabled()) return 'operate';
-    return null;
+    if (_legacyDefaultEnabled()) return { permission: 'operate', sources: [{ kind: 'legacy_default', permission: 'operate' }] };
+    return { permission: null, sources: [] };
   }
-  return rows.reduce((acc, r) => (acc === null ? r.permission : max(acc, r.permission)), null);
+  return {
+    permission: rows.reduce((acc, row) => max(acc, row.permission), null),
+    sources: rows.map(row => ({
+      kind: row.team_id ? 'team' : 'direct',
+      permission: row.permission,
+      team: row.team_name,
+      hostGroup: row.host_group_name,
+    })),
+  };
 }
 
 /** Filter a list of hostIds to those the user can at least 'view'. */
@@ -140,7 +156,7 @@ function setLegacyDefault(enabled) {
 }
 
 module.exports = {
-  normalizeHostId, resolveEffectivePermission, filterVisibleHosts,
+  normalizeHostId, resolveEffectivePermission, describeGrantResolution, filterVisibleHosts,
   grantsForHost, grantsForGroup, grant, revoke,
   isLegacyDefaultEnabled, setLegacyDefault,
 };

@@ -72,6 +72,66 @@ const HostsPage = {
     await this._load();
   },
 
+  async _showHostSettings(host) {
+    const escape = Utils.escapeHtml;
+    const admin = App.user?.role === 'admin';
+    const docker = ['docker', 'podman'].includes(host.daemonType || 'docker');
+    const status = host.connPaused ? 'Needs credentials' : host.healthy === true ? 'Connected' : host.healthy === false ? 'Unavailable' : 'Checking';
+    Modal.open(`
+      <div class="modal-header"><h3>Host settings · ${escape(host.name)}</h3>
+        <button class="modal-close-btn" type="button" data-host-summary-close aria-label="Close"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="modal-body">
+        <table class="info-table">
+          <tr><td>Connection</td><td>${escape(host.connectionType || host.daemonType || 'socket')} · ${status}</td></tr>
+          <tr><td>Environment</td><td>${escape(host.environment || '—')}</td></tr>
+          <tr><td>Groups</td><td>${(host.groups || []).map(group => escape(group.name)).join(', ') || '—'}</td></tr>
+          <tr><td>Role</td><td>${host.isDefault ? 'Default host' : 'Additional host'}</td></tr>
+        </table>
+        <div class="schedule-controls">
+          ${admin ? '<button type="button" class="btn btn-sm btn-secondary" data-host-summary-edit>Connection</button><a class="btn btn-sm btn-secondary" data-host-summary-notifications href="#/settings/notifications">Notification channels</a>' : ''}
+          ${docker && host.isActive ? '<button type="button" class="btn btn-sm btn-secondary" data-host-summary-page="#/security">Security</button><button type="button" class="btn btn-sm btn-secondary" data-host-summary-page="#/system/schedules">Schedules</button>' : ''}
+        </div>
+        ${admin && host.isActive ? '<h4>Alert routing preview</h4><div data-host-routing aria-live="polite">Loading routes…</div>' : ''}
+      </div>
+      <div class="modal-footer"><button class="btn btn-secondary" type="button" data-host-summary-close>Close</button></div>
+    `, { width: '760px' });
+    const content = Modal._content;
+    content.querySelectorAll('[data-host-summary-close]').forEach(button => button.addEventListener('click', () => Modal.close()));
+    content.querySelector('[data-host-summary-notifications]')?.addEventListener('click', () => Modal.close());
+    content.querySelector('[data-host-summary-edit]')?.addEventListener('click', async () => {
+      try {
+        const details = await Api.getHost(host.id);
+        if (!content.querySelector('[data-host-summary-edit]')) return;
+        this._editHostDialog(details);
+      } catch (error) { Toast.error(error.message); }
+    });
+    content.querySelectorAll('[data-host-summary-page]').forEach(button => button.addEventListener('click', () => {
+      Modal.close();
+      App._activateHost(host.id, button.dataset.hostSummaryPage);
+    }));
+    const routing = content.querySelector('[data-host-routing]');
+    if (!routing) return;
+    try {
+      const data = await Api.get('/alert-routes/matrix?hostId=' + host.id);
+      if (!routing.isConnected) return;
+      const channels = new Map(data.channels.map(channel => [channel.id, channel]));
+      const cells = ids => ids.map(id => {
+        const channel = channels.get(id);
+        return channel ? `<span class="badge">${escape(channel.name)}${channel.is_active ? '' : ' · paused'}</span>` : '<span class="badge badge-warning">Missing channel</span>';
+      }).join(' ') || '<span class="text-muted">No scoped channel</span>';
+      routing.innerHTML = `<p class="text-sm text-muted">Configured routing candidates by severity. This preview does not send notifications.</p>
+        <table class="data-table compact"><thead><tr><th>Event</th><th>Severity</th><th>Channels</th></tr></thead>
+          <tbody>${Object.entries(data.bySeverity).map(([severity, ids]) =>
+            `<tr><td>Any event</td><td>${escape(severity)}</td><td>${cells(ids)}</td></tr>`).join('')}
+          ${data.events.map(event => `<tr><td>${escape(event.name)}${event.is_active ? '' : ' · paused'}</td>
+            <td>${escape(event.severity)}</td><td>${cells(event.channelIds)}</td></tr>`).join('')}</tbody>
+        </table>`;
+    } catch (error) {
+      if (routing.isConnected) routing.textContent = error.message;
+    }
+  },
+
   async _load() {
     const grid = document.getElementById('hosts-grid');
     if (!grid) return;
@@ -111,7 +171,7 @@ const HostsPage = {
       return `<div class="host-card ${status} ${Api.getHostId() === h.id || (Api.getHostId() === 0 && h.isDefault) ? 'selected' : ''}" data-host-id="${h.id}">
         <div class="host-compact-main"><span class="host-tree-status ${dot}" aria-label="${dot}"></span><strong>${Utils.escapeHtml(h.name)}</strong><span class="text-xs text-muted">${Utils.escapeHtml(h.daemonType || 'docker')} · ${Utils.escapeHtml(h.environment || 'development')}</span></div>
         <div class="host-compact-groups">${groups}</div>
-        <div class="host-card-actions"><button class="btn btn-xs btn-primary host-select" data-id="${h.id}" title="${i18n.t('pages.hosts.switchTo')}"><i class="fas fa-exchange-alt"></i></button><button class="btn btn-xs btn-secondary host-test" data-id="${h.id}" title="${i18n.t('pages.hosts.testConnection')}"><i class="fas fa-plug"></i></button><button class="btn btn-xs btn-secondary host-edit" data-id="${h.id}" title="${i18n.t('common.edit')}"><i class="fas fa-edit"></i></button></div>
+        <div class="host-card-actions"><button type="button" class="btn btn-xs btn-secondary host-settings-overview" data-id="${h.id}" title="Host settings overview" aria-label="Host settings overview"><i class="fas fa-sliders-h"></i></button><button class="btn btn-xs btn-primary host-select" data-id="${h.id}" title="${i18n.t('pages.hosts.switchTo')}"><i class="fas fa-exchange-alt"></i></button><button class="btn btn-xs btn-secondary host-test" data-id="${h.id}" title="${i18n.t('pages.hosts.testConnection')}"><i class="fas fa-plug"></i></button><button class="btn btn-xs btn-secondary host-edit" data-id="${h.id}" title="${i18n.t('common.edit')}"><i class="fas fa-edit"></i></button></div>
       </div>`;
     }).join('') : this._hosts.map(h => {
       const isOnline = h.healthy === true;
@@ -168,6 +228,7 @@ const HostsPage = {
           <div class="host-card-actions">
             <button class="btn btn-xs btn-primary host-select" data-id="${h.id}" title="${i18n.t('pages.hosts.switchTo')}"><i class="fas fa-exchange-alt"></i> ${i18n.t('pages.hosts.switchTo')}</button>
             <button class="btn btn-xs btn-secondary host-test" data-id="${h.id}" title="${i18n.t('pages.hosts.testConnection')}"><i class="fas fa-plug"></i></button>
+            <button type="button" class="btn btn-xs btn-secondary host-settings-overview" data-id="${h.id}" title="Host settings overview" aria-label="Host settings overview"><i class="fas fa-sliders-h"></i></button>
             <button class="btn btn-xs btn-secondary host-info" data-id="${h.id}" title="${i18n.t('pages.hosts.info')}"><i class="fas fa-info-circle"></i></button>
             ${!h.isDefault ? `<button class="btn btn-xs btn-secondary host-edit" data-id="${h.id}" title="${i18n.t('common.edit')}"><i class="fas fa-edit"></i></button>
             <button class="btn btn-xs btn-danger host-delete" data-id="${h.id}" title="${i18n.t('common.remove')}"><i class="fas fa-trash"></i></button>` : `
@@ -262,6 +323,13 @@ const HostsPage = {
         } catch (err) {
           Toast.error(err.message);
         }
+      });
+    });
+
+    grid.querySelectorAll('.host-settings-overview').forEach(button => {
+      button.addEventListener('click', () => {
+        const host = this._hosts.find(item => item.id === Number(button.dataset.id));
+        if (host) this._showHostSettings(host);
       });
     });
 

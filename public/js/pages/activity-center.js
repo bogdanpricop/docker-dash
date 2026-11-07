@@ -29,11 +29,12 @@ const ActivityCenterPage = {
   async render(container, params = {}) {
     this.destroy();
     this._container = container;
+    if (params.id === 'docker') return this._renderDockerActivity(container);
     try { this._hosts = (await Api.getHosts()).filter(host => ['proxmox', 'vsphere', 'xen'].includes(host.daemonType)); }
     catch { this._hosts = []; }
     container.innerHTML = `<div class="page-header"><div><h1><i class="fas fa-tasks"></i> ${i18n.t('nav.activity')}</h1>
       <div class="text-muted text-sm">Durable virtualization tasks, retries, reconciliation, and outcomes</div></div>
-      <button class="btn btn-sm btn-secondary" id="activity-refresh"><i class="fas fa-sync"></i> Refresh</button></div>
+      <div class="page-actions"><a class="btn btn-sm btn-secondary" href="#/activity/docker">Docker timeline</a><button class="btn btn-sm btn-secondary" id="activity-refresh"><i class="fas fa-sync"></i> Refresh</button></div></div>
       <div class="card" style="padding:12px;margin-bottom:16px;display:flex;gap:12px;flex-wrap:wrap">
         <label class="sr-only" for="activity-search">Search activity</label><input id="activity-search" class="form-control" style="min-width:220px;flex:1" placeholder="Search operation, VM, action or owner…">
         <select id="activity-host" class="form-control" aria-label="Filter by endpoint" style="width:auto"><option value="">All permitted endpoints</option>
@@ -54,6 +55,89 @@ const ActivityCenterPage = {
     await this._load();
     const id = String(params.id || '').split('/')[0];
     if (/^op_[a-f0-9]{26}$/.test(id)) await this._showDetail(id);
+  },
+
+  async _renderDockerActivity(container) {
+    const escape = Utils.escapeHtml;
+    const admin = App.user?.role === 'admin';
+    const currentHost = Api.getHostId();
+    container.innerHTML = `<div class="page-header"><div><h2>Docker activity</h2><p class="page-subtitle">Docker events and authorized audit records</p></div>
+      <a class="btn btn-sm btn-secondary" href="#/activity">Provider operations</a></div>
+      <div class="card" style="padding:12px;margin-bottom:14px">
+        <form class="schedule-controls" id="docker-activity-filters">
+          <label>Host <select class="form-control" name="hostId"><option value="${currentHost}">Selected host</option></select></label>
+          <label>Source <select class="form-control" name="source"><option value="">All available</option><option value="docker">Docker event</option>
+            ${admin ? '<option value="audit">Audit log</option>' : ''}</select></label>
+          <label>Stack <input class="form-control" name="stack" maxlength="200" placeholder="Any stack"></label>
+          <label>Container <input class="form-control" name="container" maxlength="200" placeholder="Name or ID"></label>
+          <label>Type or action <input class="form-control" name="kind" maxlength="200" placeholder="start, deploy…"></label>
+          <label>Since <input class="form-control" type="datetime-local" name="since"></label>
+          <button class="btn btn-sm btn-primary" type="submit">Apply filters</button>
+        </form>
+      </div><div id="docker-activity-results" aria-live="polite"></div>`;
+    const form = container.querySelector('#docker-activity-filters');
+    const results = container.querySelector('#docker-activity-results');
+    const hostSelect = form.elements.hostId;
+    try {
+      const hosts = (await Api.getHosts()).filter(host => host.isActive && ['docker', 'podman'].includes(host.daemonType || 'docker'));
+      if (!form.isConnected) return;
+      if (hosts.length) {
+        hostSelect.innerHTML = hosts.map(host => `<option value="${host.id}" ${host.id === currentHost || (!currentHost && host.isDefault) ? 'selected' : ''}>${escape(host.name)}</option>`).join('');
+      }
+    } catch { /* the selected host remains available as a fallback */ }
+    let request = 0;
+    const load = async () => {
+      const id = ++request;
+      const filters = new URLSearchParams();
+      for (const [key, value] of new FormData(form)) {
+        if (value.trim()) filters.set(key, key === 'since' ? new Date(value).toISOString() : value.trim());
+      }
+      results.textContent = 'Loading Docker activity…';
+      try {
+        const data = await Api.get('/system/docker-activity?' + filters);
+        if (!results.isConnected || id !== request) return;
+        results.innerHTML = `<p class="text-sm text-muted">${escape(data.host.name || 'Local Docker')} · Up to ${data.limit} matching events</p>
+          ${data.items.length ? `<div class="file-list-scroll"><table class="data-table"><thead><tr><th>Time</th><th>Source</th><th>Action</th><th>Stack</th><th>Resource</th><th>Actor</th><th></th></tr></thead><tbody>
+            ${data.items.map((item, index) => `<tr><td>${escape(new Date(item.time).toLocaleString())}</td><td><span class="badge ${item.source === 'audit' ? 'badge-warning' : 'badge-info'}">${item.source === 'audit' ? 'Audit' : 'Docker'}</span></td>
+            <td>${escape(item.action)}</td><td>${escape(item.stack || '—')}</td><td class="mono">${escape(item.resource || '—')}</td><td>${escape(item.actor || '—')}</td>
+            <td><button class="btn btn-xs btn-secondary" data-docker-activity-item="${index}">Context</button></td></tr>`).join('')}
+          </tbody></table></div>` : '<div class="empty-msg">No activity matches the filters.</div>'}`;
+        results.querySelectorAll('[data-docker-activity-item]').forEach(button => button.addEventListener('click', () =>
+          this._showDockerEventContext(data.items[Number(button.dataset.dockerActivityItem)], data.host, data.items)));
+      } catch (error) {
+        if (id === request && results.isConnected) results.textContent = error.message;
+      }
+    };
+    form.addEventListener('submit', event => { event.preventDefault(); load(); });
+    return load();
+  },
+
+  async _showDockerEventContext(item, host, entries) {
+    const escape = Utils.escapeHtml;
+    const time = Date.parse(item.time);
+    const before = new Date(time - 5 * 60_000);
+    const after = new Date(time + 5 * 60_000);
+    const nearby = entries.filter(other => other.id !== item.id
+      && ((item.containerId && item.containerId === other.containerId) || (item.stack && item.stack !== '_standalone' && item.stack === other.stack))
+      && Math.abs(Date.parse(other.time) - time) <= 5 * 60_000);
+    Modal.open(`<div class="modal-header"><h3>${escape(item.action)} · ${escape(item.resource || item.kind || '')}</h3></div>
+      <div class="modal-body">
+        <p class="text-sm text-muted">${escape(host.name || 'Local Docker')} · ${escape(before.toLocaleString())} – ${escape(after.toLocaleString())}</p>
+        <h4>Related events in this view</h4>
+        <ul>${nearby.map(other => `<li>${escape(other.source)} · ${escape(other.action)} · ${escape(other.resource || '—')}</li>`).join('') || '<li>No related events in the current results.</li>'}</ul>
+        ${item.containerId ? '<h4>Container logs in this interval</h4><pre class="inspect-json" data-activity-logs style="max-height:360px;overflow:auto">Loading…</pre>' : ''}
+      </div><div class="modal-footer"><button class="btn btn-secondary" type="button" data-activity-close>Close</button></div>`, { width: '760px' });
+    const content = Modal._content;
+    content.querySelector('[data-activity-close]').addEventListener('click', () => Modal.close());
+    const output = content.querySelector('[data-activity-logs]');
+    if (!output) return;
+    try {
+      const query = new URLSearchParams({ hostId: host.id, since: before.toISOString(), until: after.toISOString(), tail: 500 });
+      const { lines } = await Api.get(`/containers/${encodeURIComponent(item.containerId)}/logs?${query}`);
+      if (output.isConnected) output.textContent = lines.join('\n') || 'No container logs were recorded in this interval.';
+    } catch (error) {
+      if (output.isConnected) output.textContent = error.message;
+    }
   },
 
   async _load() {

@@ -97,13 +97,16 @@ const StacksPage = {
   async _loadList() {
     const el = document.getElementById('stacks-content');
     if (!el) return;
+    const request = this._stackListRequest = Symbol('stack list');
 
     try {
-      const [composeStacks, gitStacks, uptimeKuma] = await Promise.all([
-        Api.getStacks().catch(() => []),
+      const [compose, gitStacks, uptimeKuma] = await Promise.all([
+        Api.get('/system/stacks?context=1').catch(() => ({ stacks: [], host: null })),
         Api.getGitStacks().catch(() => []),
         Api.detectUptimeKuma().catch(() => ({ detected: false })),
       ]);
+      if (!el.isConnected || request !== this._stackListRequest) return;
+      const { stacks: composeStacks, host } = compose;
       this._uptimeKuma = uptimeKuma;
 
       const unified = [];
@@ -122,10 +125,14 @@ const StacksPage = {
 
       if (this._tab === 'all' || this._tab === 'git') {
         for (const s of gitStacks) {
+          const targetIds = s.target_host_ids?.length ? s.target_host_ids : [s.host_id];
+          const targeted = host && (targetIds.includes(host.id) || (targetIds.includes(0) && Api.getHostId() === 0));
+          const runtime = targeted ? composeStacks.find(stack => stack.name === s.stack_name && !stack.diskOnly) : null;
           unified.push({
             source: 'git', name: s.stack_name, id: s.id, status: s.status,
             branch: s.branch, repoUrl: s.repo_url, lastCommit: s.last_commit_hash,
-            running: 0, total: 0, // Git stacks don't expose these directly in list
+            running: runtime?.running || 0, total: runtime?.total || 0,
+            containers: runtime?.containers || [], services: runtime?.services || [],
           });
         }
       }
@@ -133,7 +140,7 @@ const StacksPage = {
       this._listStacks = unified;
       this._renderStackList();
     } catch (err) {
-      el.innerHTML = `<div class="empty-msg" style="color:var(--red)"><i class="fas fa-exclamation-triangle"></i> ${Utils.escapeHtml(err.message)}</div>`;
+      if (el.isConnected && request === this._stackListRequest) el.textContent = err.message;
     }
   },
 
@@ -365,6 +372,7 @@ const StacksPage = {
             <div class="text-sm text-muted" style="margin-bottom:4px"><i class="fas fa-code-branch" style="margin-right:4px"></i>${Utils.escapeHtml(s.branch || 'main')}</div>
             <div class="text-sm text-muted" style="word-break:break-all">${Utils.escapeHtml(s.repoUrl || '')}</div>
             ${s.lastCommit ? `<div class="text-sm" style="margin-top:4px;font-family:var(--mono)">${Utils.escapeHtml(s.lastCommit)}</div>` : ''}
+            ${s.containers?.length ? this._renderServicePreview(s, '#/stacks/compose/' + encodeURIComponent(s.name)) : ''}
           ` : `
             ${s.total === 0 && s.discovered
               ? `<div style="margin-bottom:7px"><span class="badge badge-stopped"><i class="fas fa-folder-open" style="margin-right:4px"></i>Stopped · discovered on disk</span></div>
@@ -394,7 +402,8 @@ const StacksPage = {
     const escape = Utils.escapeHtml;
     const containers = stack.containers || [];
     const configured = (stack.services || []).filter(service => !containers.some(container => container.service === service));
-    return `<details class="stack-services-preview" data-stack-services="${escape(stack.name)}" ${this._expandedServices.has(stack.name) ? 'open' : ''}>
+    const identity = stack.source + ':' + stack.name;
+    return `<details class="stack-services-preview" data-stack-services="${escape(identity)}" ${this._expandedServices.has(identity) ? 'open' : ''}>
       <summary>Services <span class="badge">${containers.length + configured.length}</span></summary>
       <ul>${containers.map(container => `<li>
         <a href="#/containers/${encodeURIComponent(container.id)}">${escape(container.name)}</a>
@@ -1131,6 +1140,7 @@ const StacksPage = {
   },
 
   destroy() {
+    this._stackListRequest = null;
     this._composeDetailRequest = null;
     this._stopStackLogs();
     this._destroyYamlEditor();

@@ -16,6 +16,7 @@ const { getDb } = require('../db');
 const { extractHostId } = require('../middleware/hostId');
 const { requireHostAccess } = require('../middleware/hostAccess');
 const { resolveEffectivePermission } = require('../services/host-permissions');
+const config = require('../config');
 
 const router = Router();
 router.use(extractHostId);
@@ -108,6 +109,36 @@ router.get('/preview', requireAuth, (req, res) => {
 
   if (!validScheduleCron(cronExpr)) return res.status(400).json({ error: 'Invalid cron expression' });
   res.json({ cron: cronExpr, nextRuns: nextScheduleRuns(cronExpr, new Date(), 5), timeZone });
+});
+
+router.get('/catalog', requireAuth, requireRole('admin'), (req, res) => {
+  const db = getDb();
+  const now = new Date();
+  const hostNames = new Map(db.prepare('SELECT id, name FROM docker_hosts').all().map(host => [host.id, host.name]));
+  const git = require('../services/git').listStacks().map(stack => ({
+    source: 'git', name: stack.stack_name,
+    target: (stack.target_host_ids?.length ? stack.target_host_ids : [stack.host_id ?? 0])
+      .map(id => hostNames.get(id) || (id ? `Host #${id}` : 'Default Docker host')).join(', '),
+    schedule: `Every ${Math.max(stack.polling_interval_seconds || 300, 60)} seconds`,
+    enabled: !!stack.polling_enabled, lastRunAt: stack.last_check_at, nextRunAt: null,
+    result: stack.status, href: `#/stacks/git/${stack.id}`,
+  }));
+  const s3 = require('../services/s3-backup').getStatus();
+  const cloud = require('../services/pcloud-backup').getStatus();
+  const cronEntry = (source, name, schedule, enabled, last, href) => ({
+    source, name, target: 'Application instance', schedule, enabled,
+    lastRunAt: last?.time || last?.at || null, result: last?.status || null,
+    nextRunAt: enabled ? nextScheduleRuns(schedule, now)[0] || null : null, href,
+  });
+  const backup = [
+    cronEntry('backup', 'Local database backup', '0 2 * * *', true, null, '#/system/backup'),
+    cronEntry('backup', 'S3 database backup', s3.schedule, s3.enabled, s3.lastBackup, '#/system/backup'),
+    cronEntry('backup', 'pCloud database upload', '0 2 * * *', cloud.enabled, cloud.lastBackup?.db, '#/system/backup'),
+    cronEntry('backup', 'pCloud stack archive', cloud.schedules?.stack || '0 4 * * 0', cloud.enabled, cloud.lastBackup?.stack, '#/system/backup'),
+    cronEntry('backup', 'pCloud audit archive', cloud.schedules?.audit || '5 4 1 * *', cloud.enabled, cloud.lastBackup?.audit, '#/system/backup'),
+  ];
+  const system = [cronEntry('system', 'Container schedule dispatcher', '* * * * *', !config.features.readOnly, null, '#/system/schedules')];
+  res.json({ timeZone, items: [...git, ...backup, ...system] });
 });
 
 router.delete('/:id', requireAuth, requireRole('admin'), writeable, (req, res) => {

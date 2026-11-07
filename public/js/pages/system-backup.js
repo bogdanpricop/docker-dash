@@ -10,6 +10,10 @@
 const SystemPageBackup = {
   _renderBackup(el) {
     el.innerHTML = `
+      <section class="card backup-overview">
+        <div class="card-header"><h3>Backup and recovery overview</h3><a class="btn btn-sm btn-secondary" href="#/recovery-points">Provider recovery points</a></div>
+        <div class="card-body" data-backup-overview aria-live="polite">Loading backup inventory…</div>
+      </section>
       <div class="card">
         <div class="card-header">
           <h3><i class="fas fa-archive" style="margin-right:8px"></i>${i18n.t('pages.system.backupTitle')}</h3>
@@ -177,6 +181,8 @@ const SystemPageBackup = {
         </div>
       </div>
     `;
+
+    this._loadBackupOverview(el.querySelector('[data-backup-overview]'));
 
     // S3 backup handlers
     (async () => {
@@ -387,17 +393,24 @@ const SystemPageBackup = {
       const file = e.target.files[0];
       if (!file) return;
 
-      const ok = await Modal.confirm(`Restore from "${file.name}"? This will overwrite current settings.`, { danger: true });
-      if (!ok) return;
-
+      e.target.value = '';
       try {
         const text = await file.text();
         const data = JSON.parse(text);
-        const result = await Api.restoreConfig(data);
-        const r = result.restored || {};
-        Toast.success(i18n.t('pages.containers.restoreSuccess', {
-          details: `Settings: ${r.settings || 0}, Rules: ${r.alertRules || 0}, Schedules: ${r.schedules || 0}`
-        }));
+        const plan = await Api.post('/system/backup/restore/plan?hostId=0', data);
+        const escape = Utils.escapeHtml;
+        const keys = (label, values) => values.length ? `<details><summary>${label} · ${values.length}</summary>
+          <ul class="bulk-plan-rows">${values.map(value => `<li class="mono">${escape(value)}</li>`).join('')}</ul></details>` : '';
+        const ok = await Modal.confirm(`
+          <p><strong>Destination</strong> · Docker Dash at ${escape(location.origin)}</p>
+          <p>${escape(file.name)} · exported by version ${escape(plan.version)}</p>
+          ${keys('New settings', plan.creates)}${keys('Settings to overwrite', plan.replaces)}
+          <p>${plan.unchanged} settings already match. The configuration import skips ${plan.apiKeysSkipped} API key records and ${plan.usersSkipped} user records.</p>
+        `, { html: true, danger: true, title: 'Review configuration restore', confirmText: 'Apply reviewed restore', width: '680px' });
+        if (!ok) return;
+        const result = await Api.post('/system/backup/restore?hostId=0', { ...data, planId: plan.planId });
+        const restored = result.restored || {};
+        Toast.success(`Restored ${restored.settings || 0} settings and ${restored.apiKeys || 0} API keys`);
       } catch (err) {
         Toast.error(i18n.t('pages.containers.restoreFailed', { message: err.message }));
       }
@@ -421,12 +434,14 @@ const SystemPageBackup = {
       const ok = await Modal.confirm(
         `<div style="text-align:left">
           <p><strong>Restore database from "${Utils.escapeHtml(file.name)}"?</strong></p>
+          <p>Destination · Docker Dash at ${Utils.escapeHtml(location.origin)}</p>
+          <p>File size · ${Utils.formatBytes(file.size)}</p>
           <p style="color:var(--red);margin-top:8px"><i class="fas fa-exclamation-triangle" style="margin-right:4px"></i>
           This will replace ALL current data (containers metadata, audit logs, settings, users, etc.).</p>
           <p class="text-muted text-sm" style="margin-top:8px">A safety backup of the current database will be created automatically before replacing.</p>
           <p style="margin-top:8px"><strong>The application will restart after restore.</strong></p>
         </div>`,
-        { danger: true }
+        { danger: true, html: true, title: 'Review database restore', confirmText: 'Replace database', typeToConfirm: 'RESTORE' }
       );
       if (!ok) { dbFileInput.value = ''; return; }
 
@@ -465,6 +480,40 @@ const SystemPageBackup = {
   // ═══════════════════════════════════════════════════
   // SSL/TLS WIZARD
   // ═══════════════════════════════════════════════════
+
+  async _loadBackupOverview(root) {
+    const requests = await Promise.allSettled([
+      Api.get('/system/backup/list?hostId=0'),
+      Api.get('/system/backup/s3-status?hostId=0'),
+      Api.get('/system/backup/pcloud/status?hostId=0'),
+    ]);
+    if (!root?.isConnected) return;
+    const [local, s3, pcloud] = requests;
+    const escape = Utils.escapeHtml;
+    const result = entry => entry.status === 'fulfilled' ? entry.value : null;
+    const files = result(local)?.files || [];
+    const s3Status = result(s3);
+    const cloudStatus = result(pcloud);
+    const when = value => value ? escape(new Date(value).toLocaleString()) : 'No backup recorded';
+    const status = (name, enabled, schedule, last) => `<tr><td>${name}</td>
+      <td>${enabled === undefined ? 'Unavailable' : enabled ? 'Enabled' : 'Disabled'}</td>
+      <td class="mono">${escape(schedule || '—')}</td><td>${when(last?.time || last?.at)}${last?.status ? ' · ' + escape(last.status) : ''}</td></tr>`;
+    root.innerHTML = `<p class="text-sm text-muted">Application instance · ${escape(location.origin)}</p>
+      <div class="file-list-scroll"><table class="data-table compact">
+      <thead><tr><th>Destination</th><th>Status</th><th>Schedule</th><th>Last backup</th></tr></thead>
+      <tbody>
+        ${status('Local database', local.status === 'fulfilled' ? true : undefined, '', { at: files[0]?.created })}
+        ${status('S3', s3Status?.enabled, s3Status?.schedule, s3Status?.lastBackup)}
+        ${status('pCloud database', cloudStatus?.enabled, cloudStatus?.schedules?.db, cloudStatus?.lastBackup?.db)}
+        ${status('pCloud stacks', cloudStatus?.enabled, cloudStatus?.schedules?.stack, cloudStatus?.lastBackup?.stack)}
+        ${status('pCloud audit', cloudStatus?.enabled, cloudStatus?.schedules?.audit, cloudStatus?.lastBackup?.audit)}
+      </tbody></table></div>
+      <details style="margin-top:10px"><summary>Local database copies · ${files.length}</summary>
+        ${files.length ? `<div class="file-list-scroll"><table class="data-table compact"><thead><tr><th>Copy</th><th>Location</th><th>Size</th><th>Modified</th></tr></thead>
+          <tbody>${files.map(file => `<tr><td class="mono">${escape(file.name)}${file.encrypted ? ' <span class="badge">Encrypted</span>' : ''}</td>
+          <td>${escape(file.location || 'local')}</td><td>${Utils.formatBytes(file.size)}</td><td>${when(file.created)}</td></tr>`).join('')}</tbody></table></div>`
+          : '<p class="text-muted">No local copies available.</p>'}</details>`;
+  },
 
 };
 

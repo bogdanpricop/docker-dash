@@ -96,6 +96,7 @@ for (const [, filename] of workflows) {
   app.use('/' + filename, router.mgmt || router);
 }
 app.use('/hosts', require('../routes/hosts'));
+app.use('/host-permissions', require('../routes/host-permissions'));
 
 beforeAll(() => {
   getDb().exec(`
@@ -170,6 +171,51 @@ test('event history only returns records for the authorized daemon', async () =>
   } finally {
     hostPermissions.setLegacyDefault(true);
   }
+});
+
+test('Docker activity keeps audit records separate and on the resolved host', async () => {
+  const audit = require('../services/audit');
+  dockerEvents.store({ hostId: 71, eventType: 'container', action: 'die', actorId: 'b'.repeat(64),
+    actorName: 'fixture-app', attributes: { 'com.docker.compose.project': 'fixture' } });
+  audit.log({ userId: 8, username: 'contract-admin', action: 'compose_up', targetType: 'stack',
+    targetId: 'fixture', details: { hostId: 71, sensitive: 'not in timeline' } });
+  const admin = await request(app).get('/system/docker-activity?hostId=71&stack=fixture').expect(200);
+  expect(admin.body.items.map(row => row.source).sort()).toEqual(['audit', 'docker']);
+  expect(JSON.stringify(admin.body)).not.toContain('not in timeline');
+  await request(app).get('/system/docker-activity?hostId=71&source=audit').set('X-Test-Role', 'viewer').expect(403);
+  const other = await request(app).get('/system/docker-activity?hostId=1&stack=fixture').expect(200);
+  expect(other.body.items).toEqual([]);
+});
+
+test('effective access explains a direct grant and still enforces the user role', async () => {
+  const id = hostPermissions.grant({ hostId: 71, userId: 7, permission: 'operate' }, 8);
+  try {
+    const result = await request(app).get('/host-permissions/explain?hostId=71&userId=7').expect(200);
+    expect(result.body).toMatchObject({
+      permission: 'operate', sources: [{ kind: 'direct', permission: 'operate' }],
+      actions: { viewContainers: true, operateContainers: false, manageHostSettings: false },
+    });
+    await request(app).get('/host-permissions/explain?hostId=71&userId=7').set('X-Test-Role', 'viewer').expect(403);
+  } finally {
+    hostPermissions.revoke(id);
+  }
+});
+
+test('configuration backup preview lists overwrites, skips API key metadata and rejects a stale review', async () => {
+  const db = getDb();
+  const save = db.prepare("INSERT INTO settings (key, value) VALUES ('test_restore_setting', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value");
+  save.run('previous');
+  const exported = await request(app).get('/system/backup/config').expect(200);
+  expect(exported.body).toMatchObject({ settings: expect.any(Array), users: expect.any(Array), apiKeys: expect.any(Array) });
+  const backup = { version: '8.96.30', settings: [{ key: 'test_restore_setting', value: 'next' }], apiKeys: [{ id: 1 }] };
+  const plan = (await request(app).post('/system/backup/restore/plan').send(backup).expect(200)).body;
+  expect(plan).toMatchObject({ replaces: ['test_restore_setting'], apiKeysSkipped: 1 });
+  expect(JSON.stringify(plan)).not.toContain('previous');
+  save.run('concurrent');
+  await request(app).post('/system/backup/restore').send({ ...backup, planId: plan.planId }).expect(409);
+  const fresh = (await request(app).post('/system/backup/restore/plan').send(backup).expect(200)).body;
+  await request(app).post('/system/backup/restore').send({ ...backup, planId: fresh.planId }).expect(200);
+  expect(db.prepare("SELECT value FROM settings WHERE key = 'test_restore_setting'").get().value).toBe('next');
 });
 
 test('scheduled actions keep their original daemon and enforce access on the saved target', async () => {

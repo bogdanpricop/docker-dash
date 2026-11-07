@@ -7,7 +7,7 @@ const SystemPage = {
   _tab: 'info',
   _charts: {},
 
-  async render(container) {
+  async render(container, params = {}) {
     container.innerHTML = `
       <div class="page-header">
         <h2><i class="fas fa-server"></i> ${i18n.t('pages.system.title')}</h2>
@@ -49,6 +49,9 @@ const SystemPage = {
     });
 
     container.querySelector('#sys-refresh').addEventListener('click', () => this._renderTab());
+    const tabs = [...container.querySelectorAll('#sys-tabs [data-tab]')];
+    this._tab = tabs.find(tab => tab.dataset.tab === (params.id || this._tab))?.dataset.tab || 'info';
+    tabs.forEach(tab => tab.classList.toggle('active', tab.dataset.tab === this._tab));
     await this._renderTab();
   },
 
@@ -2479,11 +2482,14 @@ DB_PASS=secret"></textarea>
   },
 
   async _prune(type) {
+    let target;
+    try { target = await Api.get('/system/target'); }
+    catch (error) { Toast.error(error.message); return; }
     const msg = type === 'all'
       ? i18n.t('pages.system.pruneAllConfirm')
       : i18n.t('pages.system.pruneConfirm', { type });
     const ok = await Modal.confirm(
-      msg,
+      `${msg}\n\nTarget host · ${target.name || (target.id ? `Host #${target.id}` : 'Local Docker')}`,
       { danger: true, confirmText: i18n.t('common.prune') }
     );
     if (!ok) return;
@@ -2496,7 +2502,7 @@ DB_PASS=secret"></textarea>
     if (runs.length > 20) runs.length = 20;
     this._renderRunsInto(type);
     try {
-      const result = await Api.prune(type);
+      const result = await Api.prune(type, target.id);
       run.reclaimed = result.SpaceReclaimed || result.space_reclaimed || 0;
       run.ok = true;
       Toast.success(run.reclaimed
@@ -2933,6 +2939,39 @@ DB_PASS=secret"></textarea>
   },
 
   // ─── Schedules Tab ──────────────────────────────
+  async _renderScheduleCatalog(element) {
+    element.textContent = 'Loading schedule sources…';
+    try {
+      const data = await Api.get('/system/schedules/catalog?hostId=0');
+      if (!element.isConnected) return;
+      const escape = Utils.escapeHtml;
+      const formatter = new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'medium', timeZone: data.timeZone });
+      const date = value => {
+        if (!value) return '—';
+        const instant = new Date(/^\d{4}-\d{2}-\d{2} /.test(value) ? value.replace(' ', 'T') + 'Z' : value);
+        return Number.isFinite(instant.getTime()) ? formatter.format(instant) : '—';
+      };
+      element.innerHTML = `<div class="schedule-controls">
+        <label>Source <select class="form-control" data-source-filter><option value="">All sources</option>
+          <option value="git">Git</option><option value="backup">Backup</option><option value="system">System</option></select></label>
+        <span class="badge">${escape(data.timeZone)}</span>
+      </div><div class="file-list-scroll"><table class="data-table compact">
+        <thead><tr><th>Job</th><th>Source</th><th>Target</th><th>Schedule</th><th>Last activity</th><th>Next scheduled run</th><th>Result</th></tr></thead>
+        <tbody>${data.items.map(item => `<tr data-schedule-source="${escape(item.source)}"><td><a href="${escape(item.href)}">${escape(item.name)}</a></td>
+          <td>${escape(item.source)}</td><td>${escape(item.target)}</td><td>${escape(item.schedule)}</td>
+          <td>${escape(date(item.lastRunAt))}</td><td>${item.enabled ? escape(date(item.nextRunAt)) : 'Paused'}</td>
+          <td>${escape(item.result || '—')}</td></tr>`).join('')}</tbody>
+      </table></div><p class="text-xs text-muted">Git check times come from repository history. The next in-memory Git poll is not recorded.</p>`;
+      element.querySelector('[data-source-filter]').addEventListener('change', event => {
+        const source = event.currentTarget.value;
+        element.querySelectorAll('[data-schedule-source]').forEach(row => { row.hidden = Boolean(source && row.dataset.scheduleSource !== source); });
+      });
+    } catch (error) {
+      if (element.isConnected) element.textContent = error.message;
+      delete element.dataset.loaded;
+    }
+  },
+
   async _renderSchedules(el) {
     try {
       const schedules = await Api.getSchedules();
@@ -3009,7 +3048,15 @@ DB_PASS=secret"></textarea>
             </table>`}
           </div>
         </div>
+        ${App.user?.role === 'admin' ? '<details class="card" style="padding:12px;margin-top:14px"><summary>Git, backup and system schedules</summary><div id="supplemental-schedules"></div></details>' : ''}
       `;
+
+      const other = el.querySelector('#supplemental-schedules');
+      other?.parentElement.addEventListener('toggle', async event => {
+        if (!event.currentTarget.open || other.dataset.loaded) return;
+        other.dataset.loaded = 'true';
+        await this._renderScheduleCatalog(other);
+      });
 
       const hostFilter = el.querySelector('#schedule-host-filter');
       const resultFilter = el.querySelector('#schedule-result-filter');

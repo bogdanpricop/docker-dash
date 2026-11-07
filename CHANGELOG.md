@@ -4,6 +4,15 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Add persistent container column presets and review eligible bulk actions on
+  their resolved host before execution. Retry only failed containers.
+- Share log search navigation, pause, auto-scroll and wrapping between the
+  container detail and Log Explorer. Add Docker activity with incident logs.
+- Review backup inventory and the exact settings affected by a restore.
+  Show the host on Compose and prune confirmations.
+- Explain effective host and stack access, preview scoped notification routing,
+  and list Git, backup and system schedules alongside container schedules.
+- Filter and compare verified scan results and export filtered SARIF.
 - Compare Docker hosts from Multi-Host and jump into filtered container views.
 - Expand services in the Stacks list, check saved Compose configuration, review
   dry-run plans and explore relationships from the YAML and Form editor.

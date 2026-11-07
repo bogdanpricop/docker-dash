@@ -113,10 +113,18 @@ async function flush(id, buffer) {
       log.warn('Log batch could not be delivered', { forwarderId: id, lines: lines?.length, status: error.details?.httpStatus });
     }
     const now = Date.now();
+    const sources = new Map();
+    for (const line of lines || []) {
+      if (!Number.isSafeInteger(line.hostId) || line.hostId < 0 || !/^[a-f0-9]{12,64}$/i.test(line.containerId || '')) continue;
+      sources.set(`${line.hostId}:${line.containerId}`, {
+        hostId: line.hostId, containerId: line.containerId, containerName: String(line.containerName || '').slice(0, 128),
+      });
+    }
     recordDelivery(destination, buffer, {
       ...deliveryDiagnostic(error),
       attempt,
       batchSize: lines?.length,
+      ...(sources.size && { sources: [...sources.values()].slice(0, 8) }),
       ...(retryDelay && { retryAt: new Date(now + retryDelay).toISOString() }),
     }, now);
   } finally {

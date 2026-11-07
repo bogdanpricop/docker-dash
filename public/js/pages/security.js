@@ -6,7 +6,7 @@
 const SecurityPage = {
   _tab: 'overview',
 
-  async render(container) {
+  async render(container, params = {}) {
     container.innerHTML = `
       <div class="page-header">
         <h2><i class="fas fa-shield-alt"></i> Security</h2>
@@ -25,6 +25,7 @@ const SecurityPage = {
       </div>
       <div class="tabs" id="sec-tabs">
         <button class="tab active" data-tab="overview">Overview</button>
+        <button class="tab" data-tab="triage">Triage</button>
         <button class="tab" data-tab="history">Scan History</button>
         <button class="tab" data-tab="scanners">Scanners</button>
       </div>
@@ -47,6 +48,9 @@ const SecurityPage = {
       setTimeout(() => document.querySelector('[data-tab="cis"]')?.click(), 350);
     });
 
+    const tabs = [...container.querySelectorAll('#sec-tabs [data-tab]')];
+    this._tab = tabs.find(tab => tab.dataset.tab === (params.id || this._tab))?.dataset.tab || 'overview';
+    tabs.forEach(tab => tab.classList.toggle('active', tab.dataset.tab === this._tab));
     await this._renderTab();
   },
 
@@ -55,10 +59,11 @@ const SecurityPage = {
     if (!el) return;
     try {
       if (this._tab === 'overview') await this._renderOverview(el);
+      else if (this._tab === 'triage') await SecurityTriage.render(el);
       else if (this._tab === 'history') await this._renderHistory(el);
       else if (this._tab === 'scanners') await this._renderScanners(el);
     } catch (err) {
-      el.innerHTML = `<div class="empty-msg">Error: ${err.message}</div>`;
+      el.innerHTML = `<div class="empty-msg">Error: ${Utils.escapeHtml(err.message)}</div>`;
     }
   },
 

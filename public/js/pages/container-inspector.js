@@ -27,10 +27,11 @@ class ContainerInspector {
     connection.title = error || '';
   }
 
-  constructor(workspace, onChange) {
+  constructor(workspace, onChange, canOpenTerminal = () => false) {
     this.workspace = workspace;
     this.panel = workspace.querySelector('#container-inspector');
     this.onChange = onChange;
+    this.canOpenTerminal = canOpenTerminal;
     this.search = '';
     this.wrap = true;
     this.tabs = ['overview', 'logs', 'stats'];
@@ -59,6 +60,7 @@ class ContainerInspector {
           <a class="btn btn-sm btn-secondary" data-inspector-full>
             <i class="fas fa-arrow-up-right-from-square" aria-hidden="true"></i> ${this.label('details')}
           </a>
+          <a class="btn btn-sm btn-secondary" data-inspector-terminal hidden><i class="fas fa-terminal" aria-hidden="true"></i> Terminal</a>
         </div>
       </header>
       <div id="inspector-content" class="container-inspector-content" role="tabpanel" tabindex="0"></div>`;
@@ -118,6 +120,9 @@ class ContainerInspector {
     badge.className = 'badge ' + Utils.statusBadgeClass(this.item.state);
     badge.textContent = this.item.state;
     this.panel.querySelector('[data-inspector-full]').href = '#/containers/' + encodeURIComponent(this.item.id);
+    const terminal = this.panel.querySelector('[data-inspector-terminal]');
+    terminal.hidden = !this.canOpenTerminal(this.item);
+    terminal.href = '#/containers/' + encodeURIComponent(this.item.id) + '/terminal';
   }
 
   open(item, tab = this.tab || 'overview', origin) {
