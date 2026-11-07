@@ -115,8 +115,8 @@ router.post('/cleanup', requireAuth, requireRole('admin'), writeable, (req, res)
     if (r4.changes) deleted.docker_events = r4.changes;
 
     // Audit log
-    const r5 = db.prepare(`DELETE FROM audit_log WHERE created_at < datetime('now', '-' || ? || ' days')`).run(ret.auditDays);
-    if (r5.changes) deleted.audit_log = r5.changes;
+    const auditDeleted = auditService.cleanup(ret.auditDays);
+    if (auditDeleted) deleted.audit_log = auditDeleted;
 
     // Health events
     try {
@@ -164,8 +164,12 @@ router.post('/cleanup', requireAuth, requireRole('admin'), writeable, (req, res)
 
 // Aggressive cleanup — keep only last N hours (default 24)
 router.post('/cleanup-aggressive', requireAuth, requireRole('admin'), writeable, (req, res) => {
+  const input = req.body?.hours ?? 24;
+  const hours = typeof input === 'string' && /^\d{1,4}$/.test(input) ? Number(input) : input;
+  if (!Number.isInteger(hours) || hours < 1 || hours > 8760) {
+    return res.status(400).json({ error: 'Retention hours must be an integer between 1 and 8760' });
+  }
   try {
-    const hours = parseInt(req.body.hours) || 24;
     const db = getDb();
     const deleted = {};
 
@@ -185,12 +189,14 @@ router.post('/cleanup-aggressive', requireAuth, requireRole('admin'), writeable,
       { name: 'password_reset_tokens', col: 'expires_at' },
     ];
 
-    for (const { name, col } of tables) {
-      try {
-        const r = db.prepare(`DELETE FROM ${name} WHERE ${col} < datetime('now', '-${hours} hours')`).run();
+    db.transaction(() => {
+      const exists = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?");
+      for (const { name, col } of tables) {
+        if ((name === 'audit_log' && config.security.isStrict) || !exists.get(name)) continue;
+        const r = db.prepare(`DELETE FROM ${name} WHERE ${col} < datetime('now', '-' || ? || ' hours')`).run(hours);
         if (r.changes) deleted[name] = r.changes;
-      } catch { /* table may not exist */ }
-    }
+      }
+    })();
 
     const totalDeleted = Object.values(deleted).reduce((a, b) => a + b, 0);
 
@@ -209,12 +215,12 @@ router.post('/cleanup-aggressive', requireAuth, requireRole('admin'), writeable,
 // GET /database/diagnostics — download full system diagnostic bundle
 router.get('/diagnostics', requireAuth, requireRole('admin'), async (req, res) => {
   try {
-    const docker = dockerService.getDocker(req.hostId);
+    const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
     const db = getDb();
 
     const [info, containers, images, volumes, networks] = await Promise.all([
       docker.info().catch(() => ({})),
-      dockerService.listContainers(req.hostId).catch(() => []),
+      dockerService.listContainers(req.resolvedHostId ?? req.hostId).catch(() => []),
       docker.listImages().catch(() => []),
       docker.listVolumes().then(r => r.Volumes || []).catch(() => []),
       docker.listNetworks().catch(() => []),

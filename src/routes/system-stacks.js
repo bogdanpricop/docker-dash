@@ -17,11 +17,13 @@ const auditService = require('../services/audit');
 const { requireAuth, requireRole, writeable } = require('../middleware/auth');
 const { getClientIp } = require('../utils/helpers');
 const { extractHostId } = require('../middleware/hostId');
+const { requireHostAccessForMethod } = require('../middleware/hostAccess');
 const asyncHandler = require('../utils/asyncHandler');
 const { parseDockerRun } = require('../services/docker-run-parser');
 
 const router = Router();
 router.use(extractHostId);
+const hostAccess = requireHostAccessForMethod();
 
 const COMPOSE_ACTIONS = Object.freeze({
   up: ['up', '-d'],
@@ -202,7 +204,7 @@ async function _allowedWorkingDir(req, stackName, requestedDir, { allowNew = fal
 
   // Preserve edit/deploy support for pre-existing Compose projects created
   // outside DD_STACKS_DIR, but only for the exact directory Docker reports.
-  const containers = await dockerService.listContainers(req.hostId);
+  const containers = await dockerService.listContainers(req.resolvedHostId ?? req.hostId);
   const known = containers.some(container => _stackMatches(container, stackName)
     && container.labels?.['com.docker.compose.project.working_dir']
     && stacksFs._canonical(container.labels['com.docker.compose.project.working_dir'])
@@ -242,7 +244,7 @@ function _isPlanUnsupported(err) {
 }
 
 async function _resolveStackWorkingDir(req, stack) {
-  const containers = await dockerService.listContainers(req.hostId);
+  const containers = await dockerService.listContainers(req.resolvedHostId ?? req.hostId);
   const stackContainers = containers.filter(container => _stackMatches(container, stack));
   if (!stackContainers.length) {
     const discovered = _filesystemStack(stack);
@@ -250,7 +252,7 @@ async function _resolveStackWorkingDir(req, stack) {
     return discovered.path;
   }
 
-  const docker = dockerService.getDocker(req.hostId);
+  const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
   const inspection = await docker.getContainer(stackContainers[0].id).inspect();
   const workingDir = inspection.Config?.Labels?.['com.docker.compose.project.working_dir'] || '';
   if (!workingDir || !path.isAbsolute(workingDir)) {
@@ -300,7 +302,7 @@ router.post('/compose/convert', requireAuth, asyncHandler(async (req, res) => {
 // Produce a read-only plan with the exact Compose action and host context that
 // execution will use. Unsupported Compose versions fail explicitly; this route
 // never falls back to running the real mutation.
-router.post('/compose/:stack/:action/plan', requireAuth, requireRole('admin', 'operator'), async (req, res) => {
+router.post('/compose/:stack/:action/plan', requireAuth, hostAccess, requireRole('admin', 'operator'), async (req, res) => {
   const { stack, action } = req.params;
   const args = COMPOSE_ACTIONS[action];
   if (!args) return res.status(400).json({ error: 'Invalid action' });
@@ -319,7 +321,7 @@ router.post('/compose/:stack/:action/plan', requireAuth, requireRole('admin', 'o
   try {
     release = _acquireComposeSlot(req.user.id);
     workingDir = await _resolveStackWorkingDir(req, stack);
-    cliContext = _dockerCliContext(req.hostId);
+    cliContext = _dockerCliContext(req.resolvedHostId ?? req.hostId);
     const result = await runCompose(['--progress', 'json', '--dry-run', ...args], {
       cwd: workingDir, env: cliContext.env, timeoutMs: 60_000, maxBytes: 1024 * 1024,
     });
@@ -345,7 +347,7 @@ router.post('/compose/:stack/:action/plan', requireAuth, requireRole('admin', 'o
   }
 });
 
-router.post('/compose/:stack/:action/stream', requireAuth, requireRole('admin', 'operator'), writeable, async (req, res) => {
+router.post('/compose/:stack/:action/stream', requireAuth, hostAccess, requireRole('admin', 'operator'), writeable, async (req, res) => {
   const { stack, action } = req.params;
   const args = COMPOSE_ACTIONS[action];
   if (!args) return res.status(400).json({ error: 'Invalid action' });
@@ -356,7 +358,7 @@ router.post('/compose/:stack/:action/stream', requireAuth, requireRole('admin', 
   try {
     release = _acquireComposeSlot(req.user.id);
     workingDir = await _resolveStackWorkingDir(req, stack);
-    cliContext = _dockerCliContext(req.hostId);
+    cliContext = _dockerCliContext(req.resolvedHostId ?? req.hostId);
   } catch (err) {
     cliContext?.cleanup();
     release?.();
@@ -403,7 +405,7 @@ router.post('/compose/:stack/:action/stream', requireAuth, requireRole('admin', 
 
 // Backward-compatible JSON endpoint. It now uses the same asynchronous
 // runner, so API clients that do not consume SSE no longer block Node.
-router.post('/compose/:stack/:action', requireAuth, requireRole('admin', 'operator'), writeable, async (req, res) => {
+router.post('/compose/:stack/:action', requireAuth, hostAccess, requireRole('admin', 'operator'), writeable, async (req, res) => {
   const { stack, action } = req.params;
   const args = COMPOSE_ACTIONS[action];
   if (!args) return res.status(400).json({ error: 'Invalid action' });
@@ -414,7 +416,7 @@ router.post('/compose/:stack/:action', requireAuth, requireRole('admin', 'operat
   try {
     release = _acquireComposeSlot(req.user.id);
     workingDir = await _resolveStackWorkingDir(req, stack);
-    cliContext = _dockerCliContext(req.hostId);
+    cliContext = _dockerCliContext(req.resolvedHostId ?? req.hostId);
     const result = await runCompose(args, { cwd: workingDir, env: cliContext.env });
     _auditCompose(req, stack, action, workingDir, 'success', result);
     res.json({
@@ -498,9 +500,9 @@ function _generateComposeFromInspect(inspection, _stackName) {
   return lines.join('\n');
 }
 
-router.get('/compose/:stack/config', requireAuth, async (req, res) => {
+router.get('/compose/:stack/config', requireAuth, hostAccess, async (req, res) => {
   try {
-    const containers = await dockerService.listContainers(req.hostId);
+    const containers = await dockerService.listContainers(req.resolvedHostId ?? req.hostId);
     const stackContainers = containers.filter(c => _stackMatches(c, req.params.stack));
     const discovered = stackContainers.length ? null : _filesystemStack(req.params.stack);
     if (stackContainers.length === 0 && !discovered) return res.status(404).json({ error: 'Stack not found' });
@@ -509,7 +511,7 @@ router.get('/compose/:stack/config', requireAuth, async (req, res) => {
     let workingDir = discovered?.path || '';
     let configFile = discovered?.composeFile || '';
     if (stackContainers.length) {
-      const docker = dockerService.getDocker(req.hostId);
+      const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
       firstContainer = await docker.getContainer(stackContainers[0].id).inspect();
       workingDir = firstContainer.Config.Labels?.['com.docker.compose.project.working_dir'] || '';
       configFile = firstContainer.Config.Labels?.['com.docker.compose.project.config_files'] || '';
@@ -552,7 +554,7 @@ router.get('/compose/:stack/config', requireAuth, async (req, res) => {
 // daemon access via the validator) and the resource cost (writing
 // bodies up to 2 MB to disk + spawning docker compose) on a
 // repeatedly-callable endpoint that wasn't role-gated.
-router.post('/stacks/:name/validate', requireAuth, requireRole('admin', 'operator'), async (req, res) => {
+router.post('/stacks/:name/validate', requireAuth, hostAccess, requireRole('admin', 'operator'), async (req, res) => {
   try {
     const { config: yamlContent } = req.body;
     if (!yamlContent) return res.status(400).json({ error: 'config required' });
@@ -574,9 +576,9 @@ router.post('/stacks/:name/validate', requireAuth, requireRole('admin', 'operato
     res.status(500).json({ error: 'Internal server error' });
   }
 });
-router.get('/stacks', requireAuth, async (req, res) => {
+router.get('/stacks', requireAuth, hostAccess, async (req, res) => {
   try {
-    const containers = await dockerService.listContainers(req.hostId);
+    const containers = await dockerService.listContainers(req.resolvedHostId ?? req.hostId);
     const stacks = new Map();
 
     for (const c of containers) {
@@ -630,7 +632,7 @@ router.get('/stacks', requireAuth, async (req, res) => {
   }
 });
 
-router.get('/stacks/:name', requireAuth, async (req, res) => {
+router.get('/stacks/:name', requireAuth, hostAccess, async (req, res) => {
   try {
     const containers = await dockerService.listContainers(req.hostId, { includeSize: true });
     const stackContainers = containers.filter(c => _stackMatches(c, req.params.name));
@@ -655,8 +657,8 @@ router.get('/stacks/:name', requireAuth, async (req, res) => {
     if (stackContainers.length) {
       const needsVolumes = stackContainers.some(container => (container.mounts || []).some(mount => mount.type === 'volume'));
       const [imageResult, volumeResult] = await Promise.allSettled([
-        dockerService.listImages(req.hostId),
-        needsVolumes ? dockerService.listVolumes(req.hostId) : Promise.resolve([]),
+        dockerService.listImages(req.resolvedHostId ?? req.hostId),
+        needsVolumes ? dockerService.listVolumes(req.resolvedHostId ?? req.hostId) : Promise.resolve([]),
       ]);
       if (imageResult.status === 'fulfilled') images = imageResult.value;
       if (volumeResult.status === 'fulfilled') volumes = volumeResult.value;
@@ -692,7 +694,7 @@ router.get('/stacks/:name', requireAuth, async (req, res) => {
 });
 
 // Create new stack from scratch
-router.post('/stacks', requireAuth, requireRole('admin'), writeable, async (req, res) => {
+router.post('/stacks', requireAuth, hostAccess, requireRole('admin'), writeable, async (req, res) => {
   let cliContext;
   try {
     const { name, dir, yaml, env } = req.body;
@@ -713,7 +715,7 @@ router.post('/stacks', requireAuth, requireRole('admin'), writeable, async (req,
     }
 
     // Deploy the stack
-    cliContext = _dockerCliContext(req.hostId);
+    cliContext = _dockerCliContext(req.resolvedHostId ?? req.hostId);
     const result = await runCompose(['-p', name, 'up', '-d'], {
       cwd: targetDir, env: cliContext.env,
     });
@@ -736,7 +738,7 @@ router.post('/stacks', requireAuth, requireRole('admin'), writeable, async (req,
   }
 });
 
-router.put('/stacks/:name/config', requireAuth, requireRole('admin'), writeable, async (req, res) => {
+router.put('/stacks/:name/config', requireAuth, hostAccess, requireRole('admin'), writeable, async (req, res) => {
   try {
     const { config: yamlContent, workingDir } = req.body;
     if (!yamlContent) return res.status(400).json({ error: 'config required' });
@@ -769,7 +771,7 @@ router.put('/stacks/:name/config', requireAuth, requireRole('admin'), writeable,
 });
 
 // Save .env file for stack
-router.post('/stacks/:name/env', requireAuth, requireRole('admin'), writeable, async (req, res) => {
+router.post('/stacks/:name/env', requireAuth, hostAccess, requireRole('admin'), writeable, async (req, res) => {
   try {
     const { env, workingDir } = req.body;
     const targetDir = await _allowedWorkingDir(req, req.params.name, workingDir);
@@ -786,12 +788,12 @@ router.post('/stacks/:name/env', requireAuth, requireRole('admin'), writeable, a
   }
 });
 
-router.post('/stacks/:name/deploy', requireAuth, requireRole('admin'), writeable, async (req, res) => {
+router.post('/stacks/:name/deploy', requireAuth, hostAccess, requireRole('admin'), writeable, async (req, res) => {
   let cliContext;
   try {
     const { workingDir } = req.body;
     const targetDir = await _allowedWorkingDir(req, req.params.name, workingDir);
-    cliContext = _dockerCliContext(req.hostId);
+    cliContext = _dockerCliContext(req.resolvedHostId ?? req.hostId);
     const result = await runCompose(['up', '-d'], {
       cwd: targetDir, env: cliContext.env,
     });

@@ -5,6 +5,7 @@ const config = require('../config');
 const log = require('../utils/logger')('docker');
 const os = require('os');
 const { getDb } = require('../db');
+const { defaultHost, parseHostId, isDockerCompatible } = require('../utils/host-id');
 
 class DockerService {
   constructor() {
@@ -18,6 +19,17 @@ class DockerService {
 
   /** Get docker connection for a host (default: local) */
   getDocker(hostId = 0) {
+    hostId = parseHostId(hostId);
+    if (hostId === null) throw Object.assign(new Error('Invalid hostId'), { status: 400 });
+    if (hostId === 0) {
+      // Look up the alias on every use so a changed default never reuses
+      // a connection to the previous daemon, including on another replica.
+      const row = defaultHost(getDb());
+      if (row) {
+        if (!row.is_active) throw Object.assign(new Error('Default Docker host is not active'), { status: 400 });
+        return this.getDocker(row.id);
+      }
+    }
     if (this.connections.has(hostId)) return this.connections.get(hostId);
 
     // v8.17.0 (Onboarding Phase 3) — DEMO/SEEDED HOSTS ONLY.
@@ -52,20 +64,16 @@ class DockerService {
 
   /** Read host config from DB (or use defaults for host 0) */
   _getHostConfig(hostId) {
-    if (hostId === 0) {
-      // Check if DB has a default host override
-      try {
-        const db = getDb();
-        const row = db.prepare('SELECT * FROM docker_hosts WHERE id = 1 OR is_default = 1 ORDER BY is_default DESC LIMIT 1').get();
-        if (row) return this._parseHostRow(row);
-      } catch { /* DB not ready yet, use config */ }
+    const db = getDb();
+    const row = hostId === 0 ? defaultHost(db) : db.prepare('SELECT * FROM docker_hosts WHERE id = ?').get(hostId);
+    if (hostId === 0 && !row) {
       return { id: 0, name: 'Local', connectionType: 'socket', socketPath: config.docker.socketPath };
     }
-
-    const db = getDb();
-    const row = db.prepare('SELECT * FROM docker_hosts WHERE id = ?').get(hostId);
     if (!row) throw new Error(`Docker host ${hostId} not found`);
-    if (!row.is_active) throw new Error(`Docker host "${row.name}" is not active`);
+    if (!row.is_active) throw Object.assign(new Error(`Docker host "${row.name}" is not active`), { status: 400 });
+    if (!isDockerCompatible(row.daemon_type || undefined)) {
+      throw Object.assign(new Error('This operation requires a Docker-compatible host'), { status: 400, code: 'HOST_DAEMON_MISMATCH' });
+    }
     return this._parseHostRow(row);
   }
 
@@ -244,6 +252,10 @@ class DockerService {
 
   /** Drop cached connection for a host (force reconnect) */
   dropConnection(hostId) {
+    if (hostId === 0) {
+      const row = defaultHost(getDb());
+      if (row) this.dropConnection(row.id);
+    }
     this.connections.delete(hostId);
     this._hostCache.delete(hostId);
     // Non-Docker providers may maintain their own authenticated session cache.
@@ -472,7 +484,7 @@ class DockerService {
   }
 
   async containerAction(id, action, hostId = 0) {
-    if (hostId === 0 && this.isSelf(id) && ['stop', 'restart', 'remove', 'kill', 'pause'].includes(action)) {
+    if (this.isSelf(id) && ['stop', 'restart', 'remove', 'kill', 'pause'].includes(action)) {
       throw new Error('Cannot perform this action on Docker Dash itself');
     }
     const container = this.getDocker(hostId).getContainer(id);
@@ -488,7 +500,7 @@ class DockerService {
   }
 
   async removeContainer(id, { force = false, v = false } = {}, hostId = 0) {
-    if (hostId === 0 && this.isSelf(id)) throw new Error('Cannot remove Docker Dash itself');
+    if (this.isSelf(id)) throw new Error('Cannot remove Docker Dash itself');
     const container = this.getDocker(hostId).getContainer(id);
     await container.remove({ force, v });
   }
@@ -652,16 +664,11 @@ class DockerService {
     // errors" bug from alpha.2. Returns a shape compatible with the
     // Docker getInfo response so the frontend Info page can handle
     // any daemon type through the same code path.
-    if (hostId) {
-      try {
-        const { getDb } = require('../db');
-        const row = getDb().prepare('SELECT daemon_type FROM docker_hosts WHERE id = ?').get(hostId);
-        if (row && row.daemon_type && row.daemon_type !== 'docker' && row.daemon_type !== 'podman') {
-          // v8.9.3-alpha.1 — LXD and Incus share the REST API. Route them
-          // through the same branch and let the client stamp daemonType.
-          return await this._getNonDockerInfo(hostId, row.daemon_type);
-        }
-      } catch { /* DB not ready during tests or migration in-flight — fall through */ }
+    const db = getDb();
+    const row = hostId === 0 ? defaultHost(db) : db.prepare('SELECT id, daemon_type, is_active, connection_type FROM docker_hosts WHERE id = ?').get(hostId);
+    if (row && !isDockerCompatible(row.daemon_type || undefined)) {
+      if (!row.is_active) throw Object.assign(new Error('Host is not active'), { status: 400 });
+      return this._getNonDockerInfo(row.id, row.daemon_type);
     }
     const docker = this.getDocker(hostId);
     const [info, version] = await Promise.all([docker.info(), docker.version()]);
@@ -745,7 +752,7 @@ class DockerService {
     // docker-dash filesystem is on a different machine, so we omit the
     // fields; the UI shows a placeholder. Best-effort — statfs failure
     // (non-Linux, /data missing, permission) leaves the fields undefined.
-    if (!hostId) {
+    if (row?.connection_type === 'socket' || (!row && hostId === 0)) {
       try {
         const fsp = require('fs').promises;
         const st = await fsp.statfs('/data');
@@ -958,25 +965,28 @@ class DockerService {
     // else. Not cached — short-lived, used just for this call.
     const PRUNE_TIMEOUT_MS = 15 * 60_000;
     const docker = this._createConnection(this._getHostConfig(hostId), PRUNE_TIMEOUT_MS);
-    return require('./docker-prune-guard').withPrune(docker, async () => {
+    const guard = require('./docker-prune-guard');
+    return guard.withPrune(docker, async () => {
       const results = {};
-      if (containers) results.containers = await docker.pruneContainers({
-        filters: JSON.stringify(require('./docker-prune-guard').CONTAINER_FILTERS),
-      });
+      const spaceReclaimed = () => Object.values(results).reduce((sum, result) => sum + (result?.SpaceReclaimed || 0), 0);
       // Remove ALL unused images (not just dangling), matching the UI's advertised
-      // `docker image prune -a -f`. Without the dangling=false filter the API only
-      // removes untagged layers, which reclaims almost nothing on a real host.
-      if (images) results.images = await docker.pruneImages({ filters: '{"dangling":{"false":true}}' });
-      if (volumes) results.volumes = await docker.pruneVolumes();
-      if (networks) results.networks = await docker.pruneNetworks();
-      // Build cache is frequently the LARGEST reclaimable item (`docker builder prune`)
-      // and was previously never touched — the #1 reason "Disk Usage doesn't change".
-      if (buildCache) results.buildCache = await docker.pruneBuilder();
-      // Aggregate a single top-level SpaceReclaimed so callers/UI can report the real
-      // total (each dockerode prune result carries its own SpaceReclaimed).
-      results.SpaceReclaimed = Object.values(results)
-        .reduce((sum, r) => sum + ((r && r.SpaceReclaimed) || 0), 0);
-      return results;
+      // `docker image prune -a -f`.
+      const steps = [
+        ['containers', containers, () => docker.pruneContainers({ filters: JSON.stringify(guard.CONTAINER_FILTERS) })],
+        ['images', images, () => docker.pruneImages({ filters: '{"dangling":{"false":true}}' })],
+        ['volumes', volumes, () => docker.pruneVolumes()],
+        ['networks', networks, () => docker.pruneNetworks()],
+        ['buildCache', buildCache, () => docker.pruneBuilder()],
+      ];
+      for (const [stage, enabled, run] of steps) {
+        if (!enabled) continue;
+        try { results[stage] = await run(); }
+        catch (error) {
+          error.pruneProgress = { failedStage: stage, completed: Object.keys(results), spaceReclaimed: spaceReclaimed() };
+          throw error;
+        }
+      }
+      return { ...results, SpaceReclaimed: spaceReclaimed() };
     });
   }
 
@@ -994,7 +1004,7 @@ class DockerService {
 
   // ─── Events Stream ────────────────────────────────────────
 
-  async getEventStream(hostId = 0) {
+  async getEventStream(hostId = 0, options) {
     // Keep normal API requests bounded while allowing an idle events stream
     // to stay connected indefinitely. A dedicated client also avoids changing
     // the timeout of the cached client shared by regular Docker operations.
@@ -1002,7 +1012,7 @@ class DockerService {
     // behavior instead of attempting a real connection to placeholder data.
     const docker = this._getMockDocker(hostId)
       || this._createConnection(this._getHostConfig(hostId), 0);
-    return await docker.getEvents();
+    return await docker.getEvents(options);
   }
 
   getContainerLogStream(hostId, containerId, options) {

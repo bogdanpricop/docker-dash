@@ -14,8 +14,9 @@ router.use(extractHostId);
 // ─── Export ─────────────────────────────────────────
 
 // Export a stack as a downloadable JSON bundle
-router.get('/export/stack/:name', requireAuth, asyncHandler(async (req, res) => {
-  const bundle = await bundleService.exportStack(req.params.name, req.hostId);
+router.get('/export/stack/:name', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const bundle = await bundleService.exportStack(req.params.name, req.resolvedHostId ?? req.hostId);
 
   auditService.log({
     userId: req.user.id, username: req.user.username,
@@ -35,8 +36,9 @@ router.get('/export/stack/:name', requireAuth, asyncHandler(async (req, res) => 
 }));
 
 // Export a single container
-router.get('/export/container/:id', requireAuth, asyncHandler(async (req, res) => {
-  const bundle = await bundleService.exportContainer(req.params.id, req.hostId);
+router.get('/export/container/:id', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const bundle = await bundleService.exportContainer(req.params.id, req.resolvedHostId ?? req.hostId);
 
   if (req.query.download === 'true') {
     const name = bundle.containers[0]?.name || 'container';

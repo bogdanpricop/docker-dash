@@ -396,12 +396,12 @@ describe('DockerService (src/services/docker.js)', () => {
   // ─── dropConnection ────────────────────────────────────────────────────
 
   it('dropConnection clears the cache for a hostId', () => {
-    // Force a connection to be cached
     dockerService.getDocker(0);
-    expect(dockerService.connections.has(0)).toBe(true);
-
+    dockerService.getDocker(0);
+    expect(dockerCtorCalls).toHaveLength(1);
     dockerService.dropConnection(0);
-    expect(dockerService.connections.has(0)).toBe(false);
+    dockerService.getDocker(0);
+    expect(dockerCtorCalls).toHaveLength(2);
   });
 
   // ─── testConnection ────────────────────────────────────────────────────

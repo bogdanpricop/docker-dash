@@ -21,6 +21,13 @@ test('real login and signed webhook routes remain exempt', async () => {
   await request(app).post('/api/git/webhook/example-token').expect(200);
   await request(app).post('/api/automation/webhooks/example').expect(200);
 });
+test('only exact token-based container webhook posts bypass CSRF', async () => {
+  const target = '/webhook/container/' + 'a'.repeat(43);
+  await request(app).post(target).expect(200);
+  await request(app).post(target + '/extra').expect(403);
+  await request(app).put(target).expect(403);
+  await request(app).post('/webhook/container/short').expect(403);
+});
 test('adding a fake Bearer header cannot bypass cookie-based CSRF', async () => {
   await request(app).post('/api/auth/ldap')
     .set('Cookie', `${config.session.cookieName}=session`)

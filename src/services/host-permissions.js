@@ -8,6 +8,7 @@
 
 const { getDb } = require('../db');
 const teamsService = require('./teams');
+const { parseHostId, defaultHost } = require('../utils/host-id');
 
 const LEVELS = ['view', 'operate', 'admin'];
 const rank = (p) => LEVELS.indexOf(p);
@@ -15,12 +16,9 @@ const max = (a, b) => (rank(a) > rank(b) ? a : b);
 
 /** Resolve the API's hostId=0 alias to the persisted default-host row. */
 function normalizeHostId(hostId) {
-  const parsed = Number.parseInt(hostId, 10);
-  if (!Number.isInteger(parsed) || parsed < 0) return null;
+  const parsed = parseHostId(hostId);
   if (parsed !== 0) return parsed;
-  const row = getDb().prepare(
-    'SELECT id FROM docker_hosts WHERE is_default = 1 ORDER BY id LIMIT 1'
-  ).get();
+  const row = defaultHost(getDb());
   return row ? row.id : 0;
 }
 

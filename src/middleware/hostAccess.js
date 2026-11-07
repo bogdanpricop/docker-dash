@@ -5,6 +5,7 @@
 // selected host. Admins retain global access for backward compatibility.
 
 const hostPermissions = require('../services/host-permissions');
+const { parseHostId } = require('../utils/host-id');
 
 const LEVELS = ['view', 'operate', 'admin'];
 const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
@@ -21,9 +22,8 @@ function _rank(level) {
 function _hostIdFromRequest(req, options = {}) {
   const raw = options.param
     ? req.params?.[options.param]
-    : (req.hostId ?? req.query?.hostId ?? req.headers?.['x-docker-host'] ?? 0);
-  const hostId = Number.parseInt(raw, 10);
-  return Number.isInteger(hostId) && hostId >= 0 ? hostId : null;
+    : (req.resolvedHostId ?? req.hostId ?? req.query?.hostId ?? req.headers?.['x-docker-host'] ?? 0);
+  return parseHostId(raw);
 }
 
 function _check(req, res, next, required, options) {

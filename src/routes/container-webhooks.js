@@ -10,6 +10,7 @@ const svc = require('../services/container-webhooks');
 const auditService = require('../services/audit');
 const { requireAuth, requireRole, writeable } = require('../middleware/auth');
 const { extractHostId } = require('../middleware/hostId');
+const config = require('../config');
 const { getClientIp } = require('../utils/helpers');
 const asyncHandler = require('../utils/asyncHandler');
 const log = require('../utils/logger')('container-webhooks-route');
@@ -18,12 +19,14 @@ const log = require('../utils/logger')('container-webhooks-route');
 const mgmt = Router();
 mgmt.use(extractHostId);
 
-mgmt.get('/', requireAuth, asyncHandler(async (req, res) => {
-  res.json(svc.list(req.hostId));
+mgmt.get('/', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(svc.list(req.resolvedHostId));
 }));
 
-mgmt.get('/:containerId', requireAuth, asyncHandler(async (req, res) => {
-  const row = svc.getByContainer(req.hostId, req.params.containerId);
+mgmt.get('/:containerId', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const row = svc.getByContainer(req.resolvedHostId, req.params.containerId);
   if (!row) return res.status(404).json({ error: 'Webhook not found' });
   res.json(row);
 }));
@@ -32,7 +35,7 @@ mgmt.post('/:containerId', requireAuth, requireRole('admin'), writeable,
   asyncHandler(async (req, res) => {
     try {
       const result = svc.create({
-        hostId: req.hostId,
+        hostId: req.resolvedHostId,
         containerId: req.params.containerId,
         containerName: (req.body && req.body.containerName) || null,
         action: (req.body && req.body.action) || 'recreate',
@@ -41,10 +44,10 @@ mgmt.post('/:containerId', requireAuth, requireRole('admin'), writeable,
         userId: req.user.id, username: req.user.username,
         action: 'container_webhook_create', targetType: 'container',
         targetId: req.params.containerId,
-        details: { hostId: req.hostId, webhookId: result.id, action: result.action },
+        details: { hostId: req.resolvedHostId, webhookId: result.id, action: result.action },
         ip: getClientIp(req),
       });
-      res.status(201).json({ ok: true, ...result });
+      res.set('Cache-Control', 'no-store').status(201).json({ ok: true, ...result });
     } catch (err) {
       res.status(err.status || 500).json({ error: err.message });
     }
@@ -53,7 +56,7 @@ mgmt.post('/:containerId', requireAuth, requireRole('admin'), writeable,
 
 mgmt.delete('/:containerId', requireAuth, requireRole('admin'), writeable,
   asyncHandler(async (req, res) => {
-    svc.removeByContainer(req.hostId, req.params.containerId);
+    svc.removeByContainer(req.resolvedHostId, req.params.containerId);
     auditService.log({
       userId: req.user.id, username: req.user.username,
       action: 'container_webhook_delete', targetType: 'container',
@@ -74,16 +77,19 @@ trigger.post('/:token', triggerLimiter, asyncHandler(async (req, res) => {
   const row = svc.getByToken(req.params.token);
   // 404 on unknown token (NOT 401) to avoid enumeration.
   if (!row) return res.status(404).json({ error: 'Not found' });
+  if (config.features.readOnly) return res.status(403).json({ error: 'System is in read-only mode' });
+  const gate = require('../services/provider-operations/policy').globalHttpGate();
+  if (!gate.allowed) return res.status(423).json({ error: gate.reason, code: gate.code });
   try {
     const result = await svc.trigger(row, getClientIp(req));
     auditService.log({
       userId: null, username: null,
       action: 'container_webhook_trigger', targetType: 'container',
       targetId: row.container_id,
-      details: { hostId: row.host_id, webhookId: row.id, action: result.action, image: result.image },
+      details: { hostId: row.host_id, webhookId: row.id, ...result },
       ip: getClientIp(req),
     });
-    res.json({ ok: true, action: result.action, image: result.image });
+    res.json({ ok: true, ...result });
   } catch (err) {
     log.error('Webhook trigger failed', { error: err.message });
     auditService.log({
@@ -93,7 +99,9 @@ trigger.post('/:token', triggerLimiter, asyncHandler(async (req, res) => {
       details: { hostId: row.host_id, webhookId: row.id, error: err.message },
       ip: getClientIp(req),
     });
-    res.status(500).json({ error: err.message });
+    res.status([403, 409, 503].includes(err.status) ? err.status : 500).json({
+      error: err.message, ...(err.operationId && { operationId: err.operationId }),
+    });
   }
 }));
 

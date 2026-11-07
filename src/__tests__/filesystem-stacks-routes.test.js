@@ -164,7 +164,7 @@ describe('filesystem-backed stack routes', () => {
 
     const detail = await request(app).get('/api/system/stacks/mounted').expect(200);
 
-    expect(dockerService.listVolumes).toHaveBeenCalledWith(0);
+    expect(dockerService.listVolumes).toHaveBeenCalledWith(1);
     expect(detail.body.storage).toEqual(expect.objectContaining({
       namedVolumes: 2,
       measuredNamedVolumes: 2,

@@ -146,12 +146,13 @@ const dockerEvents = {
     `).run(hostId, eventType, action, actorId, actorName, 
       typeof attributes === 'object' ? JSON.stringify(attributes) : attributes, eventTime || now());
   },
-  query({ type, action, since, limit = 100 } = {}) {
+  query({ type, action, since, limit = 100, hostId } = {}) {
     const where = [];
     const params = [];
     if (type) { where.push('event_type = ?'); params.push(type); }
     if (action) { where.push('action = ?'); params.push(action); }
     if (since) { where.push('event_time >= ?'); params.push(since); }
+    if (hostId != null) { where.push('host_id = ?'); params.push(hostId); }
     const w = where.length ? 'WHERE ' + where.join(' AND ') : '';
     return getDb().prepare(`SELECT * FROM docker_events ${w} ORDER BY event_time DESC LIMIT ?`).all(...params, limit);
   },

@@ -21,10 +21,12 @@ const auditService = require('../services/audit');
 const { requireAuth, requireRole, writeable } = require('../middleware/auth');
 const { getClientIp } = require('../utils/helpers');
 const { extractHostId } = require('../middleware/hostId');
+const { requireHostAccessForMethod } = require('../middleware/hostAccess');
 const asyncHandler = require('../utils/asyncHandler');
 
 const router = Router();
 router.use(extractHostId);
+const hostAccess = requireHostAccessForMethod();
 
 // Reusable guard: verify the target host is registered AND runs an
 // Incus- or LXD-compatible daemon. Both share the same REST API so the
@@ -32,7 +34,7 @@ router.use(extractHostId);
 // returns null on failure so the handler can early-exit.
 function _getIncusHost(req, res) {
   const db = getDb();
-  const row = db.prepare('SELECT * FROM docker_hosts WHERE id = ?').get(req.hostId);
+  const row = db.prepare('SELECT * FROM docker_hosts WHERE id = ?').get(req.resolvedHostId ?? req.hostId);
   if (!row) { res.status(404).json({ error: `Host ${req.hostId} not found` }); return null; }
   if (row.daemon_type !== 'incus' && row.daemon_type !== 'lxd') {
     res.status(400).json({
@@ -47,7 +49,7 @@ function _getIncusHost(req, res) {
 
 // GET /api/incus/info — daemon version + supported API versions.
 // Used by the frontend to render a "connected/not connected" pill.
-router.get('/info', requireAuth, asyncHandler(async (req, res) => {
+router.get('/info', requireAuth, hostAccess, asyncHandler(async (req, res) => {
   const row = _getIncusHost(req, res); if (!row) return;
   const client = fromHostRow(row);
   const info = await client.info();
@@ -66,14 +68,14 @@ function _forbiddenMsg(client) {
 function _isForbidden(err) { return err && (err.status === 403 || /forbidden/i.test(err.message || '')); }
 
 // GET /api/incus/client-info — our client cert fingerprint (for the trust UI).
-router.get('/client-info', requireAuth, asyncHandler(async (req, res) => {
+router.get('/client-info', requireAuth, hostAccess, asyncHandler(async (req, res) => {
   const row = _getIncusHost(req, res); if (!row) return;
   const client = fromHostRow(row);
   res.json({ fingerprint: client.clientFingerprint(), daemonType: row.daemon_type });
 }));
 
 // POST /api/incus/trust — register our client cert using a trust token.
-router.post('/trust', requireAuth, requireRole('admin'), writeable, asyncHandler(async (req, res) => {
+router.post('/trust', requireAuth, hostAccess, requireRole('admin'), writeable, asyncHandler(async (req, res) => {
   const row = _getIncusHost(req, res); if (!row) return;
   const client = fromHostRow(row);
   try {
@@ -91,7 +93,7 @@ router.post('/trust', requireAuth, requireRole('admin'), writeable, asyncHandler
 
 // ─── Instances ──────────────────────────────────────────────
 
-router.get('/instances', requireAuth, asyncHandler(async (req, res) => {
+router.get('/instances', requireAuth, hostAccess, asyncHandler(async (req, res) => {
   const row = _getIncusHost(req, res); if (!row) return;
   const client = fromHostRow(row);
   const project = req.query.project || undefined;
@@ -103,7 +105,7 @@ router.get('/instances', requireAuth, asyncHandler(async (req, res) => {
   }
 }));
 
-router.get('/instances/:name', requireAuth, asyncHandler(async (req, res) => {
+router.get('/instances/:name', requireAuth, hostAccess, asyncHandler(async (req, res) => {
   const row = _getIncusHost(req, res); if (!row) return;
   const client = fromHostRow(row);
   const project = req.query.project || undefined;
@@ -115,7 +117,7 @@ router.get('/instances/:name', requireAuth, asyncHandler(async (req, res) => {
 // Each returns the operation metadata on success.
 const _stateActionRoutes = ['start', 'stop', 'restart', 'freeze', 'unfreeze'];
 for (const action of _stateActionRoutes) {
-  router.post(`/instances/:name/${action}`, requireAuth, requireRole('admin'), writeable,
+  router.post(`/instances/:name/${action}`, requireAuth, hostAccess, requireRole('admin'), writeable,
     asyncHandler(async (req, res) => {
       const row = _getIncusHost(req, res); if (!row) return;
       const client = fromHostRow(row);
@@ -139,7 +141,7 @@ for (const action of _stateActionRoutes) {
   );
 }
 
-router.delete('/instances/:name', requireAuth, requireRole('admin'), writeable,
+router.delete('/instances/:name', requireAuth, hostAccess, requireRole('admin'), writeable,
   asyncHandler(async (req, res) => {
     const row = _getIncusHost(req, res); if (!row) return;
     const client = fromHostRow(row);
@@ -161,13 +163,13 @@ router.delete('/instances/:name', requireAuth, requireRole('admin'), writeable,
 
 // ─── Snapshots ──────────────────────────────────────────────
 
-router.get('/instances/:name/snapshots', requireAuth, asyncHandler(async (req, res) => {
+router.get('/instances/:name/snapshots', requireAuth, hostAccess, asyncHandler(async (req, res) => {
   const row = _getIncusHost(req, res); if (!row) return;
   const client = fromHostRow(row);
   res.json(await client.listSnapshots(req.params.name, req.query.project || undefined));
 }));
 
-router.post('/instances/:name/snapshots', requireAuth, requireRole('admin'), writeable,
+router.post('/instances/:name/snapshots', requireAuth, hostAccess, requireRole('admin'), writeable,
   asyncHandler(async (req, res) => {
     const row = _getIncusHost(req, res); if (!row) return;
     const client = fromHostRow(row);
@@ -192,7 +194,7 @@ router.post('/instances/:name/snapshots', requireAuth, requireRole('admin'), wri
   })
 );
 
-router.post('/instances/:name/snapshots/:snapshot/restore', requireAuth, requireRole('admin'), writeable,
+router.post('/instances/:name/snapshots/:snapshot/restore', requireAuth, hostAccess, requireRole('admin'), writeable,
   asyncHandler(async (req, res) => {
     const row = _getIncusHost(req, res); if (!row) return;
     const client = fromHostRow(row);
@@ -213,7 +215,7 @@ router.post('/instances/:name/snapshots/:snapshot/restore', requireAuth, require
   })
 );
 
-router.delete('/instances/:name/snapshots/:snapshot', requireAuth, requireRole('admin'), writeable,
+router.delete('/instances/:name/snapshots/:snapshot', requireAuth, hostAccess, requireRole('admin'), writeable,
   asyncHandler(async (req, res) => {
     const row = _getIncusHost(req, res); if (!row) return;
     const client = fromHostRow(row);
@@ -236,12 +238,12 @@ router.delete('/instances/:name/snapshots/:snapshot', requireAuth, requireRole('
 
 // ─── Images / Projects (read-only for now) ──────────────────
 
-router.get('/images', requireAuth, asyncHandler(async (req, res) => {
+router.get('/images', requireAuth, hostAccess, asyncHandler(async (req, res) => {
   const row = _getIncusHost(req, res); if (!row) return;
   res.json(await fromHostRow(row).listImages());
 }));
 
-router.get('/projects', requireAuth, asyncHandler(async (req, res) => {
+router.get('/projects', requireAuth, hostAccess, asyncHandler(async (req, res) => {
   const row = _getIncusHost(req, res); if (!row) return;
   res.json(await fromHostRow(row).listProjects());
 }));

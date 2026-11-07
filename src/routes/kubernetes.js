@@ -24,15 +24,17 @@ const auditService = require('../services/audit');
 const { getClientIp } = require('../utils/helpers');
 const { requireAuth, requireRole, writeable } = require('../middleware/auth');
 const { extractHostId } = require('../middleware/hostId');
+const { requireHostAccessForMethod } = require('../middleware/hostAccess');
 const asyncHandler = require('../utils/asyncHandler');
 
 const router = Router();
 router.use(extractHostId);
+const hostAccess = requireHostAccessForMethod();
 
 // Reusable guard: verify the target host is registered AND is k8s.
 function _getK8sHost(req, res) {
   const db = getDb();
-  const row = db.prepare('SELECT * FROM docker_hosts WHERE id = ?').get(req.hostId);
+  const row = db.prepare('SELECT * FROM docker_hosts WHERE id = ?').get(req.resolvedHostId ?? req.hostId);
   if (!row) { res.status(404).json({ error: `Host ${req.hostId} not found` }); return null; }
   if (row.daemon_type !== 'kubernetes') {
     res.status(400).json({
@@ -56,7 +58,7 @@ function virtualizationRoute(handler) {
 
 // ─── Health probe ───────────────────────────────────────────
 
-router.get('/version', requireAuth, asyncHandler(async (req, res) => {
+router.get('/version', requireAuth, hostAccess, asyncHandler(async (req, res) => {
   const row = _getK8sHost(req, res); if (!row) return;
   const client = fromHostRow(row);
   res.json(await client.version());
@@ -64,7 +66,7 @@ router.get('/version', requireAuth, asyncHandler(async (req, res) => {
 
 // ─── Namespaces ─────────────────────────────────────────────
 
-router.get('/namespaces', requireAuth, asyncHandler(async (req, res) => {
+router.get('/namespaces', requireAuth, hostAccess, asyncHandler(async (req, res) => {
   const row = _getK8sHost(req, res); if (!row) return;
   const client = fromHostRow(row);
   res.json(await client.listNamespaces());
@@ -72,7 +74,7 @@ router.get('/namespaces', requireAuth, asyncHandler(async (req, res) => {
 
 // ─── Pods ───────────────────────────────────────────────────
 
-router.get('/pods', requireAuth, asyncHandler(async (req, res) => {
+router.get('/pods', requireAuth, hostAccess, asyncHandler(async (req, res) => {
   const row = _getK8sHost(req, res); if (!row) return;
   const client = fromHostRow(row);
   const ns = req.query.namespace || undefined;
@@ -81,7 +83,7 @@ router.get('/pods', requireAuth, asyncHandler(async (req, res) => {
 
 // ─── Deployments ────────────────────────────────────────────
 
-router.get('/deployments', requireAuth, asyncHandler(async (req, res) => {
+router.get('/deployments', requireAuth, hostAccess, asyncHandler(async (req, res) => {
   const row = _getK8sHost(req, res); if (!row) return;
   const client = fromHostRow(row);
   const ns = req.query.namespace || undefined;
@@ -90,7 +92,7 @@ router.get('/deployments', requireAuth, asyncHandler(async (req, res) => {
 
 // ─── Services ───────────────────────────────────────────────
 
-router.get('/services', requireAuth, asyncHandler(async (req, res) => {
+router.get('/services', requireAuth, hostAccess, asyncHandler(async (req, res) => {
   const row = _getK8sHost(req, res); if (!row) return;
   const client = fromHostRow(row);
   const ns = req.query.namespace || undefined;
@@ -99,7 +101,7 @@ router.get('/services', requireAuth, asyncHandler(async (req, res) => {
 
 // ─── Nodes ──────────────────────────────────────────────────
 
-router.get('/nodes', requireAuth, asyncHandler(async (req, res) => {
+router.get('/nodes', requireAuth, hostAccess, asyncHandler(async (req, res) => {
   const row = _getK8sHost(req, res); if (!row) return;
   const client = fromHostRow(row);
   res.json(await client.listNodes());
@@ -107,13 +109,13 @@ router.get('/nodes', requireAuth, asyncHandler(async (req, res) => {
 
 // ─── v8.9.7-alpha.1 — Portainer G13 closure: Ingress + NetworkPolicy read ───
 
-router.get('/ingresses', requireAuth, asyncHandler(async (req, res) => {
+router.get('/ingresses', requireAuth, hostAccess, asyncHandler(async (req, res) => {
   const row = _getK8sHost(req, res); if (!row) return;
   const ns = req.query.namespace || undefined;
   res.json(await fromHostRow(row).listIngresses(ns));
 }));
 
-router.get('/networkpolicies', requireAuth, asyncHandler(async (req, res) => {
+router.get('/networkpolicies', requireAuth, hostAccess, asyncHandler(async (req, res) => {
   const row = _getK8sHost(req, res); if (!row) return;
   const ns = req.query.namespace || undefined;
   res.json(await fromHostRow(row).listNetworkPolicies(ns));
@@ -122,7 +124,7 @@ router.get('/networkpolicies', requireAuth, asyncHandler(async (req, res) => {
 // ─── v8.9.8-alpha.1 — Portainer G04 closure: Kubernetes write ops ───
 // Admin-only writes with audit trail. Anti-features stay OUT per Sprint 5.
 
-router.post('/deployments/:ns/:name/scale', requireAuth, requireRole('admin'), writeable,
+router.post('/deployments/:ns/:name/scale', requireAuth, hostAccess, requireRole('admin'), writeable,
   asyncHandler(async (req, res) => {
     const row = _getK8sHost(req, res); if (!row) return;
     const { replicas } = req.body || {};
@@ -144,7 +146,7 @@ router.post('/deployments/:ns/:name/scale', requireAuth, requireRole('admin'), w
   })
 );
 
-router.post('/deployments/:ns/:name/restart', requireAuth, requireRole('admin'), writeable,
+router.post('/deployments/:ns/:name/restart', requireAuth, hostAccess, requireRole('admin'), writeable,
   asyncHandler(async (req, res) => {
     const row = _getK8sHost(req, res); if (!row) return;
     try {
@@ -162,7 +164,7 @@ router.post('/deployments/:ns/:name/restart', requireAuth, requireRole('admin'),
   })
 );
 
-router.delete('/pods/:ns/:name', requireAuth, requireRole('admin'), writeable,
+router.delete('/pods/:ns/:name', requireAuth, hostAccess, requireRole('admin'), writeable,
   asyncHandler(async (req, res) => {
     const row = _getK8sHost(req, res); if (!row) return;
     try {
@@ -180,7 +182,7 @@ router.delete('/pods/:ns/:name', requireAuth, requireRole('admin'), writeable,
   })
 );
 
-router.post('/nodes/:name/cordon', requireAuth, requireRole('admin'), writeable,
+router.post('/nodes/:name/cordon', requireAuth, hostAccess, requireRole('admin'), writeable,
   asyncHandler(async (req, res) => {
     const row = _getK8sHost(req, res); if (!row) return;
     const unschedulable = req.body.unschedulable !== false;
@@ -200,7 +202,7 @@ router.post('/nodes/:name/cordon', requireAuth, requireRole('admin'), writeable,
 );
 
 // ─── v8.9.8-alpha.1 — Portainer G05 closure: pod log streaming (SSE) ───
-router.get('/pods/:ns/:name/logs', requireAuth, asyncHandler(async (req, res) => {
+router.get('/pods/:ns/:name/logs', requireAuth, hostAccess, asyncHandler(async (req, res) => {
   const row = _getK8sHost(req, res); if (!row) return;
   const container = req.query.container || undefined;
   const follow = req.query.follow !== '0';
@@ -224,7 +226,7 @@ router.get('/pods/:ns/:name/logs', requireAuth, asyncHandler(async (req, res) =>
 
 // ─── v8.9.7-alpha.1 — Portainer G08 closure: kubeconfig download ───
 
-router.get('/kubeconfig', requireAuth, asyncHandler(async (req, res) => {
+router.get('/kubeconfig', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
   const row = _getK8sHost(req, res); if (!row) return;
   const yaml = buildKubeconfig(row);
   auditService.log({
@@ -233,18 +235,19 @@ router.get('/kubeconfig', requireAuth, asyncHandler(async (req, res) => {
     ip: getClientIp(req),
   });
   res.set('Content-Type', 'application/yaml');
+  res.set('Cache-Control', 'no-store');
   res.set('Content-Disposition', `attachment; filename="kubeconfig-${row.name || 'k8s'}.yaml"`);
   res.send(yaml);
 }));
 
 // ─── v8.62.0 — B301-B305: KubeVirt convergence ─────────────
 
-router.get('/virtualization/capabilities', requireAuth, virtualizationRoute(async (req, res) => {
+router.get('/virtualization/capabilities', requireAuth, hostAccess, virtualizationRoute(async (req, res) => {
   const row = _getK8sHost(req, res); if (!row) return;
   res.json(await virtualization.discover(row));
 }));
 
-router.post('/virtualization/capabilities/refresh', requireAuth, requireRole('admin'), writeable,
+router.post('/virtualization/capabilities/refresh', requireAuth, hostAccess, requireRole('admin'), writeable,
   virtualizationRoute(async (req, res) => {
     const row = _getK8sHost(req, res); if (!row) return;
     const snapshot = await virtualization.refreshDiscovery(row, req.user);
@@ -255,12 +258,12 @@ router.post('/virtualization/capabilities/refresh', requireAuth, requireRole('ad
     res.status(snapshot.duplicate ? 200 : 201).json({ snapshot });
   }));
 
-router.get('/virtualization/inventory', requireAuth, virtualizationRoute(async (req, res) => {
+router.get('/virtualization/inventory', requireAuth, hostAccess, virtualizationRoute(async (req, res) => {
   const row = _getK8sHost(req, res); if (!row) return;
   res.json(await virtualization.inventory(row, req.query.namespace || undefined));
 }));
 
-router.post('/virtualization/inventory/refresh', requireAuth, requireRole('admin'), writeable,
+router.post('/virtualization/inventory/refresh', requireAuth, hostAccess, requireRole('admin'), writeable,
   virtualizationRoute(async (req, res) => {
     const row = _getK8sHost(req, res); if (!row) return;
     const snapshot = await virtualization.refreshInventory(row, req.body?.namespace || undefined, req.user);
@@ -271,22 +274,22 @@ router.post('/virtualization/inventory/refresh', requireAuth, requireRole('admin
     res.status(snapshot.duplicate ? 200 : 201).json({ snapshot });
   }));
 
-router.get('/virtualization/openshift', requireAuth, virtualizationRoute(async (req, res) => {
+router.get('/virtualization/openshift', requireAuth, hostAccess, virtualizationRoute(async (req, res) => {
   const row = _getK8sHost(req, res); if (!row) return;
   res.json(await virtualization.openShiftOverview(row, req.query.namespace || 'default'));
 }));
 
-router.get('/virtualization/harvester', requireAuth, virtualizationRoute(async (req, res) => {
+router.get('/virtualization/harvester', requireAuth, hostAccess, virtualizationRoute(async (req, res) => {
   const row = _getK8sHost(req, res); if (!row) return;
   res.json(await virtualization.harvesterOverview(row, req.query.namespace || 'default'));
 }));
 
-router.get('/virtualization/vms/:ns/:name/yaml', requireAuth, virtualizationRoute(async (req, res) => {
+router.get('/virtualization/vms/:ns/:name/yaml', requireAuth, hostAccess, virtualizationRoute(async (req, res) => {
   const row = _getK8sHost(req, res); if (!row) return;
   res.json(await virtualization.virtualMachineYaml(row, req.params.ns, req.params.name));
 }));
 
-router.post('/virtualization/vms/:ns/:name/dry-run', requireAuth, requireRole('admin'), writeable,
+router.post('/virtualization/vms/:ns/:name/dry-run', requireAuth, hostAccess, requireRole('admin'), writeable,
   virtualizationRoute(async (req, res) => {
     const row = _getK8sHost(req, res); if (!row) return;
     const result = await virtualization.dryRunVirtualMachine(row, req.params.ns, req.params.name, req.body?.yaml, req.user);
@@ -298,19 +301,19 @@ router.post('/virtualization/vms/:ns/:name/dry-run', requireAuth, requireRole('a
     res.status(result.duplicate ? 200 : 201).json({ validation: result });
   }));
 
-router.get('/virtualization/evidence', requireAuth, requireRole('admin'), virtualizationRoute((req, res) => {
+router.get('/virtualization/evidence', requireAuth, hostAccess, requireRole('admin'), virtualizationRoute((req, res) => {
   const row = _getK8sHost(req, res); if (!row) return;
   res.json(virtualization.evidence(row.id, req.user));
 }));
 
 // ─── v8.63.0 — B306-B315: CDI/template/storage/network convergence ───
 
-router.get('/virtualization/convergence/:kind', requireAuth, virtualizationRoute(async (req, res) => {
+router.get('/virtualization/convergence/:kind', requireAuth, hostAccess, virtualizationRoute(async (req, res) => {
   const row = _getK8sHost(req, res); if (!row) return;
   res.json(await convergence.liveEvidence(row, req.params.kind, req.query.namespace || undefined));
 }));
 
-router.post('/virtualization/convergence/:kind/refresh', requireAuth, requireRole('admin'), writeable,
+router.post('/virtualization/convergence/:kind/refresh', requireAuth, hostAccess, requireRole('admin'), writeable,
   virtualizationRoute(async (req, res) => {
     const row = _getK8sHost(req, res); if (!row) return;
     const snapshot = await convergence.refreshEvidence(row, req.params.kind, req.body?.namespace || undefined, req.user);
@@ -321,12 +324,12 @@ router.post('/virtualization/convergence/:kind/refresh', requireAuth, requireRol
     res.status(snapshot.duplicate ? 200 : 201).json({ snapshot });
   }));
 
-router.get('/virtualization/convergence-snapshots', requireAuth, requireRole('admin'), virtualizationRoute((req, res) => {
+router.get('/virtualization/convergence-snapshots', requireAuth, hostAccess, requireRole('admin'), virtualizationRoute((req, res) => {
   const row = _getK8sHost(req, res); if (!row) return;
   res.json({ snapshots: convergence.snapshots(row.id, req.user) });
 }));
 
-router.post('/virtualization/datavolumes/plans', requireAuth, requireRole('admin'), writeable,
+router.post('/virtualization/datavolumes/plans', requireAuth, hostAccess, requireRole('admin'), writeable,
   virtualizationRoute(async (req, res) => {
     const row = _getK8sHost(req, res); if (!row) return;
     const plan = await convergence.planDataVolume(row, req.body || {}, req.user);
@@ -337,7 +340,7 @@ router.post('/virtualization/datavolumes/plans', requireAuth, requireRole('admin
     res.status(plan.duplicate ? 200 : 201).json({ plan });
   }));
 
-router.post('/virtualization/templates/plans', requireAuth, requireRole('admin'), writeable,
+router.post('/virtualization/templates/plans', requireAuth, hostAccess, requireRole('admin'), writeable,
   virtualizationRoute(async (req, res) => {
     const row = _getK8sHost(req, res); if (!row) return;
     const plan = await convergence.planTemplateInstantiation(row, req.body || {}, req.user);
@@ -348,17 +351,17 @@ router.post('/virtualization/templates/plans', requireAuth, requireRole('admin')
     res.status(plan.duplicate ? 200 : 201).json({ plan });
   }));
 
-router.get('/virtualization/change-plans', requireAuth, requireRole('admin'), virtualizationRoute((req, res) => {
+router.get('/virtualization/change-plans', requireAuth, hostAccess, requireRole('admin'), virtualizationRoute((req, res) => {
   const row = _getK8sHost(req, res); if (!row) return;
   res.json({ plans: convergence.plans(row.id, req.user) });
 }));
 
-router.get('/virtualization/change-plans/:id/events', requireAuth, requireRole('admin'), virtualizationRoute((req, res) => {
+router.get('/virtualization/change-plans/:id/events', requireAuth, hostAccess, requireRole('admin'), virtualizationRoute((req, res) => {
   const row = _getK8sHost(req, res); if (!row) return;
   res.json({ events: convergence.operationEvents(req.params.id, req.user) });
 }));
 
-router.post('/virtualization/change-plans/:id/execute', requireAuth, requireRole('admin'), writeable,
+router.post('/virtualization/change-plans/:id/execute', requireAuth, hostAccess, requireRole('admin'), writeable,
   virtualizationRoute(async (req, res) => {
     const row = _getK8sHost(req, res); if (!row) return;
     const plan = await convergence.executePlan(row, req.params.id, req.body || {}, req.user);
@@ -370,12 +373,12 @@ router.post('/virtualization/change-plans/:id/execute', requireAuth, requireRole
     res.json({ plan });
   }));
 
-router.get('/virtualization/migration-policies', requireAuth, requireRole('admin'), virtualizationRoute(async (req, res) => {
+router.get('/virtualization/migration-policies', requireAuth, hostAccess, requireRole('admin'), virtualizationRoute(async (req, res) => {
   const row = _getK8sHost(req, res); if (!row) return;
   res.json(await convergence.migrationPolicies(row, req.user));
 }));
 
-router.post('/virtualization/migration-policies', requireAuth, requireRole('admin'), writeable,
+router.post('/virtualization/migration-policies', requireAuth, hostAccess, requireRole('admin'), writeable,
   virtualizationRoute((req, res) => {
     const row = _getK8sHost(req, res); if (!row) return;
     const policy = convergence.saveMigrationPolicy(row, req.body || {}, req.user);
@@ -387,12 +390,12 @@ router.post('/virtualization/migration-policies', requireAuth, requireRole('admi
 
 // ─── v8.64.0 — B316-B325: unified VM/container platform ───
 
-router.get('/virtualization/unified/evidence/:kind', requireAuth, virtualizationRoute(async (req, res) => {
+router.get('/virtualization/unified/evidence/:kind', requireAuth, hostAccess, virtualizationRoute(async (req, res) => {
   const row = _getK8sHost(req, res); if (!row) return;
   res.json(await unified.liveEvidence(row, req.params.kind, req.query.namespace || undefined));
 }));
 
-router.post('/virtualization/unified/evidence/:kind/refresh', requireAuth, requireRole('admin'), writeable,
+router.post('/virtualization/unified/evidence/:kind/refresh', requireAuth, hostAccess, requireRole('admin'), writeable,
   virtualizationRoute(async (req, res) => {
     const row = _getK8sHost(req, res); if (!row) return;
     const snapshot = await unified.refreshEvidence(row, req.params.kind, req.body?.namespace || undefined, req.user);
@@ -403,12 +406,12 @@ router.post('/virtualization/unified/evidence/:kind/refresh', requireAuth, requi
     res.status(snapshot.duplicate ? 200 : 201).json({ snapshot });
   }));
 
-router.get('/virtualization/unified/snapshots', requireAuth, requireRole('admin'), virtualizationRoute((req, res) => {
+router.get('/virtualization/unified/snapshots', requireAuth, hostAccess, requireRole('admin'), virtualizationRoute((req, res) => {
   const row = _getK8sHost(req, res); if (!row) return;
   res.json({ snapshots: unified.snapshots(row.id, req.user) });
 }));
 
-router.post('/virtualization/unified/gitops/plans', requireAuth, requireRole('admin'), writeable,
+router.post('/virtualization/unified/gitops/plans', requireAuth, hostAccess, requireRole('admin'), writeable,
   virtualizationRoute(async (req, res) => {
     const row = _getK8sHost(req, res); if (!row) return;
     const plan = await unified.planVmGitOps(row, req.body || {}, req.user);
@@ -420,15 +423,15 @@ router.post('/virtualization/unified/gitops/plans', requireAuth, requireRole('ad
     res.status(plan.duplicate ? 200 : 201).json({ plan });
   }));
 
-router.get('/virtualization/unified/gitops/plans', requireAuth, requireRole('admin'), virtualizationRoute((req, res) => {
+router.get('/virtualization/unified/gitops/plans', requireAuth, hostAccess, requireRole('admin'), virtualizationRoute((req, res) => {
   const row = _getK8sHost(req, res); if (!row) return;
   res.json({ plans: unified.gitOpsPlans(row.id, req.user) });
 }));
 
-router.get('/virtualization/unified/admission/policies', requireAuth, requireRole('admin'),
+router.get('/virtualization/unified/admission/policies', requireAuth, hostAccess, requireRole('admin'),
   virtualizationRoute((req, res) => res.json({ policies: unified.admissionPolicies(req.user) })));
 
-router.post('/virtualization/unified/admission/evaluate', requireAuth, requireRole('admin'), writeable,
+router.post('/virtualization/unified/admission/evaluate', requireAuth, hostAccess, requireRole('admin'), writeable,
   virtualizationRoute((req, res) => {
     const row = _getK8sHost(req, res); if (!row) return;
     const evaluation = unified.evaluateAdmission(row, req.body || {}, req.user);
@@ -439,11 +442,11 @@ router.post('/virtualization/unified/admission/evaluate', requireAuth, requireRo
     res.status(evaluation.duplicate ? 200 : 201).json({ evaluation });
   }));
 
-router.get('/virtualization/unified/cluster-catalog', requireAuth, requireRole('admin'),
+router.get('/virtualization/unified/cluster-catalog', requireAuth, hostAccess, requireRole('admin'),
   virtualizationRoute((req, res) => res.json({ catalog: unified.clusterCatalog(req.user) })));
-router.get('/virtualization/unified/cluster-plans', requireAuth, requireRole('admin'),
+router.get('/virtualization/unified/cluster-plans', requireAuth, hostAccess, requireRole('admin'),
   virtualizationRoute((req, res) => res.json({ plans: unified.clusterPlans(req.user) })));
-router.post('/virtualization/unified/cluster-plans', requireAuth, requireRole('admin'), writeable,
+router.post('/virtualization/unified/cluster-plans', requireAuth, hostAccess, requireRole('admin'), writeable,
   virtualizationRoute((req, res) => {
     const plan = unified.planCluster(req.body || {}, req.user);
     auditService.log({ userId: req.user.id, username: req.user.username,
@@ -453,9 +456,9 @@ router.post('/virtualization/unified/cluster-plans', requireAuth, requireRole('a
     res.status(plan.duplicate ? 200 : 201).json({ plan });
   }));
 
-router.get('/virtualization/unified/modernization', requireAuth, requireRole('admin'),
+router.get('/virtualization/unified/modernization', requireAuth, hostAccess, requireRole('admin'),
   virtualizationRoute((req, res) => res.json({ maps: unified.modernizationMaps(req.user) })));
-router.post('/virtualization/unified/modernization', requireAuth, requireRole('admin'), writeable,
+router.post('/virtualization/unified/modernization', requireAuth, hostAccess, requireRole('admin'), writeable,
   virtualizationRoute((req, res) => {
     const map = unified.createModernizationMap(req.body || {}, req.user);
     auditService.log({ userId: req.user.id, username: req.user.username,
@@ -465,9 +468,9 @@ router.post('/virtualization/unified/modernization', requireAuth, requireRole('a
     res.status(map.duplicate ? 200 : 201).json({ map });
   }));
 
-router.get('/virtualization/unified/image-provenance', requireAuth, requireRole('admin'),
+router.get('/virtualization/unified/image-provenance', requireAuth, hostAccess, requireRole('admin'),
   virtualizationRoute((req, res) => res.json({ records: unified.imageProvenance(req.user) })));
-router.post('/virtualization/unified/image-provenance', requireAuth, requireRole('admin'), writeable,
+router.post('/virtualization/unified/image-provenance', requireAuth, hostAccess, requireRole('admin'), writeable,
   virtualizationRoute((req, res) => {
     const record = unified.ingestImageProvenance(req.body || {}, req.user);
     auditService.log({ userId: req.user.id, username: req.user.username,
@@ -477,11 +480,11 @@ router.post('/virtualization/unified/image-provenance', requireAuth, requireRole
     res.status(record.duplicate ? 200 : 201).json({ record });
   }));
 
-router.get('/virtualization/unified/environments', requireAuth, requireRole('admin'),
+router.get('/virtualization/unified/environments', requireAuth, hostAccess, requireRole('admin'),
   virtualizationRoute((req, res) => res.json({ environments: unified.applicationEnvironments(req.user) })));
-router.get('/virtualization/unified/environments/:slug', requireAuth, requireRole('admin'),
+router.get('/virtualization/unified/environments/:slug', requireAuth, hostAccess, requireRole('admin'),
   virtualizationRoute((req, res) => res.json({ environment: unified.applicationEnvironment(req.params.slug, req.user) })));
-router.post('/virtualization/unified/environments', requireAuth, requireRole('admin'), writeable,
+router.post('/virtualization/unified/environments', requireAuth, hostAccess, requireRole('admin'), writeable,
   virtualizationRoute((req, res) => {
     const environment = unified.saveApplicationEnvironment(req.body || {}, req.user);
     auditService.log({ userId: req.user.id, username: req.user.username,

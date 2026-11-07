@@ -9,14 +9,16 @@ const { requireAuth, requireRole, writeable } = require('../middleware/auth');
 const auditService = require('../services/audit');
 const { getClientIp } = require('../utils/helpers');
 const { extractHostId } = require('../middleware/hostId');
+const { requireHostAccessForMethod } = require('../middleware/hostAccess');
 const asyncHandler = require('../utils/asyncHandler');
 
 const router = Router();
 router.use(extractHostId);
+const hostAccess = requireHostAccessForMethod();
 
 function _getVSphereHost(req, res) {
   const db = getDb();
-  const row = db.prepare('SELECT * FROM docker_hosts WHERE id = ?').get(req.hostId);
+  const row = db.prepare('SELECT * FROM docker_hosts WHERE id = ?').get(req.resolvedHostId ?? req.hostId);
   if (!row) { res.status(404).json({ error: `Host ${req.hostId} not found` }); return null; }
   if (row.daemon_type !== 'vsphere') {
     res.status(400).json({
@@ -85,7 +87,7 @@ function _getClient(row) {
 
 // Force a fresh reconnect: drop the cached (possibly dead) client and log in
 // again. Backs the "Reconnect" button when a host goes offline mid-session.
-router.post('/reconnect', requireAuth, asyncHandler(async (req, res) => {
+router.post('/reconnect', requireAuth, hostAccess, asyncHandler(async (req, res) => {
   const row = _getVSphereHost(req, res); if (!row) return;
   try {
     _invalidateClient(row.id);
@@ -98,7 +100,7 @@ router.post('/reconnect', requireAuth, asyncHandler(async (req, res) => {
   }
 }));
 
-router.get('/info', requireAuth, asyncHandler(async (req, res) => {
+router.get('/info', requireAuth, hostAccess, asyncHandler(async (req, res) => {
   const row = _getVSphereHost(req, res); if (!row) return;
   try {
     const c = await _getClient(row);
@@ -108,7 +110,7 @@ router.get('/info', requireAuth, asyncHandler(async (req, res) => {
   }
 }));
 
-router.get('/vms', requireAuth, asyncHandler(async (req, res) => {
+router.get('/vms', requireAuth, hostAccess, asyncHandler(async (req, res) => {
   const row = _getVSphereHost(req, res); if (!row) return;
   try {
     const c = await _getClient(row);
@@ -118,7 +120,7 @@ router.get('/vms', requireAuth, asyncHandler(async (req, res) => {
   }
 }));
 
-router.get('/hosts', requireAuth, asyncHandler(async (req, res) => {
+router.get('/hosts', requireAuth, hostAccess, asyncHandler(async (req, res) => {
   const row = _getVSphereHost(req, res); if (!row) return;
   try {
     const c = await _getClient(row);
@@ -128,7 +130,7 @@ router.get('/hosts', requireAuth, asyncHandler(async (req, res) => {
   }
 }));
 
-router.get('/datastores', requireAuth, asyncHandler(async (req, res) => {
+router.get('/datastores', requireAuth, hostAccess, asyncHandler(async (req, res) => {
   const row = _getVSphereHost(req, res); if (!row) return;
   try {
     const c = await _getClient(row);
@@ -139,7 +141,7 @@ router.get('/datastores', requireAuth, asyncHandler(async (req, res) => {
 }));
 
 // v8.9.13-alpha.1 — Networks / Services / Host Info (ported from SOS).
-router.get('/networks', requireAuth, asyncHandler(async (req, res) => {
+router.get('/networks', requireAuth, hostAccess, asyncHandler(async (req, res) => {
   const row = _getVSphereHost(req, res); if (!row) return;
   try { res.json(await (await _getClient(row)).listNetworks()); }
   catch (err) { res.status(err.status || 500).json({ error: err.message }); }
@@ -147,7 +149,7 @@ router.get('/networks', requireAuth, asyncHandler(async (req, res) => {
 
 // Services + host info operate on a specific ESXi host. moref optional —
 // defaults to the first host in the inventory (standalone ESXi has one).
-router.get('/services', requireAuth, asyncHandler(async (req, res) => {
+router.get('/services', requireAuth, hostAccess, asyncHandler(async (req, res) => {
   const row = _getVSphereHost(req, res); if (!row) return;
   try {
     const c = await _getClient(row);
@@ -158,7 +160,7 @@ router.get('/services', requireAuth, asyncHandler(async (req, res) => {
   } catch (err) { res.status(err.status || 500).json({ error: err.message }); }
 }));
 
-router.get('/host-info', requireAuth, asyncHandler(async (req, res) => {
+router.get('/host-info', requireAuth, hostAccess, asyncHandler(async (req, res) => {
   const row = _getVSphereHost(req, res); if (!row) return;
   try {
     const c = await _getClient(row);
@@ -170,7 +172,7 @@ router.get('/host-info', requireAuth, asyncHandler(async (req, res) => {
 }));
 
 // v8.9.14-alpha.1 — Datastore browse (read-only) + download (proxy).
-router.get('/datastore-browse', requireAuth, asyncHandler(async (req, res) => {
+router.get('/datastore-browse', requireAuth, hostAccess, asyncHandler(async (req, res) => {
   const row = _getVSphereHost(req, res); if (!row) return;
   const { datastore, path: folderPath } = req.query;
   if (!datastore) return res.status(400).json({ error: 'datastore is required' });
@@ -180,7 +182,7 @@ router.get('/datastore-browse', requireAuth, asyncHandler(async (req, res) => {
   } catch (err) { res.status(err.status || 500).json({ error: err.message }); }
 }));
 
-router.get('/datastore-download', requireAuth, asyncHandler(async (req, res) => {
+router.get('/datastore-download', requireAuth, hostAccess, asyncHandler(async (req, res) => {
   const row = _getVSphereHost(req, res); if (!row) return;
   const { datastore, path: filePath } = req.query;
   if (!datastore || !filePath) return res.status(400).json({ error: 'datastore + path are required' });
@@ -205,7 +207,7 @@ router.get('/datastore-download', requireAuth, asyncHandler(async (req, res) => 
 // The upload route streams the raw request body straight to ESXi — the
 // global express.json() parser is content-type-gated so it does not consume
 // application/octet-stream bodies.
-router.put('/datastore-upload', requireAuth, requireRole('admin'), writeable,
+router.put('/datastore-upload', requireAuth, hostAccess, requireRole('admin'), writeable,
   asyncHandler(async (req, res) => {
     const row = _getVSphereHost(req, res); if (!row) return;
     const { datastore, path: filePath } = req.query;
@@ -224,7 +226,7 @@ router.put('/datastore-upload', requireAuth, requireRole('admin'), writeable,
   })
 );
 
-router.delete('/datastore-file', requireAuth, requireRole('admin'), writeable,
+router.delete('/datastore-file', requireAuth, hostAccess, requireRole('admin'), writeable,
   asyncHandler(async (req, res) => {
     const row = _getVSphereHost(req, res); if (!row) return;
     const { datastore, path: filePath } = req.query;
@@ -242,7 +244,7 @@ router.delete('/datastore-file', requireAuth, requireRole('admin'), writeable,
   })
 );
 
-router.post('/service/:action', requireAuth, requireRole('admin'), writeable,
+router.post('/service/:action', requireAuth, hostAccess, requireRole('admin'), writeable,
   asyncHandler(async (req, res) => {
     const row = _getVSphereHost(req, res); if (!row) return;
     const { action } = req.params;
@@ -268,7 +270,7 @@ router.post('/service/:action', requireAuth, requireRole('admin'), writeable,
 // system). Read-only. Requires daemon_config.sshConfig on the host + SSH
 // enabled on the ESXi host. Returns { sshConfigured:false } (not an error)
 // when no SSH config is present, so the UI can show a setup hint.
-router.get('/ssh/telemetry', requireAuth, asyncHandler(async (req, res) => {
+router.get('/ssh/telemetry', requireAuth, hostAccess, asyncHandler(async (req, res) => {
   const row = _getVSphereHost(req, res); if (!row) return;
   let client;
   try { client = require('../services/vsphere-ssh').fromHostRow(row); }
@@ -278,7 +280,7 @@ router.get('/ssh/telemetry', requireAuth, asyncHandler(async (req, res) => {
   } catch (err) { res.status(err.status || 500).json({ error: err.message }); }
 }));
 
-router.post('/ssh/test', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
+router.post('/ssh/test', requireAuth, hostAccess, requireRole('admin'), asyncHandler(async (req, res) => {
   const row = _getVSphereHost(req, res); if (!row) return;
   let client;
   try { client = require('../services/vsphere-ssh').fromHostRow(row); }
@@ -288,7 +290,7 @@ router.post('/ssh/test', requireAuth, requireRole('admin'), asyncHandler(async (
 }));
 
 // v8.9.13-alpha.1 — metric history for the Trends tab.
-router.get('/history', requireAuth, asyncHandler(async (req, res) => {
+router.get('/history', requireAuth, hostAccess, asyncHandler(async (req, res) => {
   const row = _getVSphereHost(req, res); if (!row) return;
   const limit = parseInt(req.query.limit, 10) || 500;
   res.json(require('../services/vsphere-history').getHistory(row.id, limit));
@@ -298,7 +300,7 @@ router.get('/history', requireAuth, asyncHandler(async (req, res) => {
 // Resolves the host's version+build (from the ContainerView host list, which
 // now carries productVersion + build) and runs it through the offline
 // knowledge base. For vCenter with multiple hosts, checks each host.
-router.get('/version-check', requireAuth, asyncHandler(async (req, res) => {
+router.get('/version-check', requireAuth, hostAccess, asyncHandler(async (req, res) => {
   const row = _getVSphereHost(req, res); if (!row) return;
   try {
     const { checkVersion } = require('../services/esxi-version-db');

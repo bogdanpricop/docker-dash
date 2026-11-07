@@ -1010,6 +1010,8 @@ i18n.register('en', 'EN', 'English', {
       pruneConfirm: 'Prune {{type}}? This cannot be undone.',
       pruneAllConfirm: 'Prune ALL unused resources? This cannot be undone.',
       pruneSuccess: 'Pruned! {{freed}} freed', pruneDone: 'Pruned! Done',
+      prunePartial: 'Completed {{completed}}. Reclaimed {{freed}}.',
+      pruneRecoveryRequired: 'Inspect the retained prune reservation before retrying.',
       // Audit
       noAuditEntries: 'No audit entries',
       auditUser: 'User', auditAction: 'Action', auditTarget: 'Target', auditIp: 'IP',

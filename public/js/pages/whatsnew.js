@@ -9,6 +9,12 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.96.29', date: '2026-11-07', title: 'Safer multi-host operations', changes: [
+      { type: 'fix', text: 'Keep Docker operations on the selected host, including after a lookup failure or a default-host change.' },
+      { type: 'improvement', text: 'Show partial prune results, protect scheduled actions from duplicate automatic dispatch, and harden Docker event streams.' },
+      { type: 'fix', text: 'Restore token-based container webhook triggers and restrict sensitive exports.' },
+      { type: 'improvement', text: 'Update Feature Comparison with log forwarding, delivery diagnostics and reviewed comparison sources.' },
+    ] },
     { version: '8.96.28', date: '2026-11-07', title: 'Log forwarding delivery status', changes: [
       { type: 'improvement', text: 'See each destination’s last successful live delivery and open the latest failure for error codes and retry details.' },
     ] },

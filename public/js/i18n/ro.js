@@ -1370,6 +1370,8 @@ i18n.register('ro', 'RO', "Română", {
       pruneAllConfirm: "Curata TOATE resursele neutilizate? Aceasta actiune nu poate fi anulata.",
       pruneSuccess: "Curatat! {{freed}} eliberat",
       pruneDone: "Curatat! Gata",
+      prunePartial: 'Finalizat pentru {{completed}}. Spațiu eliberat {{freed}}.',
+      pruneRecoveryRequired: 'Verifică rezervarea păstrată înainte de a relua curățarea.',
       noAuditEntries: "Fara inregistrari in jurnal",
       auditUser: "Utilizator",
       auditAction: "Actiune",

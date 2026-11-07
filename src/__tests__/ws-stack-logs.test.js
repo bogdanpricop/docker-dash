@@ -8,6 +8,7 @@ jest.mock('../services/cluster', () => ({
 }));
 
 jest.mock('../services/host-permissions', () => ({
+  normalizeHostId: id => id,
   resolveEffectivePermission: jest.fn(() => 'view'),
 }));
 
@@ -87,6 +88,17 @@ describe('multiplexed stack log WebSocket protocol', () => {
       containerId: 'two', lines: ['hello from two\n'],
       data: { containerId: 'two', lines: ['hello from two\n'] },
     });
+  });
+
+  it('keeps live event and metric broadcasts on hosts the session can see', () => {
+    const ws = makeClient('viewer');
+    wsServer.clients.get(ws).subscriptions.add('stats:overview');
+    hostPermissions.resolveEffectivePermission.mockImplementation((_id, hostId) => hostId === 4 ? 'view' : null);
+    wsServer._localBroadcastAll('event', { hostId: 9 });
+    wsServer._localBroadcastAll('event', { hostId: 4 });
+    wsServer._localBroadcast('stats:overview', { hostId: 9 }, 'stats:overview');
+    wsServer._localBroadcast('stats:overview', { hostId: 4 }, 'stats:overview');
+    expect(messages(ws).map(message => message.data.hostId)).toEqual([4, 4]);
   });
 
   it('reassembles a Docker multiplex frame split across chunks', async () => {

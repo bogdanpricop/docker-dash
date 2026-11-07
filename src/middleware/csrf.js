@@ -48,6 +48,8 @@ module.exports = function csrf(req, res, next) {
   ensureCookie(req, res);
 
   if (EXEMPT_METHODS.has(req.method)) return next();
+  // The token in this exact public trigger URL is the only credential used.
+  if (req.method === 'POST' && /^\/webhook\/container\/[A-Za-z0-9_-]{43}\/?$/.test(req.path)) return next();
   if (EXEMPT_PATHS.some(p => p.endsWith('/') ? req.path.startsWith(p) : req.path === p)) return next();
 
   // Match authentication precedence: an arbitrary Authorization header must

@@ -65,17 +65,18 @@ async function withPrune(docker, action) {
     // or delete it on a blind retry.
     throw error;
   }
-  let started = false, uncertain = false;
+  let started = false, uncertain = false, failure, completed;
   try {
     const containers = await docker.listContainers({ all: true });
     if (containers.some(recoveryContainer)) {
       throw conflict('Container replacement, egress or Desktop Streamer release evidence is retained; reconcile it before pruning');
     }
     started = true;
-    const result = await action({ helperImage: helperAvailable ? image : null });
-    return { ...result, protection: { helperImageAvailable: helperAvailable,
+    completed = await action({ helperImage: helperAvailable ? image : null });
+    return { ...completed, protection: { helperImageAvailable: helperAvailable,
       helperImage: helperAvailable ? image : null, recoveryReservationsChecked: true } };
   } catch (error) {
+    failure = error;
     // Docker can continue an accepted prune after the HTTP connection is lost.
     // Keep the barrier until an operator proves completion; no time-based unlock.
     uncertain = started && (!Number.isInteger(error.statusCode) || error.statusCode >= 500);
@@ -86,9 +87,22 @@ async function withPrune(docker, action) {
     throw error;
   } finally {
     if (!uncertain) {
-      const info = await guard.inspect();
-      if (info.Config?.Labels?.[LABEL] !== token) throw conflict('Prune reservation ownership changed');
-      await guard.remove({ v: true });
+      try {
+        const info = await guard.inspect();
+        if (info.Config?.Labels?.[LABEL] !== token) throw conflict('Prune reservation ownership changed');
+        await guard.remove({ v: true });
+      } catch (error) {
+        if (error.statusCode !== 404) {
+          const primary = failure || conflict('Prune finished but reservation cleanup could not be verified');
+          primary.recoveryRequired = true;
+          primary.recoveryContainer = NAME;
+          if (completed) primary.pruneProgress = {
+            completed: Object.keys(completed).filter(key => key !== 'SpaceReclaimed'),
+            spaceReclaimed: completed.SpaceReclaimed || 0,
+          };
+          if (!failure) throw primary;
+        }
+      }
     }
   }
 }

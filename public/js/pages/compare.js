@@ -11,37 +11,38 @@ const ComparePage = {
         <div class="page-actions">
           <div class="search-box">
             <i class="fas fa-search"></i>
-            <input type="text" id="compare-search" placeholder="Filter features...">
+            <input type="search" id="compare-search" aria-label="Filter features" placeholder="Filter features...">
           </div>
         </div>
       </div>
       <div id="compare-content"><div class="text-muted"><i class="fas fa-spinner fa-spin"></i> Loading comparison data...</div></div>
     `;
 
+    const el = container.querySelector('#compare-content');
+    const search = container.querySelector('#compare-search');
     try {
       const data = await Api.getComparison();
-      this._renderMatrix(data);
+      if (!el.isConnected) return;
+      this._renderMatrix(el, data);
 
-      container.querySelector('#compare-search')?.addEventListener('input', Utils.debounce(() => {
-        this._filterFeatures(data);
+      search.addEventListener('input', Utils.debounce(() => {
+        this._filterFeatures(el, search.value);
       }, 200));
     } catch (err) {
-      document.getElementById('compare-content').innerHTML = `<div class="empty-msg">Error: ${err.message}</div>`;
+      el.innerHTML = `<div class="empty-msg">Error: ${Utils.escapeHtml(err.message)}</div>`;
     }
   },
 
-  _renderMatrix(data) {
-    const el = document.getElementById('compare-content');
+  _renderMatrix(el, data) {
     const features = data.features;
     const exclusive = data.summary.dockerDash.exclusive;
 
     const fmt = (v) => {
-      if (v === true) return '<span class="text-green"><i class="fas fa-check-circle"></i></span>';
-      if (v === false) return '<span class="text-muted">—</span>';
+      if (v === true) return '<span class="text-green" role="img" aria-label="Available"><i class="fas fa-check-circle" aria-hidden="true"></i></span>';
+      if (v === false) return '<span class="text-muted" role="img" aria-label="Not available">—</span>';
+      if (v == null) return '<span class="text-muted" role="img" aria-label="Not verified" title="Not verified">?</span>';
       return `<span class="badge badge-info" style="font-size:10px">${Utils.escapeHtml(String(v))}</span>`;
     };
-
-    const isExclusive = (f) => f.dockerDash === true && !f.portainerCE && !f.portainerBE && !f.dockge && !f.dockhand && !f.coolify && !f.yacht && !f.rancher;
 
     el.innerHTML = `
       <div class="stat-cards" style="margin-bottom:20px">
@@ -49,7 +50,7 @@ const ComparePage = {
           <div class="stat-icon green"><i class="fas fa-star"></i></div>
           <div class="stat-body">
             <div class="stat-value">${exclusive}</div>
-            <div class="stat-label">Exclusive Features</div>
+            <div class="stat-label">Marked Docker Dash Only</div>
           </div>
         </div>
         <div class="stat-card">
@@ -62,19 +63,21 @@ const ComparePage = {
         <div class="stat-card">
           <div class="stat-icon" style="background:rgba(210,153,34,0.1);color:#d29922"><i class="fas fa-lock"></i></div>
           <div class="stat-body">
-            <div class="stat-value">${features.filter(f => f.portainerCE === 'BE only').length}</div>
-            <div class="stat-label">Portainer Paywalled (free in DD)</div>
+            <div class="stat-value">${features.filter(f => f.portainerCE === 'BE only' && f.dockerDash).length}</div>
+            <div class="stat-label">Portainer BE Only, Available in Docker Dash</div>
           </div>
         </div>
         <div class="stat-card">
           <div class="stat-icon" style="background:rgba(248,81,73,0.1);color:var(--red)"><i class="fas fa-ban"></i></div>
           <div class="stat-body">
-            <div class="stat-value">${features.filter(f => !f.coolify && f.dockerDash).length}</div>
-            <div class="stat-label">Coolify Missing (DD has)</div>
+            <div class="stat-value">${features.filter(f => f.coolify === false && f.dockerDash).length}</div>
+            <div class="stat-label">Marked Unavailable in Coolify</div>
           </div>
         </div>
       </div>
 
+      <p class="text-muted text-sm mb-md">Docker Dash ${Utils.escapeHtml(data.summary.version)}. Source links identify the third-party details reviewed for individual rows. Other entries are historical reference data.</p>
+      <div id="compare-results" class="text-muted text-sm" role="status"></div>
       <div class="card">
         <div class="card-body" style="padding:0;overflow:auto;max-height:calc(100vh - 280px)">
           <table class="data-table" id="compare-table">
@@ -93,12 +96,13 @@ const ComparePage = {
             </thead>
             <tbody>
               ${features.map(f => `
-                <tr class="compare-row ${isExclusive(f) ? 'exclusive-row' : ''}" data-feature="${Utils.escapeHtml(f.feature.toLowerCase())}">
+                <tr class="compare-row ${f.exclusive ? 'exclusive-row' : ''}" data-feature="${Utils.escapeHtml([f.feature, f.dockerDashNote, typeof f.dockerDash === 'string' ? f.dockerDash : ''].filter(Boolean).join(' ').toLowerCase())}">
                   <td style="text-align:left;position:sticky;left:0;background:var(--surface2,#16161e);box-shadow:2px 0 0 var(--border)">
-                    ${isExclusive(f) ? '<i class="fas fa-star" style="color:#d29922;margin-right:6px;font-size:10px" title="Exclusive to Docker Dash"></i>' : ''}
+                    ${f.exclusive ? '<i class="fas fa-star" style="color:#d29922;margin-right:6px;font-size:10px" title="Marked Docker Dash only"></i>' : ''}
                     ${Utils.escapeHtml(f.feature)}
+                    ${f.source?.url?.startsWith('https://') ? `<div class="text-sm"><a href="${Utils.escapeHtml(f.source.url)}" target="_blank" rel="noopener noreferrer">${Utils.escapeHtml(f.source.label)}</a></div>` : ''}
                   </td>
-                  <td>${fmt(f.dockerDash)}</td>
+                  <td>${fmt(f.dockerDash)}${f.dockerDashNote ? `<div class="text-sm text-muted">${Utils.escapeHtml(f.dockerDashNote)}</div>` : ''}</td>
                   <td>${fmt(f.portainerCE)}</td>
                   <td>${fmt(f.portainerBE)}</td>
                   <td>${fmt(f.coolify)}</td>
@@ -112,11 +116,12 @@ const ComparePage = {
             <tfoot>
               <tr>
                 <td colspan="9" style="position:sticky;bottom:0;left:0;background:var(--surface2,#16161e);box-shadow:inset 0 2px 0 var(--border);padding:10px 16px;text-align:center;font-size:12px;color:var(--text-dim);white-space:nowrap">
-                  <i class="fas fa-star" style="color:#d29922;margin-right:4px"></i> Exclusive to Docker Dash &nbsp;&nbsp;|&nbsp;&nbsp;
+                  <i class="fas fa-star" style="color:#d29922;margin-right:4px"></i> Marked Docker Dash only &nbsp;&nbsp;|&nbsp;&nbsp;
                   <span style="color:var(--green)"><i class="fas fa-check-circle" style="margin-right:2px"></i></span> Available &nbsp;&nbsp;|&nbsp;&nbsp;
-                  <span class="badge badge-info" style="font-size:10px;vertical-align:middle">label</span> Partial / conditional &nbsp;&nbsp;|&nbsp;&nbsp;
+                  <span class="badge badge-info" style="font-size:10px;vertical-align:middle">label</span> Scope or condition &nbsp;&nbsp;|&nbsp;&nbsp;
                   <span style="font-weight:600">—</span> Not available &nbsp;&nbsp;|&nbsp;&nbsp;
-                  <span style="color:var(--yellow)">BE</span> = paid Portainer edition
+                  <span style="font-weight:600">?</span> Not verified &nbsp;&nbsp;|&nbsp;&nbsp;
+                  <span style="color:var(--yellow)">BE</span> = Portainer Business Edition
                 </td>
               </tr>
             </tfoot>
@@ -126,11 +131,14 @@ const ComparePage = {
     `;
   },
 
-  _filterFeatures(data) {
-    const query = document.getElementById('compare-search')?.value?.toLowerCase() || '';
-    document.querySelectorAll('.compare-row').forEach(row => {
-      row.style.display = row.dataset.feature.includes(query) ? '' : 'none';
+  _filterFeatures(el, value) {
+    const query = value.trim().toLowerCase();
+    let visible = 0;
+    el.querySelectorAll('.compare-row').forEach(row => {
+      row.hidden = !row.dataset.feature.includes(query);
+      if (!row.hidden) visible++;
     });
+    el.querySelector('#compare-results').textContent = query ? `${visible} matching features` : '';
   },
 
   destroy() {},

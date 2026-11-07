@@ -538,7 +538,7 @@ router.get('/docs', (req, res) => {
     endpoints: [
       { method: 'GET', path: '/api/health', auth: false, description: 'Health check with DB verification' },
       { method: 'GET', path: '/api/metrics', auth: false, description: 'Prometheus metrics export' },
-      { method: 'GET', path: '/api/compare', auth: false, description: 'Feature comparison matrix (75+ features)' },
+      { method: 'GET', path: '/api/compare', auth: false, description: 'Feature comparison matrix with capability notes and sources' },
       { method: 'GET', path: '/api/docs', auth: false, description: 'This API documentation' },
       { group: 'Auth', endpoints: [
         { method: 'POST', path: '/api/auth/login', description: 'Login with username + password' },
@@ -765,11 +765,21 @@ router.get('/compare', (req, res) => {
     { feature: 'Network Topology',                  dockerDash: true,              portainerCE: false,            portainerBE: false,         coolify: false,         yacht: false,      rancher: false,        dockge: false,          dockhand: false },
     { feature: 'Real-time Stats',                   dockerDash: true,              portainerCE: true,             portainerBE: true,          coolify: true,          yacht: 'basic',    rancher: true,         dockge: 'basic',        dockhand: true },
     { feature: 'Terminal (xterm.js)',               dockerDash: true,              portainerCE: true,             portainerBE: true,          coolify: true,          yacht: false,      rancher: true,         dockge: true,           dockhand: true },
-    { feature: 'Vulnerability Scanning',            dockerDash: 'Trivy + Scout',   portainerCE: false,            portainerBE: false,         coolify: false,         yacht: false,      rancher: 'NeuVector',  dockge: false,          dockhand: 'Grype + Trivy' },
+    { feature: 'Vulnerability Scanning',            dockerDash: 'Trivy + Grype',   portainerCE: false,            portainerBE: false,         coolify: false,         yacht: false,      rancher: 'NeuVector',  dockge: false,          dockhand: 'Grype + Trivy' },
     { feature: 'Safe-Pull Updates',                 dockerDash: true,              portainerCE: false,            portainerBE: false,         coolify: false,         yacht: false,      rancher: false,        dockge: false,          dockhand: true },
-    { feature: 'Multi-Host (agentless)',             dockerDash: true,              portainerCE: 'agent required', portainerBE: 'agent req.',  coolify: 'agent',       yacht: false,      rancher: true,         dockge: 'agent',        dockhand: true },
-    { feature: 'Git Integration',                   dockerDash: true,              portainerCE: 'BE only',        portainerBE: true,          coolify: true,          yacht: false,      rancher: 'Fleet',      dockge: false,          dockhand: false },
-    { feature: 'Webhooks + Polling',                dockerDash: true,              portainerCE: 'BE only',        portainerBE: true,          coolify: true,          yacht: false,      rancher: true,         dockge: false,          dockhand: false },
+    { feature: 'Multi-Host (agentless)',             dockerDash: 'Docker API / SSH', portainerCE: 'Docker API (legacy)', portainerBE: 'Docker API (legacy)', coolify: 'agent', yacht: false, rancher: true, dockge: 'agent', dockhand: true,
+      source: { label: 'Portainer Docker API documentation', url: 'https://docs.portainer.io/admin/environments/add/docker/api' } },
+    { feature: 'Per-Host Access and Target Validation', dockerDash: true,
+      dockerDashNote: 'Host grants scope operations and live data. Conflicting selectors, unavailable host lookups and incompatible daemons fail closed.' },
+    { feature: 'Git Integration',                   dockerDash: true,              portainerCE: 'Basic Git deploy', portainerBE: true,         coolify: true,          yacht: false,      rancher: 'Fleet',      dockge: false,          dockhand: false,
+      source: { label: 'Portainer edition comparison', url: 'https://www.portainer.io/blog/portainer-community-edition-ce-vs-portainer-business-edition-be-which-should-you-install' } },
+    { feature: 'Git Stack Webhooks and Polling',    dockerDash: true,              portainerCE: 'BE only',        portainerBE: true,          coolify: true,          yacht: false,      rancher: true,         dockge: false,          dockhand: false,
+      source: { label: 'Portainer GitOps edition comparison', url: 'https://www.portainer.io/blog/portainer-community-edition-ce-vs-portainer-business-edition-be-which-should-you-install' } },
+    { feature: 'Per-Container Webhook Triggers', dockerDash: 'API', portainerCE: 'BE only', portainerBE: 'Non-Edge',
+      dockerDashNote: 'Admin-managed tokens can trigger restart, image pull or guarded replacement on the registered host.',
+      source: { label: 'Portainer container webhook documentation', url: 'https://docs.portainer.io/user/docker/containers/webhooks' } },
+    { feature: 'Host-Bound Scheduled Container Actions', dockerDash: true,
+      dockerDashNote: 'New schedules store the original host so changing the default cannot retarget them.' },
     { feature: 'Deployment Rollback',               dockerDash: true,              portainerCE: false,            portainerBE: false,         coolify: true,          yacht: false,      rancher: true,         dockge: false,          dockhand: false },
     { feature: 'Audit Log',                         dockerDash: true,              portainerCE: 'BE only',        portainerBE: true,          coolify: 'basic',       yacht: false,      rancher: true,         dockge: false,          dockhand: false },
     { feature: 'Alerts',                            dockerDash: '7 channels',      portainerCE: 'BE only',        portainerBE: true,          coolify: true,          yacht: false,      rancher: true,         dockge: false,          dockhand: false },
@@ -783,7 +793,8 @@ router.get('/compare', (req, res) => {
     { feature: 'Maintenance Windows',               dockerDash: true,              portainerCE: false,            portainerBE: false,         coolify: false,         yacht: false,      rancher: false,        dockge: false,          dockhand: false },
     { feature: 'Workflow Automation (IF-THEN)',      dockerDash: true,              portainerCE: false,            portainerBE: false,         coolify: false,         yacht: false,      rancher: false,        dockge: false,          dockhand: false },
     { feature: 'Cross-Host Migration',              dockerDash: 'zero-downtime',   portainerCE: false,            portainerBE: false,         coolify: false,         yacht: false,      rancher: true,         dockge: false,          dockhand: false },
-    { feature: 'Stack Export/Import',               dockerDash: true,              portainerCE: false,            portainerBE: true,          coolify: 'partial',     yacht: false,      rancher: true,         dockge: false,          dockhand: false },
+    { feature: 'Stack Export/Import',               dockerDash: 'Admin',           portainerCE: false,            portainerBE: true,          coolify: 'partial',     yacht: false,      rancher: true,         dockge: false,          dockhand: false,
+      dockerDashNote: 'Full exports are restricted to admins. Compose source is included when it is a managed YAML file under the configured stack directory.' },
     { feature: 'Event-Driven Notifications',        dockerDash: true,              portainerCE: false,            portainerBE: true,          coolify: true,          yacht: false,      rancher: true,         dockge: false,          dockhand: false },
     { feature: 'Global Search',                     dockerDash: true,              portainerCE: false,            portainerBE: false,         coolify: false,         yacht: false,      rancher: true,         dockge: false,          dockhand: false },
     { feature: 'Container Dependency Graph',        dockerDash: true,              portainerCE: false,            portainerBE: false,         coolify: false,         yacht: false,      rancher: false,        dockge: false,          dockhand: false },
@@ -815,7 +826,7 @@ router.get('/compare', (req, res) => {
     { feature: 'i18n',                              dockerDash: '11 languages',    portainerCE: 'partial',        portainerBE: 'partial',     coolify: 'partial',     yacht: false,      rancher: true,         dockge: false,          dockhand: false },
     { feature: 'Command Palette',                   dockerDash: true,              portainerCE: false,            portainerBE: false,         coolify: false,         yacht: false,      rancher: false,        dockge: false,          dockhand: false },
     { feature: 'Mobile Responsive',                 dockerDash: true,              portainerCE: true,             portainerBE: true,          coolify: true,          yacht: true,       rancher: 'partial',    dockge: true,           dockhand: true },
-    { feature: 'Test Suite',                        dockerDash: '384 tests',       portainerCE: true,             portainerBE: true,          coolify: true,          yacht: false,      rancher: true,         dockge: false,          dockhand: false },
+    { feature: 'Test Suite',                        dockerDash: 'Automated regression tests', portainerCE: true,  portainerBE: true,          coolify: true,          yacht: false,      rancher: true,         dockge: false,          dockhand: false },
     { feature: 'CI/CD Pipeline',                    dockerDash: 'GitHub Actions',  portainerCE: true,             portainerBE: true,          coolify: true,          yacht: false,      rancher: true,         dockge: false,          dockhand: false },
     { feature: 'Build Step',                        dockerDash: 'none',            portainerCE: 'Angular',        portainerBE: 'Angular',     coolify: 'required',    yacht: 'none',     rancher: 'none',       dockge: 'required',     dockhand: 'required' },
     { feature: 'Container Size',                    dockerDash: '~80MB',           portainerCE: '~250MB',         portainerBE: '~250MB',      coolify: '~200MB',      yacht: '~100MB',   rancher: '~500MB+',    dockge: '~100MB',       dockhand: '~80MB' },
@@ -825,7 +836,7 @@ router.get('/compare', (req, res) => {
     { feature: 'One-Click Port Access',              dockerDash: true,              portainerCE: false,            portainerBE: false,         coolify: false,         yacht: false,      rancher: false,        dockge: false,          dockhand: false },
     { feature: 'Live CPU/RAM Sparklines',            dockerDash: true,              portainerCE: false,            portainerBE: false,         coolify: false,         yacht: false,      rancher: false,        dockge: false,          dockhand: false },
     { feature: 'Log Time Filter (since)',            dockerDash: true,              portainerCE: false,            portainerBE: false,         coolify: false,         yacht: false,      rancher: false,        dockge: false,          dockhand: false },
-    { feature: 'Dual AI Provider (OpenAI + Ollama)', dockerDash: true,              portainerCE: false,            portainerBE: false,         coolify: false,         yacht: false,      rancher: false,        dockge: false,          dockhand: false },
+    { feature: 'AI Provider Configuration',         dockerDash: 'OpenAI, Anthropic, Ollama' },
     { feature: 'Image Layer Visualization',          dockerDash: true,              portainerCE: false,            portainerBE: false,         coolify: false,         yacht: false,      rancher: false,        dockge: false,          dockhand: false },
     { feature: 'Generate Compose from GitHub',       dockerDash: true,              portainerCE: false,            portainerBE: false,         coolify: false,         yacht: false,      rancher: false,        dockge: false,          dockhand: false },
     { feature: 'Sandbox Mode (ephemeral/persistent)',dockerDash: true,              portainerCE: false,            portainerBE: false,         coolify: false,         yacht: false,      rancher: false,        dockge: false,          dockhand: false },
@@ -839,6 +850,13 @@ router.get('/compare', (req, res) => {
     { feature: 'Column Configuration',               dockerDash: true,              portainerCE: false,            portainerBE: false,         coolify: false,         yacht: false,      rancher: false,        dockge: false,          dockhand: false },
     { feature: 'View Density (3 levels)',             dockerDash: true,              portainerCE: false,            portainerBE: false,         coolify: false,         yacht: false,      rancher: false,        dockge: false,          dockhand: false },
     { feature: 'Centralized Log Explorer',           dockerDash: true,              portainerCE: false,            portainerBE: false,         coolify: false,         yacht: false,      rancher: 'basic',      dockge: false,          dockhand: false },
+    { feature: 'Live Container Log Forwarding', dockerDash: 'Loki, Elasticsearch, HTTP, Syslog', coolify: 'Opt-in log drains',
+      dockerDashNote: 'Streams new container logs in the background to enabled destinations. Syslog supports TCP and UDP.',
+      source: { label: 'Coolify log drain documentation', url: 'https://coolify.io/docs/core/observability/log-drains/overview' } },
+    { feature: 'Log Delivery Status and Diagnostics', dockerDash: true,
+      dockerDashNote: 'Shows the last successful live send, the latest failure and retry details per destination. Manual tests do not update live delivery history.' },
+    { feature: 'Notification SMTP Relay', dockerDash: 'Built-in or external',
+      dockerDashNote: 'Supports TLS, STARTTLS and unauthenticated plaintext relay.' },
     { feature: 'Cluster Health Score Gauge',         dockerDash: true,              portainerCE: false,            portainerBE: false,         coolify: false,         yacht: false,      rancher: false,        dockge: false,          dockhand: false },
     { feature: 'Chart Export (PNG/CSV)',              dockerDash: true,              portainerCE: false,            portainerBE: false,         coolify: false,         yacht: false,      rancher: false,        dockge: false,          dockhand: false },
     { feature: 'Session Management',                 dockerDash: true,              portainerCE: true,             portainerBE: true,          coolify: false,         yacht: false,      rancher: true,         dockge: false,          dockhand: false },
@@ -867,12 +885,17 @@ router.get('/compare', (req, res) => {
     { feature: '20 Developer Tools',                 dockerDash: true,              portainerCE: false,            portainerBE: false,         coolify: false,         yacht: false,      rancher: false,        dockge: false,          dockhand: false },
   ];
 
+  const competitors = ['portainerCE', 'portainerBE', 'coolify', 'yacht', 'rancher', 'dockge', 'dockhand'];
+  const rows = features.map(feature => {
+    const cells = Object.fromEntries(competitors.map(key => [key, feature[key] ?? null]));
+    return { ...feature, ...cells, exclusive: feature.dockerDash === true && competitors.every(key => cells[key] === false) };
+  });
   const summary = {
-    dockerDash: { exclusive: features.filter(f => f.dockerDash === true && !f.portainerCE && !f.portainerBE && !f.dockge && !f.dockhand && !f.coolify && !f.yacht && !f.rancher).length },
+    dockerDash: { exclusive: rows.filter(row => row.exclusive).length },
     version: _pkgVersion,
   };
 
-  res.json({ features, summary });
+  res.json({ features: rows, summary });
 });
 
 // ─── Watchtower Detection ───────────────────────────────────

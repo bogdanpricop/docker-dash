@@ -20,7 +20,7 @@ router.use(requireHostAccessForMethod());
 router.get('/:name/browse', requireAuth, asyncHandler(async (req, res) => {
   const p = req.query.path || '/';
   try {
-    const result = await svc.list(req.hostId, req.params.name, p);
+    const result = await svc.list(req.resolvedHostId ?? req.hostId, req.params.name, p);
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -32,7 +32,7 @@ router.get('/:name/read', requireAuth, asyncHandler(async (req, res) => {
   const p = req.query.path;
   if (!p) return res.status(400).json({ error: 'path is required' });
   try {
-    const result = await svc.readFile(req.hostId, req.params.name, p);
+    const result = await svc.readFile(req.resolvedHostId ?? req.hostId, req.params.name, p);
     auditService.log({
       userId: req.user.id, username: req.user.username,
       action: 'volume_file_read', targetType: 'volume', targetId: req.params.name,
@@ -51,7 +51,7 @@ router.delete('/:name/file', requireAuth, requireRole('admin'), writeable,
     const p = req.query.path;
     if (!p) return res.status(400).json({ error: 'path is required' });
     try {
-      await svc.remove(req.hostId, req.params.name, p);
+      await svc.remove(req.resolvedHostId ?? req.hostId, req.params.name, p);
       auditService.log({
         userId: req.user.id, username: req.user.username,
         action: 'volume_file_delete', targetType: 'volume', targetId: req.params.name,

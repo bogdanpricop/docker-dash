@@ -44,7 +44,7 @@ function _cliDetails(action, params) {
 
 // List containers (filtered by per-stack permissions)
 router.get('/', requireAuth, asyncHandler(async (req, res) => {
-  let containers = await dockerService.listContainers(req.hostId);
+  let containers = await dockerService.listContainers(req.resolvedHostId ?? req.hostId);
   // Apply per-stack permission filtering
   containers = permService.filterContainers(containers, req.user.id, req.user.role);
   res.json(containers);
@@ -69,7 +69,7 @@ router.get('/_meta', requireAuth, asyncHandler((req, res) => {
 // NOTE: Must be registered BEFORE any /:id routes to avoid route conflicts
 router.get('/logs/multi', requireAuth, asyncHandler(async (req, res) => {
   const { containers: containerIds, tail = 100, since, search, level } = req.query;
-    const docker = dockerService.getDocker(req.hostId);
+    const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
 
     // If no containers specified, get all running
     let targetIds = containerIds
@@ -142,7 +142,7 @@ router.get('/logs/multi', requireAuth, asyncHandler(async (req, res) => {
 // ─── Dependency Graph (all containers) ───────────────
 
 router.get('/dependency-graph', requireAuth, asyncHandler(async (req, res) => {
-  const docker = dockerService.getDocker(req.hostId);
+  const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
     const allContainers = await docker.listContainers({ all: true });
     const nodes = [];
     const edges = [];
@@ -277,7 +277,7 @@ router.put('/:name/meta', requireAuth, requireRole('admin', 'operator'), writeab
 // Inspect container
 router.get('/:id/inspect', requireAuth, requireContainerAccess('view'), async (req, res) => {
   try {
-    const data = await dockerService.inspectContainer(req.params.id, req.hostId);
+    const data = await dockerService.inspectContainer(req.params.id, req.resolvedHostId ?? req.hostId);
     res.json(data);
   } catch (err) {
     res.status(err.statusCode === 404 ? 404 : 500).json({ error: err.message });
@@ -287,7 +287,7 @@ router.get('/:id/inspect', requireAuth, requireContainerAccess('view'), async (r
 // Container logs (enhanced with regex, level filter, stats)
 router.get('/:id/logs', requireAuth, asyncHandler(async (req, res) => {
   const { tail, since, until, search, regex, level, download } = req.query;
-    const inspection = await dockerService.inspectContainer(req.params.id, req.hostId);
+    const inspection = await dockerService.inspectContainer(req.params.id, req.resolvedHostId ?? req.hostId);
     const stack = inspection.labels?.['com.docker.compose.project'] || '_standalone';
     const effectiveRole = permService.getEffectiveRole(req.user.id, stack, req.user.role);
     if (!permService.hasPermission(effectiveRole, 'view')) {
@@ -358,9 +358,9 @@ router.get('/:id/logs', requireAuth, asyncHandler(async (req, res) => {
 // taxonomy lives in one place (docker.js `_categorizeRuntimes`).
 router.get('/:id/isolation', requireAuth, requireContainerAccess('view'), async (req, res) => {
   try {
-    const insp = await dockerService.inspectContainer(req.params.id, req.hostId);
+    const insp = await dockerService.inspectContainer(req.params.id, req.resolvedHostId ?? req.hostId);
     let info = null;
-    try { info = await dockerService.getInfo(req.hostId); }
+    try { info = await dockerService.getInfo(req.resolvedHostId ?? req.hostId); }
     catch { /* runtime list is best-effort; assessment degrades, it doesn't fail */ }
     const categories = (info && info.runtimeCategories) || {};
     res.json(isolationPosture.assess(insp, {
@@ -377,7 +377,7 @@ router.get('/:id/isolation', requireAuth, requireContainerAccess('view'), async 
 });
 
 router.get('/:id/stats', requireAuth, requireContainerAccess('view'), asyncHandler(async (req, res) => {
-  const stats = await dockerService.getContainerStats(req.params.id, req.hostId);
+  const stats = await dockerService.getContainerStats(req.params.id, req.resolvedHostId ?? req.hostId);
   res.json(stats);
 }));
 
@@ -393,7 +393,7 @@ router.post('/:id/:action', (req, res, next) => {
 
   try {
     // Check per-stack permission: actions require at least 'operate'
-    const inspect = await dockerService.inspectContainer(id, req.hostId);
+    const inspect = await dockerService.inspectContainer(id, req.resolvedHostId ?? req.hostId);
     // v8.95.1 — `inspectContainer` returns a NORMALIZED object exposing `labels`,
     // not Docker's raw `Config.Labels`. Reading the wire shape here meant the
     // optional chain always yielded undefined, so every container resolved to
@@ -404,7 +404,7 @@ router.post('/:id/:action', (req, res, next) => {
       return res.status(403).json({ error: 'Insufficient stack permissions for this action' });
     }
 
-    await dockerService.containerAction(id, action, req.hostId);
+    await dockerService.containerAction(id, action, req.resolvedHostId ?? req.hostId);
     auditService.log({
       userId: req.user.id, username: req.user.username,
       action: `container_${action}`, targetType: 'container', targetId: id,
@@ -421,7 +421,7 @@ router.post('/:id/:action', (req, res, next) => {
 router.delete('/:id', requireAuth, requireRole('admin'), writeable, requireFeature('remove'), async (req, res) => {
   try {
     // Check per-stack permission: remove requires 'admin' on the stack
-    const inspect = await dockerService.inspectContainer(req.params.id, req.hostId);
+    const inspect = await dockerService.inspectContainer(req.params.id, req.resolvedHostId ?? req.hostId);
     // v8.95.1 — `inspectContainer` returns a NORMALIZED object exposing `labels`,
     // not Docker's raw `Config.Labels`. Reading the wire shape here meant the
     // optional chain always yielded undefined, so every container resolved to
@@ -457,8 +457,8 @@ router.delete('/:id', requireAuth, requireRole('admin'), writeable, requireFeatu
 router.put('/:id/rename', requireAuth, requireRole('admin', 'operator'), writeable, requireContainerAccess('operate'), asyncHandler(async (req, res) => {
   const { name } = req.body;
   if (!name) return res.status(400).json({ error: 'Name required' });
-  const before = await dockerService.inspectContainer(req.params.id, req.hostId).catch(() => null);
-  await dockerService.renameContainer(req.params.id, name, req.hostId);
+  const before = await dockerService.inspectContainer(req.params.id, req.resolvedHostId ?? req.hostId).catch(() => null);
+  await dockerService.renameContainer(req.params.id, name, req.resolvedHostId ?? req.hostId);
   auditService.log({
     userId: req.user.id, username: req.user.username,
     action: 'container_rename', targetType: 'container', targetId: req.params.id,
@@ -475,7 +475,7 @@ router.put('/:id/rename', requireAuth, requireRole('admin', 'operator'), writeab
 
 // Create container
 router.post('/', requireAuth, requireRole('admin'), writeable, requireFeature('create'), asyncHandler(async (req, res) => {
-  const result = await dockerService.createContainer(req.body, req.hostId);
+  const result = await dockerService.createContainer(req.body, req.resolvedHostId ?? req.hostId);
   auditService.log({
     userId: req.user.id, username: req.user.username,
     action: 'container_create', targetType: 'container', targetId: result.id,
@@ -667,7 +667,7 @@ router.post('/sandbox', requireAuth, requireRole('admin', 'operator'), writeable
     // Must have an image at this point
     if (!resolvedImage) return res.status(400).json({ error: 'image is required' });
 
-    const docker = dockerService.getDocker(req.hostId);
+    const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
 
     // Ensure sandbox network (only when isolated)
     if (isolatedNetwork) await _ensureSandboxNetwork(docker);
@@ -783,7 +783,7 @@ router.post('/sandbox', requireAuth, requireRole('admin', 'operator'), writeable
 
 // GET /sandbox/active — list active sandbox containers
 router.get('/sandbox/active', requireAuth, asyncHandler(async (req, res) => {
-  const docker = dockerService.getDocker(req.hostId);
+  const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
     const containers = await docker.listContainers({ all: true, filters: { label: ['docker-dash.sandbox=true'] } });
     const result = containers.map(c => ({
       id: c.Id.substring(0, 12),
@@ -800,7 +800,7 @@ router.get('/sandbox/active', requireAuth, asyncHandler(async (req, res) => {
 
 // DELETE /sandbox/:id — stop & remove a sandbox container
 router.delete('/sandbox/:id', requireAuth, requireRole('admin', 'operator'), writeable, requireContainerAccess('operate'), asyncHandler(async (req, res) => {
-  const docker = dockerService.getDocker(req.hostId);
+  const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
     const container = docker.getContainer(req.params.id);
     const inspect = await container.inspect();
     const name = inspect.Name.replace(/^\//, '');
@@ -827,7 +827,7 @@ router.delete('/sandbox/:id', requireAuth, requireRole('admin', 'operator'), wri
 
 // POST /sandbox/:id/extend — extend TTL by 1 hour
 router.post('/sandbox/:id/extend', requireAuth, requireRole('admin', 'operator'), writeable, requireContainerAccess('operate'), asyncHandler(async (req, res) => {
-  const docker = dockerService.getDocker(req.hostId);
+  const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
   const container = docker.getContainer(req.params.id);
   const inspect = await container.inspect();
   const name = inspect.Name.replace(/^\//, '');
@@ -863,7 +863,7 @@ router.post('/:id/clone', requireAuth, requireRole('admin'), writeable, requireF
   const { name } = req.body;
     if (!name) return res.status(400).json({ error: 'name required' });
 
-    const docker = dockerService.getDocker(req.hostId);
+    const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
     const source = docker.getContainer(req.params.id);
     const inspect = await source.inspect();
 
@@ -922,7 +922,7 @@ router.post('/bulk', requireAuth, requireRole('admin', 'operator'), writeable, a
   const results = [];
   for (const id of [...new Set(ids)]) {
     try {
-      const inspection = await dockerService.inspectContainer(id, req.hostId);
+      const inspection = await dockerService.inspectContainer(id, req.resolvedHostId ?? req.hostId);
       const stack = inspection.labels?.['com.docker.compose.project'] || '_standalone';
       const role = permService.getEffectiveRole(req.user.id, stack, req.user.role);
       if (!permService.hasPermission(role, action === 'remove' ? 'admin' : 'operate')) {
@@ -930,9 +930,9 @@ router.post('/bulk', requireAuth, requireRole('admin', 'operator'), writeable, a
         continue;
       }
       if (action === 'remove') {
-        await dockerService.removeContainer(id, { force: true }, req.hostId);
+        await dockerService.removeContainer(id, { force: true }, req.resolvedHostId ?? req.hostId);
       } else {
-        await dockerService.containerAction(id, action, req.hostId);
+        await dockerService.containerAction(id, action, req.resolvedHostId ?? req.hostId);
       }
       results.push({ id, ok: true });
     } catch (err) {
@@ -960,7 +960,7 @@ router.post('/bulk', requireAuth, requireRole('admin', 'operator'), writeable, a
 
 // Update one container on the selected daemon; stack changes use the stack workflow.
 router.post('/:id/update', requireAuth, requireRole('admin', 'operator'), writeable, requireContainerAccess('operate'), asyncHandler(async (req, res) => {
-  const docker = dockerService.getDocker(req.hostId);
+  const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
   const inspect = await docker.getContainer(req.params.id).inspect();
   const image = imageReference(inspect), name = inspect.Name.replace(/^\//, '');
   if (dockerService.isSelf(inspect.Id)) return res.status(403).json({ error: 'Cannot update Docker Dash itself' });
@@ -978,7 +978,7 @@ router.post('/:id/update', requireAuth, requireRole('admin', 'operator'), writea
 }));
 // Export container config
 router.get('/:id/export', requireAuth, requireContainerAccess('view'), asyncHandler(async (req, res) => {
-  const data = await dockerService.inspectContainer(req.params.id, req.hostId);
+  const data = await dockerService.inspectContainer(req.params.id, req.resolvedHostId ?? req.hostId);
     const { format } = req.query;
 
     if (format === 'compose') {
@@ -1111,7 +1111,7 @@ function generateRunCommand(data) {
 
 router.post('/:id/smart-restart', requireAuth, requireRole('admin', 'operator'), writeable, requireContainerAccess('operate'), asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const docker = dockerService.getDocker(req.hostId);
+  const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
     const container = docker.getContainer(id);
     const inspect = await container.inspect();
     const name = inspect.Name.replace(/^\//, '');
@@ -1175,7 +1175,7 @@ router.post('/:id/smart-restart', requireAuth, requireRole('admin', 'operator'),
 // ─── Deploy Preview ───────────────────────────────────
 
 router.get('/:id/deploy-preview', requireAuth, requireContainerAccess('view'), asyncHandler(async (req, res) => {
-  const docker = dockerService.getDocker(req.hostId);
+  const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
     const container = docker.getContainer(req.params.id);
     const inspect = await container.inspect();
     const imageName = inspect.Config.Image;
@@ -1229,7 +1229,7 @@ router.get('/:id/deploy-preview', requireAuth, requireContainerAccess('view'), a
 
 router.post('/:id/safe-update', requireAuth, requireRole('admin', 'operator'), writeable, requireContainerAccess('operate'), asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const docker = dockerService.getDocker(req.hostId);
+  const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
   const container = docker.getContainer(id);
   const inspect = await container.inspect();
     const image = imageReference(inspect);
@@ -1275,7 +1275,7 @@ router.post('/:id/safe-update', requireAuth, requireRole('admin', 'operator'), w
 // ─── Troubleshooting Wizard ───────────────────────────
 
 router.get('/:id/diagnose', requireAuth, requireContainerAccess('view'), asyncHandler(async (req, res) => {
-  const docker = dockerService.getDocker(req.hostId);
+  const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
     const container = docker.getContainer(req.params.id);
     const inspect = await container.inspect();
     const name = inspect.Name.replace(/^\//, '');
@@ -1390,7 +1390,7 @@ router.get('/:id/diagnose', requireAuth, requireContainerAccess('view'), asyncHa
 // ─── Container Doctor ────────────────────────────────
 
 router.get('/:id/doctor', requireAuth, requireContainerAccess('view'), asyncHandler(async (req, res) => {
-  const docker = dockerService.getDocker(req.hostId);
+  const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
     const container = docker.getContainer(req.params.id);
     const inspect = await container.inspect();
     const name = inspect.Name.replace(/^\//, '');
@@ -1509,7 +1509,7 @@ router.get('/:id/doctor', requireAuth, requireContainerAccess('view'), asyncHand
 // ─── Dependency Analysis ──────────────────────────────
 
 router.get('/:id/dependencies', requireAuth, requireContainerAccess('view'), asyncHandler(async (req, res) => {
-  const docker = dockerService.getDocker(req.hostId);
+  const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
     const container = docker.getContainer(req.params.id);
     const inspect = await container.inspect();
     const name = inspect.Name.replace(/^\//, '');
@@ -1613,7 +1613,7 @@ router.post('/:id/deploy-with-deps', requireAuth, requireRole('admin'), writeabl
   const { destHostId } = req.body;
     if (destHostId === undefined) return res.status(400).json({ error: 'destHostId required' });
 
-    const docker = dockerService.getDocker(req.hostId);
+    const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
     const container = docker.getContainer(req.params.id);
     const inspect = await container.inspect();
     const name = inspect.Name.replace(/^\//, '');
@@ -1809,7 +1809,7 @@ router.get('/:id/files/download', requireAuth, requireContainerAccess('view'), a
   const filePath = req.query.path;
     if (!validateFilePath(filePath)) return res.status(400).json({ error: 'Invalid path' });
 
-    const docker = dockerService.getDocker(req.hostId);
+    const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
     const container = docker.getContainer(req.params.id);
     const archive = await container.getArchive({ path: filePath });
     const fileName = filePath.split('/').pop() || 'download';
@@ -1892,7 +1892,7 @@ router.post('/:id/files/upload', express.json({ limit: '75mb' }), requireAuth, r
     ]);
 
     // Upload using dockerode putArchive
-    const docker = dockerService.getDocker(req.hostId);
+    const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
     const container = docker.getContainer(req.params.id);
     await container.putArchive(tarBuffer, { path: destPath });
 
@@ -1910,7 +1910,7 @@ router.post('/:id/files/upload', express.json({ limit: '75mb' }), requireAuth, r
 // ─── Container Diff ─────────────────────────────────
 
 router.get('/:id/diff', requireAuth, requireContainerAccess('view'), asyncHandler(async (req, res) => {
-  const changes = await dockerService.containerDiff(req.params.id, req.hostId);
+  const changes = await dockerService.containerDiff(req.params.id, req.resolvedHostId ?? req.hostId);
     const summary = {
       modified: changes.filter(c => c.kind === 0).length,
       added: changes.filter(c => c.kind === 1).length,
@@ -1923,7 +1923,7 @@ router.get('/:id/diff', requireAuth, requireContainerAccess('view'), asyncHandle
 // ─── Container Image History & Rollback ──────────────
 
 router.get('/:id/history', requireAuth, requireContainerAccess('view'), asyncHandler(async (req, res) => {
-  const docker = dockerService.getDocker(req.hostId);
+  const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
     const container = docker.getContainer(req.params.id);
     const inspect = await container.inspect();
     const name = inspect.Name.replace(/^\//, '');
@@ -1968,7 +1968,7 @@ router.post('/:id/rollback', requireAuth, requireRole('admin', 'operator'), writ
     const entry = db.prepare('SELECT * FROM container_image_history WHERE id = ?').get(historyId);
     if (!entry) return res.status(404).json({ error: 'History entry not found' });
 
-    const docker = dockerService.getDocker(req.hostId);
+    const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
     const container = docker.getContainer(id);
     const inspect = await container.inspect();
     const name = inspect.Name.replace(/^\//, '');
@@ -2043,7 +2043,7 @@ router.get('/:id/pipeline/status/:executionId', requireAuth, requireContainerAcc
   if (!result || Number(result.host_id) !== Number(req.hostId || 0)) {
     return res.status(404).json({ error: 'Pipeline not found' });
   }
-  const inspection = await dockerService.inspectContainer(req.params.id, req.hostId);
+  const inspection = await dockerService.inspectContainer(req.params.id, req.resolvedHostId ?? req.hostId);
   if (!inspection?.id || result.container_id !== inspection.id) {
     return res.status(404).json({ error: 'Pipeline not found' });
   }
@@ -2051,7 +2051,7 @@ router.get('/:id/pipeline/status/:executionId', requireAuth, requireContainerAcc
 }));
 
 router.get('/:id/pipeline/history', requireAuth, requireContainerAccess('view'), asyncHandler(async (req, res) => {
-  const docker = dockerService.getDocker(req.hostId);
+  const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
     const container = docker.getContainer(req.params.id);
     const inspect = await container.inspect();
     const name = inspect.Name.replace(/^\//, '');

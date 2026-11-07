@@ -14,8 +14,7 @@
  *   - dockerode is mocked through services/docker.getDocker — every container,
  *     volume, network, image, and pull call is a jest.fn() so we can assert
  *     both the call shape and the data flow.
- *   - The filesystem (compose-file read in exportStack) is mocked at the
- *     `fs.existsSync` / `fs.readFileSync` level via require('fs') stubs.
+ *   - Compose export exercises managed and unmanaged files on disk.
  *   - APP_SECRET / ENCRYPTION_KEY / DB_PATH are set BEFORE require so the
  *     logger and any transitive db init don't blow up.
  *
@@ -42,17 +41,25 @@ jest.mock('../services/docker', () => ({
   getDocker: jest.fn(() => mockDocker),
 }));
 
-// ─── Mock fs for compose-file reads inside exportStack ─────────────────────
-jest.mock('fs', () => {
-  const real = jest.requireActual('fs');
-  return {
-    ...real,
-    existsSync: jest.fn(real.existsSync),
-    readFileSync: jest.fn(real.readFileSync),
-  };
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'dd-bundle-test-'));
+const managed = path.join(fixture, 'managed');
+const compose = path.join(managed, 'compose.yml');
+const outside = path.join(fixture, 'outside.yml');
+process.env.DD_STACKS_DIR = managed;
+beforeAll(() => {
+  fs.mkdirSync(managed);
+  fs.writeFileSync(compose, 'services:\n  web:\n    image: nginx:1.27\n');
+  fs.writeFileSync(outside, 'private fixture');
 });
-
-const fs = require('fs');
+afterAll(() => {
+  fs.unlinkSync(outside);
+  fs.unlinkSync(compose);
+  fs.rmdirSync(managed);
+  fs.rmdirSync(fixture);
+});
 const dockerService = require('../services/docker');
 const stackBundle = require('../services/stackBundle');
 
@@ -126,8 +133,6 @@ function makeContainerInstance(idSuffix = 'new') {
 describe('StackBundleService (src/services/stackBundle.js)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    fs.existsSync.mockImplementation(() => false);
-    fs.readFileSync.mockImplementation(() => { throw new Error('not mocked'); });
     dockerService.getDocker.mockReturnValue(mockDocker);
   });
 
@@ -178,21 +183,22 @@ describe('StackBundleService (src/services/stackBundle.js)', () => {
 
   // 4. exportStack: includes compose YAML when working_dir + config_files label present
   test('exportStack() inlines composeYaml when compose project labels present', async () => {
-    fs.existsSync.mockReturnValue(true);
-    fs.readFileSync.mockReturnValue('services:\n  web:\n    image: nginx:1.27\n');
-    mockDocker.listContainers.mockResolvedValue([makeListEntry()]);
+    const entry = makeListEntry();
+    entry.Labels['com.docker.compose.project.working_dir'] = managed;
+    entry.Labels['com.docker.compose.project.config_files'] = compose;
+    mockDocker.listContainers.mockResolvedValue([entry]);
     mockDocker.getContainer.mockReturnValue({ inspect: jest.fn().mockResolvedValue(makeInspect()) });
 
     const bundle = await stackBundle.exportStack('demo', 0);
 
-    expect(bundle.stack.workingDir).toBe('/srv/demo');
+    expect(bundle.stack.workingDir).toBe(managed);
     expect(bundle.stack.composeYaml).toContain('services:');
-    expect(fs.readFileSync).toHaveBeenCalledWith('/srv/demo/docker-compose.yml', 'utf8');
+    entry.Labels['com.docker.compose.project.config_files'] = outside;
+    expect((await stackBundle.exportStack('demo')).stack.composeYaml).toBeNull();
   });
 
   // 5. exportStack: composeYaml is null when compose file not on disk
   test('exportStack() leaves composeYaml null when working_dir absent or file missing', async () => {
-    fs.existsSync.mockReturnValue(false);
     mockDocker.listContainers.mockResolvedValue([
       makeListEntry({ Labels: { 'com.docker.compose.project': 'demo' } }),
     ]);

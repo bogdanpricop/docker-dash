@@ -33,6 +33,8 @@ const Api = {
     // and the endpoint rejects it ("not a vSphere daemon").
     const skipPrefixes = ['/auth', '/settings', '/hosts', '/notifications', '/webhooks', '/alerts/rules', '/favorites', '/audit', '/git/credentials', '/git/test-connection', '/gitops', '/previews', '/oci-compose', '/disk-pressure', '/system/terminal-access', '/groups', '/dashboard/preferences', '/docs', '/howto', '/vsphere', '/xen', '/incus', '/firewall', '/host-groups', '/teams', '/host-permissions', '/alert-routes', '/providers', '/operations', '/governance', '/self-service', '/edge', '/workstation-fleet'];
     if (skipPrefixes.some(p => path.startsWith(p))) return path;
+    const queryIndex = path.indexOf('?');
+    if (queryIndex !== -1 && new URLSearchParams(path.slice(queryIndex + 1)).has('hostId')) return path;
     const sep = path.includes('?') ? '&' : '?';
     return `${path}${sep}hostId=${this._currentHostId}`;
   },

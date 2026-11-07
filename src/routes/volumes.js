@@ -16,18 +16,18 @@ router.use(extractHostId);
 router.use(requireHostAccessForMethod());
 
 router.get('/', requireAuth, asyncHandler(async (req, res) => {
-  res.json(await dockerService.listVolumes(req.hostId));
+  res.json(await dockerService.listVolumes(req.resolvedHostId ?? req.hostId));
 }));
 
 router.get('/:name/inspect', requireAuth, asyncHandler(async (req, res) => {
-  res.json(await dockerService.inspectVolume(req.params.name, req.hostId));
+  res.json(await dockerService.inspectVolume(req.params.name, req.resolvedHostId ?? req.hostId));
 }));
 
 // Create volume
 router.post('/', requireAuth, requireRole('admin'), writeable, asyncHandler(async (req, res) => {
   const { name, driver, driverOpts, labels } = req.body;
   if (!name) return res.status(400).json({ error: 'name required' });
-  const docker = dockerService.getDocker(req.hostId);
+  const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
   const volume = await docker.createVolume({
     Name: name,
     Driver: driver || 'local',
@@ -43,7 +43,7 @@ router.post('/', requireAuth, requireRole('admin'), writeable, asyncHandler(asyn
 }));
 
 router.delete('/:name', requireAuth, requireRole('admin'), writeable, asyncHandler(async (req, res) => {
-  await dockerService.removeVolume(req.params.name, { force: req.query.force === 'true' }, req.hostId);
+  await dockerService.removeVolume(req.params.name, { force: req.query.force === 'true' }, req.resolvedHostId ?? req.hostId);
   auditService.log({ userId: req.user.id, username: req.user.username,
     action: 'volume_remove', targetType: 'volume', targetId: req.params.name, ip: getClientIp(req) });
   res.json({ ok: true });

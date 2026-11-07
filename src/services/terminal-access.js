@@ -2,6 +2,7 @@
 
 const config = require('../config');
 const { getDb } = require('../db');
+const { parseHostId, defaultHost } = require('../utils/host-id');
 
 const MAX_REASON_LENGTH = 500;
 
@@ -15,16 +16,12 @@ function _reason(value) {
 }
 
 function normalizeHostId(value) {
-  const raw = String(value);
-  if (!/^\d+$/.test(raw)) {
-    throw Object.assign(new Error('hostId must be a non-negative integer'), { status: 400 });
-  }
-  const parsed = Number(raw);
-  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+  const parsed = parseHostId(value);
+  if (parsed === null) {
     throw Object.assign(new Error('hostId must be a non-negative integer'), { status: 400 });
   }
   if (parsed !== 0) return parsed;
-  const row = getDb().prepare('SELECT id FROM docker_hosts WHERE is_default = 1 ORDER BY id LIMIT 1').get();
+  const row = defaultHost(getDb());
   return row?.id || 0;
 }
 

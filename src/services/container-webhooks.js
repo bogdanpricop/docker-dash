@@ -5,7 +5,9 @@
 const crypto = require('crypto');
 const { getDb } = require('../db');
 const dockerService = require('./docker');
-const log = require('../utils/logger')('container-webhooks');
+const { imageReference } = require('../utils/container-config');
+const { pullImage } = require('../utils/docker-pull');
+const replacement = require('./container-replacement');
 
 /** Generate a URL-safe 32-byte random token. */
 function _newToken() {
@@ -34,7 +36,7 @@ function list(hostId) {
 function create({ hostId, containerId, containerName, action }, userId) {
   if (!hostId || !containerId) throw new Error('hostId + containerId required');
   const validActions = ['recreate', 'restart', 'pull-only'];
-  const finalAction = validActions.includes(action) ? action : 'recreate';
+  if (!validActions.includes(action)) throw Object.assign(new Error('Invalid webhook action'), { status: 400 });
   const token = _newToken();
   const db = getDb();
   const existing = getByContainer(hostId, containerId);
@@ -42,8 +44,8 @@ function create({ hostId, containerId, containerName, action }, userId) {
   const result = db.prepare(`
     INSERT INTO container_webhooks (host_id, container_id, container_name, token, action, created_by)
     VALUES (?, ?, ?, ?, ?, ?)
-  `).run(hostId, containerId, containerName || null, token, finalAction, userId || null);
-  return { id: result.lastInsertRowid, token, action: finalAction };
+  `).run(hostId, containerId, containerName || null, token, action, userId || null);
+  return { id: result.lastInsertRowid, token, action };
 }
 
 function remove(id) {
@@ -63,41 +65,45 @@ function removeByContainer(hostId, containerId) {
  */
 async function trigger(webhookRow, ip) {
   const db = getDb();
+  const assertCurrent = () => {
+    const row = db.prepare('SELECT container_id, action FROM container_webhooks WHERE id = ? AND token = ?')
+      .get(webhookRow.id, webhookRow.token);
+    if (row?.container_id !== webhookRow.container_id || row?.action !== webhookRow.action) {
+      throw Object.assign(new Error('Webhook was revoked or its target changed'), { status: 409 });
+    }
+  };
   db.prepare(`
     UPDATE container_webhooks
     SET last_triggered_at = datetime('now'), last_triggered_ip = ?, trigger_count = trigger_count + 1
     WHERE id = ?
   `).run(ip || null, webhookRow.id);
 
-  const container = await dockerService.getContainer(webhookRow.host_id, webhookRow.container_id);
-  if (!container) throw new Error(`Container ${webhookRow.container_id} not found`);
-
-  const imageName = container.Image || (container.Config && container.Config.Image);
-  if (!imageName) throw new Error('Cannot determine image name');
-
-  // Pull latest image (fire and forget on failure — if pull fails but restart is what we want, still proceed)
-  try {
-    await dockerService.pullImage(webhookRow.host_id, imageName);
-  } catch (err) {
-    log.warn('Webhook trigger: image pull failed', { imageName, error: err.message });
-  }
-
   const action = webhookRow.action || 'recreate';
-  if (action === 'pull-only') return { action, image: imageName };
-
+  const docker = dockerService.getDocker(webhookRow.host_id);
+  const inspection = await docker.getContainer(webhookRow.container_id).inspect();
+  assertCurrent();
+  const image = imageReference(inspection);
+  if (action !== 'pull-only' && dockerService.isSelf(inspection.Id)) {
+    throw Object.assign(new Error('A webhook cannot restart or replace Docker Dash'), { status: 403 });
+  }
   if (action === 'restart') {
-    await dockerService.restartContainer(webhookRow.host_id, webhookRow.container_id);
-    return { action, image: imageName };
+    await docker.getContainer(inspection.Id).restart();
+    return { action, image };
   }
-
-  // recreate: stop → remove → run with same config → start.
-  // For scope, we call docker's recreateContainer if available; else stop+start.
-  if (typeof dockerService.recreateContainer === 'function') {
-    await dockerService.recreateContainer(webhookRow.host_id, webhookRow.container_id);
-  } else {
-    await dockerService.restartContainer(webhookRow.host_id, webhookRow.container_id);
-  }
-  return { action, image: imageName };
+  await pullImage(docker, image);
+  if (action === 'pull-only') return { action, image };
+  const candidate = await docker.getImage(image).inspect();
+  assertCurrent();
+  const result = await replacement.replace({
+    docker, inspect: inspection, imageId: candidate.Id, hostId: webhookRow.host_id,
+    action: 'update', username: 'container-webhook',
+    commit: id => {
+      const changed = db.prepare('UPDATE container_webhooks SET container_id = ? WHERE id = ? AND container_id = ?')
+        .run(id, webhookRow.id, webhookRow.container_id);
+      if (!changed.changes) throw new Error('Webhook target changed during replacement');
+    },
+  });
+  return { action, image, operationId: result.operationId, cleanupRequired: result.cleanupRequired };
 }
 
 module.exports = { list, getByContainer, getByToken, create, remove, removeByContainer, trigger };

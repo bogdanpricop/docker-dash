@@ -14,6 +14,7 @@ const connectionHealth = require('../services/connection-health');
 const hostPermissions = require('../services/host-permissions');
 const hostGroups = require('../services/host-groups');
 const { requireHostAccess } = require('../middleware/hostAccess');
+const { parseHostId } = require('../utils/host-id');
 
 // Validate docker socket path — must be an absolute path with safe characters only
 const SOCKET_RE = /^\/[a-zA-Z0-9_./-]+$/;
@@ -898,13 +899,17 @@ router.post('/:id/activate', requireAuth, requireRole('admin'), writeable, async
 // Set host as default
 router.post('/:id/default', requireAuth, requireRole('admin'), writeable, asyncHandler(async (req, res) => {
   const db = getDb();
-  const hostId = parseInt(req.params.id);
-  const host = db.prepare('SELECT * FROM docker_hosts WHERE id = ?').get(hostId);
+  const hostId = parseHostId(req.params.id);
+  if (!hostId) return res.status(400).json({ error: 'Invalid hostId', code: 'INVALID_HOST_ID' });
+  const host = db.transaction(() => {
+    const host = db.prepare('SELECT is_active FROM docker_hosts WHERE id = ?').get(hostId);
+    if (host?.is_active) db.prepare('UPDATE docker_hosts SET is_default = (id = ?) WHERE is_default = 1 OR id = ?').run(hostId, hostId);
+    return host;
+  }).immediate();
   if (!host) return res.status(404).json({ error: 'Host not found' });
-
-  db.prepare('UPDATE docker_hosts SET is_default = 0').run();
-  db.prepare('UPDATE docker_hosts SET is_default = 1 WHERE id = ?').run(hostId);
-
+  if (!host.is_active) return res.status(400).json({ error: 'An inactive host cannot be the default', code: 'HOST_INACTIVE' });
+  auditService.log({ userId: req.user.id, username: req.user.username, action: 'host_set_default',
+    targetType: 'host', targetId: String(hostId), ip: getClientIp(req) });
   res.json({ ok: true });
 }));
 

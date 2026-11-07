@@ -17,14 +17,16 @@ const { getDb } = require('../db');
 const { fromHostRow } = require('../services/proxmox');
 const { requireAuth } = require('../middleware/auth');
 const { extractHostId } = require('../middleware/hostId');
+const { requireHostAccessForMethod } = require('../middleware/hostAccess');
 const asyncHandler = require('../utils/asyncHandler');
 
 const router = Router();
 router.use(extractHostId);
+const hostAccess = requireHostAccessForMethod();
 
 function _getProxmoxHost(req, res) {
   const db = getDb();
-  const row = db.prepare('SELECT * FROM docker_hosts WHERE id = ?').get(req.hostId);
+  const row = db.prepare('SELECT * FROM docker_hosts WHERE id = ?').get(req.resolvedHostId ?? req.hostId);
   if (!row) { res.status(404).json({ error: `Host ${req.hostId} not found` }); return null; }
   if (row.daemon_type !== 'proxmox') {
     res.status(400).json({
@@ -35,42 +37,42 @@ function _getProxmoxHost(req, res) {
   return row;
 }
 
-router.get('/info', requireAuth, asyncHandler(async (req, res) => {
+router.get('/info', requireAuth, hostAccess, asyncHandler(async (req, res) => {
   const row = _getProxmoxHost(req, res); if (!row) return;
   res.json(await fromHostRow(row).version());
 }));
 
-router.get('/nodes', requireAuth, asyncHandler(async (req, res) => {
+router.get('/nodes', requireAuth, hostAccess, asyncHandler(async (req, res) => {
   const row = _getProxmoxHost(req, res); if (!row) return;
   res.json(await fromHostRow(row).listNodes());
 }));
 
-router.get('/vms', requireAuth, asyncHandler(async (req, res) => {
+router.get('/vms', requireAuth, hostAccess, asyncHandler(async (req, res) => {
   const row = _getProxmoxHost(req, res); if (!row) return;
   res.json(await fromHostRow(row).listVMs());
 }));
 
-router.get('/vms/:node/:vmid', requireAuth, asyncHandler(async (req, res) => {
+router.get('/vms/:node/:vmid', requireAuth, hostAccess, asyncHandler(async (req, res) => {
   const row = _getProxmoxHost(req, res); if (!row) return;
   res.json(await fromHostRow(row).getVM(req.params.node, req.params.vmid));
 }));
 
-router.get('/lxc', requireAuth, asyncHandler(async (req, res) => {
+router.get('/lxc', requireAuth, hostAccess, asyncHandler(async (req, res) => {
   const row = _getProxmoxHost(req, res); if (!row) return;
   res.json(await fromHostRow(row).listLXC());
 }));
 
-router.get('/lxc/:node/:vmid', requireAuth, asyncHandler(async (req, res) => {
+router.get('/lxc/:node/:vmid', requireAuth, hostAccess, asyncHandler(async (req, res) => {
   const row = _getProxmoxHost(req, res); if (!row) return;
   res.json(await fromHostRow(row).getLXC(req.params.node, req.params.vmid));
 }));
 
-router.get('/storages', requireAuth, asyncHandler(async (req, res) => {
+router.get('/storages', requireAuth, hostAccess, asyncHandler(async (req, res) => {
   const row = _getProxmoxHost(req, res); if (!row) return;
   res.json(await fromHostRow(row).listStorages());
 }));
 
-router.get('/backups', requireAuth, asyncHandler(async (req, res) => {
+router.get('/backups', requireAuth, hostAccess, asyncHandler(async (req, res) => {
   const row = _getProxmoxHost(req, res); if (!row) return;
   res.json(await fromHostRow(row).listBackups());
 }));

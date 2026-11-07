@@ -8,6 +8,7 @@ const { Router } = require('express');
 const dockerService = require('../services/docker');
 const { requireAuth } = require('../middleware/auth');
 const { extractHostId } = require('../middleware/hostId');
+const { requireHostAccess } = require('../middleware/hostAccess');
 const asyncHandler = require('../utils/asyncHandler');
 
 const router = Router();
@@ -15,9 +16,9 @@ router.use(extractHostId);
 
 // GET /api/integrations/uptime-kuma — detect if Uptime Kuma is running on
 // the current host. Returns { detected, container, url? }.
-router.get('/uptime-kuma', requireAuth, asyncHandler(async (req, res) => {
+router.get('/uptime-kuma', requireAuth, requireHostAccess(), asyncHandler(async (req, res) => {
   try {
-    const containers = await dockerService.listContainers(req.hostId, { all: true });
+    const containers = await dockerService.listContainers(req.resolvedHostId ?? req.hostId, { all: true });
     const kuma = containers.find(c => {
       const img = (c.Image || c.image || '').toLowerCase();
       return img.includes('louislam/uptime-kuma') || img.includes('uptime-kuma');

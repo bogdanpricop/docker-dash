@@ -16,7 +16,7 @@ router.use(requireAuth);
 router.use(requireHostAccessForMethod());
 
 function _host(req, res) {
-  const row = getDb().prepare('SELECT * FROM docker_hosts WHERE id = ?').get(req.hostId);
+  const row = getDb().prepare('SELECT * FROM docker_hosts WHERE id = ?').get(req.resolvedHostId ?? req.hostId);
   if (!row) { res.status(404).json({ error: `Host ${req.hostId} not found` }); return null; }
   if (row.daemon_type !== 'xen') {
     res.status(400).json({ error: `Host ${req.hostId} (${row.name}) is not a Xen endpoint` });

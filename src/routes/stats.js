@@ -4,23 +4,24 @@ const { Router } = require('express');
 const statsService = require('../services/stats');
 const { requireAuth } = require('../middleware/auth');
 const { extractHostId } = require('../middleware/hostId');
+const { requireHostAccessForMethod } = require('../middleware/hostAccess');
 const asyncHandler = require('../utils/asyncHandler');
 
 const router = Router();
 router.use(extractHostId);
 
-router.get('/overview', requireAuth, asyncHandler((req, res) => {
+router.get('/overview', requireAuth, requireHostAccessForMethod(), asyncHandler((req, res) => {
   res.json(statsService.getOverview(req.hostId));
 }));
 
-router.get('/container/:id', requireAuth, asyncHandler((req, res) => {
+router.get('/container/:id', requireAuth, requireHostAccessForMethod(), asyncHandler((req, res) => {
   const { range } = req.query;
   res.json(statsService.query(req.params.id, { range, hostId: req.hostId }));
 }));
 
 // ─── Sparklines (mini 1h CPU/RAM data for all containers) ────
 
-router.get('/sparklines', requireAuth, asyncHandler((req, res) => {
+router.get('/sparklines', requireAuth, requireHostAccessForMethod(), asyncHandler((req, res) => {
   const db = require('../db').getDb();
   const rows = db.prepare(`
     SELECT container_id, cpu_percent, mem_percent, recorded_at
@@ -48,7 +49,7 @@ router.get('/sparklines', requireAuth, asyncHandler((req, res) => {
 
 // ─── Uptime Report ────────────────────────────────────
 
-router.get('/uptime', requireAuth, asyncHandler((req, res) => {
+router.get('/uptime', requireAuth, requireHostAccessForMethod(), asyncHandler((req, res) => {
   const db = require('../db').getDb();
   const hostId = req.hostId || 0;
 
@@ -99,7 +100,7 @@ router.get('/uptime', requireAuth, asyncHandler((req, res) => {
 
 // ─── Resource Trends ──────────────────────────────────
 
-router.get('/trends/:id', requireAuth, asyncHandler((req, res) => {
+router.get('/trends/:id', requireAuth, requireHostAccessForMethod(), asyncHandler((req, res) => {
   const db = require('../db').getDb();
   const hostId = req.hostId || 0;
   const containerId = req.params.id;
@@ -145,7 +146,7 @@ router.get('/trends/:id', requireAuth, asyncHandler((req, res) => {
 
 // ─── Cost Estimation ──────────────────────────────────
 
-router.get('/cost', requireAuth, asyncHandler((req, res) => {
+router.get('/cost', requireAuth, requireHostAccessForMethod(), asyncHandler((req, res) => {
   const hostId = req.hostId || 0;
   const monthlyCost = parseFloat(req.query.monthly_cost || '0');
 
@@ -184,7 +185,7 @@ router.get('/cost', requireAuth, asyncHandler((req, res) => {
 
 // ─── Resource Recommendations ─────────────────────────
 
-router.get('/recommendations', requireAuth, asyncHandler((req, res) => {
+router.get('/recommendations', requireAuth, requireHostAccessForMethod(), asyncHandler((req, res) => {
   const db = require('../db').getDb();
   const hostId = req.hostId || 0;
 
@@ -298,7 +299,7 @@ function _linearRegression(points) {
 
 // ─── Cost Analysis (enhanced) ────────────────────────
 
-router.get('/cost-analysis', requireAuth, asyncHandler((req, res) => {
+router.get('/cost-analysis', requireAuth, requireHostAccessForMethod(), asyncHandler((req, res) => {
   const db = require('../db').getDb();
   const hostId = req.hostId || 0;
 
@@ -425,7 +426,7 @@ router.get('/cost-analysis', requireAuth, asyncHandler((req, res) => {
 
 // ─── Cost Settings ───────────────────────────────────
 
-router.post('/cost-settings', requireAuth, asyncHandler((req, res) => {
+router.post('/cost-settings', requireAuth, requireHostAccessForMethod(), asyncHandler((req, res) => {
   const db = require('../db').getDb();
   const { monthly_cost } = req.body;
   if (monthly_cost === undefined || isNaN(parseFloat(monthly_cost))) {

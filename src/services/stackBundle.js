@@ -1,6 +1,9 @@
 'use strict';
 
 const dockerService = require('./docker');
+const fs = require('node:fs');
+const path = require('node:path');
+const stacksFs = require('./stacks-fs');
 const log = require('../utils/logger')('stack-bundle');
 
 class StackBundleService {
@@ -27,8 +30,17 @@ class StackBundleService {
         // Try reading the compose file
         const configFiles = stackContainers[0]?.Labels?.['com.docker.compose.project.config_files'] || '';
         const mainFile = configFiles.split(',')[0]?.trim();
-        if (mainFile && require('fs').existsSync(mainFile)) {
-          composeYaml = require('fs').readFileSync(mainFile, 'utf8');
+        // Docker labels may be authored by an unrelated workload. Read only
+        // a managed YAML file inside its declared stack working directory.
+        if (path.isAbsolute(workingDir) && mainFile && path.isAbsolute(mainFile)) {
+          const directory = stacksFs.assertInsideRoots(fs.realpathSync(workingDir));
+          const source = stacksFs.assertInsideRoots(fs.realpathSync(mainFile));
+          const relative = path.relative(directory, source);
+          if (relative && !path.isAbsolute(relative) && relative !== '..' && !relative.startsWith('..' + path.sep)
+            && /\.ya?ml$/i.test(source)) {
+            const info = fs.statSync(source);
+            if (info.isFile() && info.size <= 1024 * 1024) composeYaml = fs.readFileSync(source, 'utf8');
+          }
         }
       } catch {}
     }

@@ -143,6 +143,21 @@ describe('GET /api/compare', () => {
     expect(feature).toHaveProperty('dockge');
     expect(feature).toHaveProperty('dockhand');
   });
+
+  it('distinguishes documented forwarding from unverified competitor support', async () => {
+    const { body } = await request(app).get('/api/compare').expect(200);
+    const byName = name => body.features.find(feature => feature.feature === name);
+    expect(byName('Vulnerability Scanning').dockerDash).toBe('Trivy + Grype');
+    expect(byName('Live Container Log Forwarding')).toMatchObject({
+      dockerDash: 'Loki, Elasticsearch, HTTP, Syslog', coolify: 'Opt-in log drains', portainerCE: null, exclusive: false,
+      source: { url: 'https://coolify.io/docs/core/observability/log-drains/overview' },
+    });
+    expect(byName('Log Delivery Status and Diagnostics')).toMatchObject({
+      dockerDash: true, coolify: null, exclusive: false,
+    });
+    expect(byName('Git Integration').portainerCE).toBe('Basic Git deploy');
+    expect(body.summary.dockerDash.exclusive).toBe(body.features.filter(feature => feature.exclusive).length);
+  });
 });
 
 describe('GET /api/footprint', () => {

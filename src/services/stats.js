@@ -6,6 +6,7 @@ const dockerService = require('./docker');
 const config = require('../config');
 const log = require('../utils/logger')('stats');
 const { now } = require('../utils/helpers');
+const { isDockerCompatible } = require('../utils/host-id');
 
 class StatsService extends EventEmitter {
   constructor() {
@@ -22,7 +23,7 @@ class StatsService extends EventEmitter {
 
   /** Start/refresh collectors for all active hosts */
   _startCollectors() {
-    const hosts = dockerService.getActiveHosts();
+    const hosts = dockerService.getActiveHosts().filter(host => isDockerCompatible(host.daemonType));
     const activeIds = new Set(hosts.map(h => h.id));
 
     // Stop collectors for removed/disabled hosts

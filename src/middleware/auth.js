@@ -123,6 +123,7 @@ function requireAuth(req, res, next) {
 
   req.user = user;
   req.authToken = token;
+  req.authSource = req.ssoAuth ? 'sso' : source;
 
   // FIX #21: Enforce must_change_password — only allow password-change-related endpoints.
   if (user.mustChangePassword && !_isMustChangePasswordAllowed(req)) {

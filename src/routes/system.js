@@ -15,6 +15,7 @@ const { humanizeDockerError } = require('../utils/docker-errors');
 const log = require('../utils/logger')('system');
 
 const { extractHostId } = require('../middleware/hostId');
+const { requireHostAccess } = require('../middleware/hostAccess');
 
 const { isAllowedCertPath } = require('../services/cert-paths');
 
@@ -23,17 +24,17 @@ router.use(extractHostId);
 
 // ─── Database Info & Maintenance ─────────────────────────────
 
-router.get('/info', requireAuth, async (req, res) => {
-  try { res.json(await dockerService.getInfo(req.hostId)); }
+router.get('/info', requireAuth, requireHostAccess(), async (req, res) => {
+  try { res.json(await dockerService.getInfo(req.resolvedHostId ?? req.hostId)); }
   catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.get('/disk-usage', requireAuth, async (req, res) => {
-  try { res.json(await dockerService.getDiskUsage(req.hostId)); }
+router.get('/disk-usage', requireAuth, requireHostAccess(), async (req, res) => {
+  try { res.json(await dockerService.getDiskUsage(req.resolvedHostId ?? req.hostId)); }
   catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.get('/events', requireAuth, (req, res) => {
+router.get('/events', requireAuth, requireHostAccess(), (req, res) => {
   try {
     const { type, action, since, limit } = req.query;
     // v8.7.33 — cap user-supplied limit at 1000. Pre-fix a caller could
@@ -43,21 +44,25 @@ router.get('/events', requireAuth, (req, res) => {
     // and other paginated endpoints.
     const MAX_LIMIT = 1000;
     const safeLimit = Math.min(Math.max(parseInt(limit) || 100, 1), MAX_LIMIT);
-    res.json(dockerEvents.query({ type, action, since, limit: safeLimit }));
+    res.json(dockerEvents.query({ type, action, since, limit: safeLimit, hostId: req.resolvedHostId ?? req.hostId }));
   } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.post('/prune', requireAuth, requireRole('admin'), writeable, requireFeature('prune'), async (req, res) => {
+  const { containers, images, volumes, networks } = req.body || {};
+  const flags = [containers, images, volumes, networks];
+  if (flags.some(flag => flag !== undefined && typeof flag !== 'boolean') || !flags.includes(true)) {
+    return res.status(400).json({ error: 'Select at least one prune category using boolean flags' });
+  }
   try {
-    const { containers, images, volumes, networks } = req.body;
     auditService.log({ userId: req.user.id, username: req.user.username, action: 'system_prune',
       targetType: 'docker_host', targetId: String(req.hostId), details: { phase: 'requested', containers, images, volumes, networks }, ip: getClientIp(req) });
-    const results = await dockerService.prune({ containers, images, volumes, networks }, req.hostId);
+    const results = await dockerService.prune({ containers, images, volumes, networks }, req.resolvedHostId ?? req.hostId);
     auditService.log({ userId: req.user.id, username: req.user.username,
       action: 'system_prune', details: { ...req.body, phase: 'completed', protection: results.protection }, ip: getClientIp(req) });
     res.json(results);
-  } catch (err) { res.status(err.status === 409 ? 409 : 500).json({ error: humanizeDockerError(err),
-    recoveryRequired: !!err.recoveryRequired, recoveryContainer: err.recoveryContainer }); }
+  } catch (err) { res.status([400, 409].includes(err.status) ? err.status : 500).json({ error: humanizeDockerError(err),
+    recoveryRequired: !!err.recoveryRequired, recoveryContainer: err.recoveryContainer, progress: err.pruneProgress }); }
 });
 
 // Per-type prune — the frontend (System → Tools → Prune buttons) sends
@@ -78,14 +83,14 @@ router.post('/prune/:type', requireAuth, requireRole('admin'), writeable, requir
   try {
     auditService.log({ userId: req.user.id, username: req.user.username, action: 'system_prune',
       targetType: 'docker_host', targetId: String(req.hostId), details: { phase: 'requested', type, ...flags }, ip: getClientIp(req) });
-    const results = await dockerService.prune(flags, req.hostId);
+    const results = await dockerService.prune(flags, req.resolvedHostId ?? req.hostId);
     auditService.log({ userId: req.user.id, username: req.user.username,
       action: 'system_prune', details: { type, ...flags, phase: 'completed', protection: results.protection }, ip: getClientIp(req) });
     res.json(results);
   } catch (err) {
     log.error('Prune failed', { type, message: err.message || String(err) });
-    res.status(err.status === 409 ? 409 : 500).json({ error: humanizeDockerError(err),
-      recoveryRequired: !!err.recoveryRequired, recoveryContainer: err.recoveryContainer });
+    res.status([400, 409].includes(err.status) ? err.status : 500).json({ error: humanizeDockerError(err),
+      recoveryRequired: !!err.recoveryRequired, recoveryContainer: err.recoveryContainer, progress: err.pruneProgress });
   }
 });
 
@@ -111,14 +116,14 @@ function fetchJSON(url) {
   });
 }
 
-router.get('/check-updates', requireAuth, async (req, res) => {
+router.get('/check-updates', requireAuth, requireHostAccess(), async (req, res) => {
   try {
     res.set('Cache-Control', 'no-store');
     const result = { docker: null, os: null, app: null };
 
     // ── Docker Engine update check ──
     try {
-      const version = await dockerService.getDocker(req.hostId).version();
+      const version = await dockerService.getDocker(req.resolvedHostId ?? req.hostId).version();
       const currentDocker = version.Version;
       // Fetch latest stable from Docker GitHub releases
       const releases = await fetchJSON('https://api.github.com/repos/moby/moby/releases?per_page=10');
@@ -320,10 +325,10 @@ router.delete('/firewall/rule/:number', requireAuth, requireRole('admin'), write
 });
 
 // ─── Health Overview ─────────────────────────────────────────
-router.get('/health-overview', requireAuth, async (req, res) => {
+router.get('/health-overview', requireAuth, requireHostAccess(), async (req, res) => {
   try {
-    const containers = await dockerService.listContainers(req.hostId);
-    const docker = dockerService.getDocker(req.hostId);
+    const containers = await dockerService.listContainers(req.resolvedHostId ?? req.hostId);
+    const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
     const healthData = [];
 
     for (const c of containers) {
@@ -362,7 +367,7 @@ router.get('/health-overview', requireAuth, async (req, res) => {
 router.put('/containers/:id/resources', requireAuth, requireRole('admin'), writeable, async (req, res) => {
   try {
     const { memory, cpuQuota, cpuPeriod } = req.body;
-    const docker = dockerService.getDocker(req.hostId);
+    const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
     const container = docker.getContainer(req.params.id);
 
     const updateBody = {};
@@ -417,9 +422,9 @@ router.get('/templates', requireAuth, (req, res) => {
 });
 
 // ─── Health Check Logs ───────────────────────────────────
-router.get('/containers/:id/health-logs', requireAuth, async (req, res) => {
+router.get('/containers/:id/health-logs', requireAuth, requireHostAccess(), async (req, res) => {
   try {
-    const docker = dockerService.getDocker(req.hostId);
+    const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
     const container = docker.getContainer(req.params.id);
     const data = await container.inspect();
     const health = data.State.Health || null;
@@ -440,10 +445,10 @@ router.get('/containers/:id/health-logs', requireAuth, async (req, res) => {
 });
 
 // ─── Network Topology (container connections) ────────────
-router.get('/topology', requireAuth, async (req, res) => {
+router.get('/topology', requireAuth, requireHostAccess(), async (req, res) => {
   try {
-    const containers = await dockerService.listContainers(req.hostId);
-    const docker = dockerService.getDocker(req.hostId);
+    const containers = await dockerService.listContainers(req.resolvedHostId ?? req.hostId);
+    const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
     const networks = await docker.listNetworks();
 
     const nodes = [];
@@ -495,7 +500,7 @@ router.get('/topology', requireAuth, async (req, res) => {
 //   ?offset=N   skip first N containers (for pagination — UI doesn't use yet)
 router.get('/secrets-audit', requireAuth, requireRole('admin'), async (req, res) => {
   try {
-    const docker = dockerService.getDocker(req.hostId);
+    const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
     const allContainers = await docker.listContainers({ all: true });
     const offset = Math.max(0, parseInt(req.query.offset) || 0);
     const limit = Math.max(1, parseInt(req.query.limit) || allContainers.length);
@@ -612,7 +617,7 @@ router.get('/secrets-audit', requireAuth, requireRole('admin'), async (req, res)
 router.get('/egress-audit', requireAuth, requireRole('admin'), async (req, res) => {
   try {
     const egressAudit = require('../services/egress-audit');
-    const docker = dockerService.getDocker(req.hostId);
+    const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
     const allContainers = await docker.listContainers({ all: true });
     const offset = Math.max(0, parseInt(req.query.offset) || 0);
     const limit = Math.max(1, parseInt(req.query.limit) || allContainers.length);
@@ -1381,7 +1386,7 @@ router.delete('/ssl', requireAuth, requireRole('admin'), writeable, (req, res) =
 // GET /api/system/cis-benchmark — run CIS Docker benchmark on a host
 router.get('/cis-benchmark', requireAuth, requireRole('admin'), async (req, res) => {
   try {
-    const docker = dockerService.getDocker(req.hostId);
+    const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
     const result = await cisBenchmark.runBenchmark(docker);
 
     auditService.log({
@@ -1404,7 +1409,7 @@ const SENSITIVE_MOUNTS = ['/etc', '/proc', '/sys', '/boot', '/dev', '/run', '/va
 
 router.get('/cis/container/:name/hardened-compose', requireAuth, requireRole('admin'), async (req, res) => {
   try {
-    const docker = dockerService.getDocker(req.hostId);
+    const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
     const containers = await docker.listContainers({ all: false });
     const match = containers.find(c =>
       (c.Names || []).some(n => n.replace(/^\//, '') === req.params.name) || c.Id.startsWith(req.params.name)

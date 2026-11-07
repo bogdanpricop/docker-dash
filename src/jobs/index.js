@@ -1,6 +1,7 @@
 'use strict';
 
 const cron = require('node-cron');
+const { cronMatchesNow } = require('../utils/schedule-cron');
 const fs = require('fs');
 const statsService = require('../services/stats');
 const alertService = require('../services/alerts');
@@ -478,56 +479,24 @@ function startAll() {
       }).catch(e => log.error('Daily backup failed', e.message));
   })));
 
-  // Container schedule execution every minute (DB-backed with JSON fallback)
+  // Claim the minute in SQLite before calling Docker. A failed lookup
+  // leaves schedules untouched rather than falling back to a different host.
   jobs.push(cron.schedule('* * * * *', _m('schedule-executor', async () => {
-      const now = new Date();
-      let schedules = [];
-
-      // Try DB first
+    if (config.features.readOnly) return;
+    const now = new Date();
+    const db = getDb();
+    const dispatch = require('../services/schedule-dispatch');
+    const schedules = db.prepare('SELECT * FROM scheduled_actions WHERE enabled = 1').all();
+    for (const schedule of schedules) {
       try {
-        const db = getDb();
-        schedules = db.prepare('SELECT * FROM scheduled_actions WHERE enabled = 1').all();
-      } catch {
-        // Fallback to JSON
-        const schedulesFile = '/data/schedules.json';
-        if (!fs.existsSync(schedulesFile)) return;
-        const jsonSchedules = JSON.parse(fs.readFileSync(schedulesFile, 'utf8'));
-        schedules = jsonSchedules.filter(s => s.enabled).map(s => ({
-          id: s.id, container_id: s.containerId, container_name: s.containerName,
-          action: s.action, cron: s.cron, host_id: 0,
-        }));
-      }
-
-      for (const s of schedules) {
-        if (!s.cron || !s.container_id) continue;
-        try {
-          if (cron.validate(s.cron) && cronMatchesNow(s.cron, now)) {
-            const start = Date.now();
-            log.info(`Schedule executing: ${s.action} on ${s.container_name || s.container_id}`);
-            try {
-              await dockerService.containerAction(s.container_id, s.action, s.host_id || 0);
-              const duration = Date.now() - start;
-              log.info(`Schedule done: ${s.action} on ${s.container_name || s.container_id} (${duration}ms)`);
-              // Record success in DB
-              try {
-                const db = getDb();
-                db.prepare(`INSERT INTO schedule_history (schedule_id, container_id, action, status, duration_ms) VALUES (?, ?, ?, 'success', ?)`).run(s.id, s.container_id, s.action, duration);
-                db.prepare(`UPDATE scheduled_actions SET last_run_at = datetime('now'), last_run_status = 'success', run_count = run_count + 1 WHERE id = ?`).run(s.id);
-              } catch { /* ignore DB errors */ }
-            } catch (e) {
-              const duration = Date.now() - start;
-              log.error(`Schedule failed: ${s.action} on ${s.container_name}: ${e.message}`);
-              try {
-                const db = getDb();
-                db.prepare(`INSERT INTO schedule_history (schedule_id, container_id, action, status, error_message, duration_ms) VALUES (?, ?, ?, 'error', ?, ?)`).run(s.id, s.container_id, s.action, e.message, duration);
-                db.prepare(`UPDATE scheduled_actions SET last_run_at = datetime('now'), last_run_status = 'error', last_run_error = ? WHERE id = ?`).run(e.message, s.id);
-              } catch { /* ignore DB errors */ }
-            }
-          }
-        } catch (e) {
-          log.error(`Schedule check error: ${e.message}`);
+        if (cronMatchesNow(schedule.cron, now) && dispatch.claimAutomatic(db, schedule, now)) {
+          const result = await dispatch.execute(schedule, db);
+          if (!result.historyRecorded) log.warn('Schedule ran but history could not be saved', { scheduleId: schedule.id });
         }
+      } catch (error) {
+        log.error('Scheduled action failed', { scheduleId: schedule.id, message: error.message });
       }
+    }
   })));
 
   // S3 backup (if configured)
@@ -792,59 +761,6 @@ function startAll() {
   _alertInterval = alertInterval;
   _securityAlertInterval = securityAlertInterval;
   return { jobs, alertInterval, securityAlertInterval };
-}
-
-function cronMatchesNow(cronExpr, now) {
-  // Simple cron match: minute hour day month weekday
-  const parts = cronExpr.trim().split(/\s+/);
-  if (parts.length < 5) return false;
-
-  // FIX #31: Sunday normalization — weekday position treats 7 as Sunday (same as 0)
-  const rawWeekday = parts[4];
-  const normalizedWeekday = rawWeekday === '7' ? '0'
-    : rawWeekday.replace(/\b7\b/g, '0'); // also covers lists like "0,7"
-
-  const checks = [
-    { val: now.getMinutes(), part: parts[0] },
-    { val: now.getHours(), part: parts[1] },
-    { val: now.getDate(), part: parts[2] },
-    { val: now.getMonth() + 1, part: parts[3] },
-    { val: now.getDay(), part: normalizedWeekday },
-  ];
-
-  return checks.every(({ val, part }) => {
-    if (part === '*') return true;
-
-    // FIX #31: support range/step combos like "0-30/5" and bare "*/N"
-    if (part.includes('/')) {
-      const [rangePart, stepStr] = part.split('/');
-      const step = parseInt(stepStr, 10);
-      if (isNaN(step) || step <= 0) return false;
-
-      if (rangePart === '*') {
-        // bare */N — every Nth value from 0
-        return val % step === 0;
-      }
-      if (rangePart.includes('-')) {
-        // range/step — e.g. "0-30/5"
-        const [min, max] = rangePart.split('-').map(Number);
-        if (val < min || val > max) return false;
-        return (val - min) % step === 0;
-      }
-      // numeric/step — treat base as starting point
-      const base = parseInt(rangePart, 10);
-      return (val - base) % step === 0 && val >= base;
-    }
-
-    if (part.includes(',')) return part.split(',').map(Number).includes(val);
-
-    if (part.includes('-')) {
-      const [min, max] = part.split('-').map(Number);
-      return val >= min && val <= max;
-    }
-
-    return parseInt(part, 10) === val;
-  });
 }
 
 let _alertInterval = null;

@@ -608,7 +608,7 @@ async function start() {
     };
     wsServer.broadcast('stats:overview', overview, 'stats:overview');
     for (const c of liveData) {
-      wsServer.broadcast('stats:update', c, `stats:${c.containerId}`);
+      wsServer.broadcast('stats:update', { ...c, hostId: overview.hostId }, `stats:${c.containerId}`);
     }
   });
 

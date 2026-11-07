@@ -6,6 +6,7 @@ const auditService = require('../services/audit');
 const { requireAuth, requireRole, writeable } = require('../middleware/auth');
 const { getClientIp } = require('../utils/helpers');
 const { extractHostId } = require('../middleware/hostId');
+const { requireHostAccessForMethod } = require('../middleware/hostAccess');
 const asyncHandler = require('../utils/asyncHandler');
 const { humanizeDockerError } = require('../utils/docker-errors');
 const { deriveServiceSpecFromInspect, deriveComposeFromStackServices } = require('../services/swarm-derive');
@@ -23,8 +24,8 @@ function swarmError(err) {
 // ── Swarm status ───────────────────────────────────────────────
 
 // GET /api/swarm — swarm info + node count
-router.get('/', requireAuth, asyncHandler(async (req, res) => {
-  const docker = dockerService.getDocker(req.hostId);
+router.get('/', requireAuth, requireHostAccessForMethod(), asyncHandler(async (req, res) => {
+  const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
   const info = await docker.info();
   if (!info.Swarm || info.Swarm.LocalNodeState === 'inactive') {
     return res.json({ active: false });
@@ -34,9 +35,9 @@ router.get('/', requireAuth, asyncHandler(async (req, res) => {
 }));
 
 // POST /api/swarm/init — initialize a new swarm
-router.post('/init', requireAuth, requireRole('admin'), writeable, asyncHandler(async (req, res) => {
+router.post('/init', requireAuth, requireHostAccessForMethod(), requireRole('admin'), writeable, asyncHandler(async (req, res) => {
   const { advertiseAddr, listenAddr } = req.body;
-  const docker = dockerService.getDocker(req.hostId);
+  const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
   let result;
   try {
     result = await docker.swarmInit({
@@ -55,8 +56,8 @@ router.post('/init', requireAuth, requireRole('admin'), writeable, asyncHandler(
 }));
 
 // POST /api/swarm/leave — leave swarm
-router.post('/leave', requireAuth, requireRole('admin'), writeable, asyncHandler(async (req, res) => {
-  const docker = dockerService.getDocker(req.hostId);
+router.post('/leave', requireAuth, requireHostAccessForMethod(), requireRole('admin'), writeable, asyncHandler(async (req, res) => {
+  const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
   try {
     await docker.swarmLeave({ Force: !!req.body.force });
   } catch (err) {
@@ -71,8 +72,8 @@ router.post('/leave', requireAuth, requireRole('admin'), writeable, asyncHandler
 }));
 
 // GET /api/swarm/join-token — get worker/manager join tokens
-router.get('/join-token', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
-  const docker = dockerService.getDocker(req.hostId);
+router.get('/join-token', requireAuth, requireHostAccessForMethod(), requireRole('admin'), asyncHandler(async (req, res) => {
+  const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
   const swarm = await docker.swarmInspect();
   res.json({
     worker: swarm.JoinTokens?.Worker,
@@ -83,8 +84,8 @@ router.get('/join-token', requireAuth, requireRole('admin'), asyncHandler(async 
 // ── Nodes ──────────────────────────────────────────────────────
 
 // GET /api/swarm/nodes
-router.get('/nodes', requireAuth, asyncHandler(async (req, res) => {
-  const docker = dockerService.getDocker(req.hostId);
+router.get('/nodes', requireAuth, requireHostAccessForMethod(), asyncHandler(async (req, res) => {
+  const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
   try {
     const nodes = await docker.listNodes();
     res.json(nodes);
@@ -94,8 +95,8 @@ router.get('/nodes', requireAuth, asyncHandler(async (req, res) => {
 }));
 
 // PATCH /api/swarm/nodes/:id — update node availability/role
-router.patch('/nodes/:id', requireAuth, requireRole('admin'), writeable, asyncHandler(async (req, res) => {
-  const docker = dockerService.getDocker(req.hostId);
+router.patch('/nodes/:id', requireAuth, requireHostAccessForMethod(), requireRole('admin'), writeable, asyncHandler(async (req, res) => {
+  const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
   const node = docker.getNode(req.params.id);
   const inspect = await node.inspect();
   const { availability, role } = req.body;
@@ -114,8 +115,8 @@ router.patch('/nodes/:id', requireAuth, requireRole('admin'), writeable, asyncHa
 }));
 
 // DELETE /api/swarm/nodes/:id — remove node (must be drained first)
-router.delete('/nodes/:id', requireAuth, requireRole('admin'), writeable, asyncHandler(async (req, res) => {
-  const docker = dockerService.getDocker(req.hostId);
+router.delete('/nodes/:id', requireAuth, requireHostAccessForMethod(), requireRole('admin'), writeable, asyncHandler(async (req, res) => {
+  const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
   await docker.getNode(req.params.id).remove({ force: !!req.query.force });
   auditService.log({
     userId: req.user.id, username: req.user.username,
@@ -128,8 +129,8 @@ router.delete('/nodes/:id', requireAuth, requireRole('admin'), writeable, asyncH
 // ── Services ───────────────────────────────────────────────────
 
 // GET /api/swarm/services
-router.get('/services', requireAuth, asyncHandler(async (req, res) => {
-  const docker = dockerService.getDocker(req.hostId);
+router.get('/services', requireAuth, requireHostAccessForMethod(), asyncHandler(async (req, res) => {
+  const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
   try {
     const services = await docker.listServices({ status: true });
     res.json(services);
@@ -145,11 +146,11 @@ router.get('/services', requireAuth, asyncHandler(async (req, res) => {
 //
 // MUST be declared before GET /services/:id or Express would route
 // "from-container" into the :id param.
-router.get('/services/from-container', requireAuth, requireRole('admin', 'operator'), asyncHandler(async (req, res) => {
+router.get('/services/from-container', requireAuth, requireHostAccessForMethod(), requireRole('admin', 'operator'), asyncHandler(async (req, res) => {
   const containerId = String(req.query.containerId || '').trim();
   if (!containerId) return res.status(400).json({ error: 'containerId is required' });
 
-  const docker = dockerService.getDocker(req.hostId);
+  const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
 
   // Precondition: the target host must be an ACTIVE swarm manager, otherwise
   // the derived spec could never be deployed. Fail early with a humanized
@@ -173,9 +174,9 @@ router.get('/services/from-container', requireAuth, requireRole('admin', 'operat
 }));
 
 // GET /api/swarm/services/:id — dynamic 404/500 status, leave alone
-router.get('/services/:id', requireAuth, async (req, res) => {
+router.get('/services/:id', requireAuth, requireHostAccessForMethod(), async (req, res) => {
   try {
-    const docker = dockerService.getDocker(req.hostId);
+    const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
     const svc = await docker.getService(req.params.id).inspect();
     res.json(svc);
   } catch (err) {
@@ -184,7 +185,7 @@ router.get('/services/:id', requireAuth, async (req, res) => {
 });
 
 // POST /api/swarm/services — create service
-router.post('/services', requireAuth, requireRole('admin', 'operator'), writeable, asyncHandler(async (req, res) => {
+router.post('/services', requireAuth, requireHostAccessForMethod(), requireRole('admin', 'operator'), writeable, asyncHandler(async (req, res) => {
   // `command`, `restartPolicy` and `source` are optional additions (v deploy-to-swarm
   // bridge). They let the container→service promotion carry the container's
   // CMD and restart policy through the SAME create endpoint, and tag the
@@ -206,7 +207,7 @@ router.post('/services', requireAuth, requireRole('admin', 'operator'), writeabl
     ? command.map(String)
     : (typeof command === 'string' && command.trim() ? command.trim().split(/\s+/) : undefined);
 
-  const docker = dockerService.getDocker(req.hostId);
+  const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
   const spec = {
     Name: name,
     TaskTemplate: {
@@ -246,10 +247,10 @@ router.post('/services', requireAuth, requireRole('admin', 'operator'), writeabl
 }));
 
 // POST /api/swarm/services/:id/scale — scale service
-router.post('/services/:id/scale', requireAuth, requireRole('admin', 'operator'), writeable, asyncHandler(async (req, res) => {
+router.post('/services/:id/scale', requireAuth, requireHostAccessForMethod(), requireRole('admin', 'operator'), writeable, asyncHandler(async (req, res) => {
   const { replicas } = req.body;
   if (replicas === undefined) return res.status(400).json({ error: 'replicas required' });
-  const docker = dockerService.getDocker(req.hostId);
+  const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
   const svc = docker.getService(req.params.id);
   const inspect = await svc.inspect();
   await svc.update({
@@ -266,8 +267,8 @@ router.post('/services/:id/scale', requireAuth, requireRole('admin', 'operator')
 }));
 
 // DELETE /api/swarm/services/:id
-router.delete('/services/:id', requireAuth, requireRole('admin', 'operator'), writeable, asyncHandler(async (req, res) => {
-  const docker = dockerService.getDocker(req.hostId);
+router.delete('/services/:id', requireAuth, requireHostAccessForMethod(), requireRole('admin', 'operator'), writeable, asyncHandler(async (req, res) => {
+  const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
   await docker.getService(req.params.id).remove();
   auditService.log({
     userId: req.user.id, username: req.user.username,
@@ -280,8 +281,8 @@ router.delete('/services/:id', requireAuth, requireRole('admin', 'operator'), wr
 // ── Tasks ──────────────────────────────────────────────────────
 
 // GET /api/swarm/tasks?service=id — list tasks (optionally filtered by service)
-router.get('/tasks', requireAuth, asyncHandler(async (req, res) => {
-  const docker = dockerService.getDocker(req.hostId);
+router.get('/tasks', requireAuth, requireHostAccessForMethod(), asyncHandler(async (req, res) => {
+  const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
   const filters = req.query.service ? { service: [req.query.service] } : {};
   try {
     const tasks = await docker.listTasks({ filters: JSON.stringify(filters) });
@@ -299,8 +300,8 @@ router.get('/tasks', requireAuth, asyncHandler(async (req, res) => {
 // to the synthetic "_standalone" bucket (freestanding `docker service
 // create`), which the UI can either hide or show as "Standalone services".
 
-router.get('/stacks', requireAuth, asyncHandler(async (req, res) => {
-  const docker = dockerService.getDocker(req.hostId);
+router.get('/stacks', requireAuth, requireHostAccessForMethod(), asyncHandler(async (req, res) => {
+  const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
   let services, tasks;
   try {
     services = await docker.listServices({ status: true });
@@ -341,9 +342,9 @@ router.get('/stacks', requireAuth, asyncHandler(async (req, res) => {
 // Admin-only + audited: the export embeds each service's environment, which
 // can carry sensitive values (an admin already has full daemon access, but we
 // don't hand env to lower-privileged roles and we record who exported what).
-router.get('/stacks/:name/compose', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
+router.get('/stacks/:name/compose', requireAuth, requireHostAccessForMethod(), requireRole('admin'), asyncHandler(async (req, res) => {
   const stackName = req.params.name;
-  const docker = dockerService.getDocker(req.hostId);
+  const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
   let services;
   try {
     services = await docker.listServices({ status: false });
@@ -401,7 +402,7 @@ router.get('/stacks/:name/compose', requireAuth, requireRole('admin'), asyncHand
 // already exists it's removed and recreated, which is destructive but
 // matches CLI behavior on first `docker stack deploy` runs when a swarm
 // name collision exists.
-router.post('/stacks/:name', requireAuth, requireRole('admin'), writeable, asyncHandler(async (req, res) => {
+router.post('/stacks/:name', requireAuth, requireHostAccessForMethod(), requireRole('admin'), writeable, asyncHandler(async (req, res) => {
   const stackName = req.params.name;
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$/.test(stackName)) {
     return res.status(400).json({ error: 'Invalid stack name (alphanumeric, dot, underscore, dash; up to 63 chars)' });
@@ -429,7 +430,7 @@ router.post('/stacks/:name', requireAuth, requireRole('admin'), writeable, async
 
   const skipped = new Set();
   const results = [];
-  const docker = dockerService.getDocker(req.hostId);
+  const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
 
   // Helpers
   const envToArray = (env) => {
@@ -561,8 +562,8 @@ router.post('/stacks/:name', requireAuth, requireRole('admin'), writeable, async
 // DELETE a whole stack — removes every service labeled with the
 // stack namespace. Volumes and networks persist (matches CLI
 // `docker stack rm` semantics; operator does volume cleanup separately).
-router.delete('/stacks/:name', requireAuth, requireRole('admin'), writeable, asyncHandler(async (req, res) => {
-  const docker = dockerService.getDocker(req.hostId);
+router.delete('/stacks/:name', requireAuth, requireHostAccessForMethod(), requireRole('admin'), writeable, asyncHandler(async (req, res) => {
+  const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
   const services = await docker.listServices({
     filters: JSON.stringify({ label: [`com.docker.stack.namespace=${req.params.name}`] }),
   });

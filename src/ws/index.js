@@ -11,6 +11,8 @@ const { tryParseJson } = require('../utils/helpers');
 const cluster = require('../services/cluster');
 const terminalAccess = require('../services/terminal-access');
 const { sha256 } = require('../utils/crypto');
+const { parseHostId, isDockerCompatible } = require('../utils/host-id');
+const HOST_BROADCASTS = new Set(['event', 'stats:overview', 'stats:update', 'sandbox:expired']);
 
 class WsServer {
   constructor() {
@@ -253,15 +255,17 @@ class WsServer {
   _stopClientLogStreams(client, containerIds = null) {
     if (!client) return;
     if (!(client.logStreams instanceof Map)) client.logStreams = new Map();
+    if (!containerIds) client.logBatch = Symbol('log batch');
     const ids = containerIds
-      ? new Set(containerIds.map(String))
-      : new Set(client.logStreams.keys());
+      ? new Set(containerIds.map(id => String(id).trim()))
+      : new Set([...client.logStreams.keys(), ...(client.logRequests?.keys() || [])]);
     for (const containerId of ids) {
       const stream = client.logStreams.get(containerId);
+      client.logStreams.delete(containerId);
+      client.logRequests?.delete(containerId);
       if (stream) {
         try { stream.destroy(); } catch { /* best-effort cleanup */ }
       }
-      client.logStreams.delete(containerId);
     }
   }
 
@@ -292,20 +296,29 @@ class WsServer {
     if (id.length > 128 || /[\x00-\x1f]/.test(id)) {
       throw Object.assign(new Error('Invalid containerId'), { status: 400 });
     }
-    if (!Number.isInteger(hostId) || hostId < 0) {
+    hostId = parseHostId(hostId);
+    if (hostId === null) {
       throw Object.assign(new Error('Invalid hostId'), { status: 400 });
     }
-    if (!(await this._canViewContainerLogs(client, id, hostId))) {
-      throw Object.assign(new Error('Insufficient permissions for container logs'), { status: 403 });
+    hostId = require('../services/host-permissions').normalizeHostId(hostId);
+    client.logRequests ||= new Map();
+    const token = Symbol(id);
+    client.logRequests.set(id, token);
+    const current = () => client.logRequests.get(id) === token && this._authorizeClient(ws, client);
+    let stream;
+    try {
+      const allowed = await this._canViewContainerLogs(client, id, hostId);
+      if (!current()) return;
+      if (!allowed) throw Object.assign(new Error('Insufficient permissions for container logs'), { status: 403 });
+      const container = dockerService.getDocker(hostId).getContainer(id);
+      stream = await container.logs({ follow: true, stdout: true, stderr: true, tail, timestamps: true });
+      if (!current()) { stream.destroy(); return; }
+    } catch (err) {
+      if (current()) throw err;
+      return;
+    } finally {
+      if (client.logRequests.get(id) === token) client.logRequests.delete(id);
     }
-    if (!this._authorizeClient(ws, client)) return;
-
-    const container = dockerService.getDocker(hostId).getContainer(id);
-    const stream = await container.logs({
-      follow: true, stdout: true, stderr: true,
-      tail, timestamps: true,
-    });
-    if (!this._authorizeClient(ws, client)) { stream.destroy(); return; }
     client.logStreams.set(id, stream);
     let ended = false;
     let pending = Buffer.alloc(0);
@@ -320,7 +333,7 @@ class WsServer {
       pending = Buffer.alloc(0);
     };
     const finish = () => {
-      if (ended) return;
+      if (ended || client.logStreams.get(id) !== stream) return;
       flushPending();
       ended = true;
       if (client.logStreams.get(id) === stream) client.logStreams.delete(id);
@@ -328,6 +341,7 @@ class WsServer {
     };
 
     stream.on('data', (chunk) => {
+      if (client.logStreams.get(id) !== stream) return;
       const lines = [];
       let offset = 0;
       const incoming = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
@@ -402,7 +416,7 @@ class WsServer {
         break;
 
       case 'exec:start':
-        this.startExec(ws, msg.containerId, msg.shell, msg.cols, msg.rows, msg.hostId || 0);
+        this.startExec(ws, msg.containerId, msg.shell, msg.cols, msg.rows, msg.hostId === undefined ? 0 : msg.hostId);
         break;
 
       case 'exec:input':
@@ -440,12 +454,14 @@ class WsServer {
       case 'logs:subscribe': {
         const client2 = this.clients.get(ws);
         if (!client2) break;
-        this._stopClientLogStreams(client2);
         try {
+          const hostId = msg.hostId === undefined ? 0 : parseHostId(msg.hostId);
+          if (hostId === null) throw new Error('Invalid hostId');
+          this._stopClientLogStreams(client2);
           const parsedTail = Number.parseInt(msg.tail, 10);
           await this._subscribeClientLogs(ws, client2, {
             containerId: msg.containerId,
-            hostId: Number.parseInt(msg.hostId, 10) || 0,
+            hostId,
             tail: Number.isInteger(parsedTail) ? Math.min(Math.max(parsedTail, 0), 2_000) : 100,
           });
         } catch (err) {
@@ -458,21 +474,23 @@ class WsServer {
       case 'logs:subscribe-many': {
         const logClient = this.clients.get(ws);
         if (!logClient) break;
+        const hostId = msg.hostId === undefined ? 0 : parseHostId(msg.hostId);
         const containerIds = [...new Set(
           (Array.isArray(msg.containerIds) ? msg.containerIds : [])
             .map(value => String(value).trim())
             .filter(value => value && value.length <= 128 && !/[\x00-\x1f]/.test(value))
         )];
-        if (!containerIds.length || containerIds.length > 25) {
-          const payload = { error: 'Select between 1 and 25 containers' };
+        if (hostId === null || !containerIds.length || containerIds.length > 25) {
+          const payload = { error: hostId === null ? 'Invalid hostId' : 'Select between 1 and 25 containers' };
           ws.send(JSON.stringify({ type: 'logs:error', ...payload, data: payload }));
           break;
         }
         this._stopClientLogStreams(logClient);
-        const hostId = Number.parseInt(msg.hostId, 10) || 0;
+        const batch = logClient.logBatch;
         const parsedTail = Number.parseInt(msg.tail, 10);
         const tail = Number.isInteger(parsedTail) ? Math.min(Math.max(parsedTail, 0), 2_000) : 100;
         for (const containerId of containerIds) {
+          if (logClient.logBatch !== batch) break;
           try {
             await this._subscribeClientLogs(ws, logClient, { containerId, hostId, tail });
           } catch (err) {
@@ -512,13 +530,23 @@ class WsServer {
     this._localBroadcastAll(type, data);
   }
 
-  /** Local-only delivery for a channel broadcast (called directly on publish,
-   *  and indirectly by the cluster subscriber when another replica broadcasts). */
+  _canReceiveBroadcast(client, type, data) {
+    if (!HOST_BROADCASTS.has(type) || client.user.role === 'admin') return true;
+    const hostId = parseHostId(data?.hostId);
+    if (hostId === null) return false;
+    try {
+      const permission = require('../services/host-permissions').resolveEffectivePermission(client.user.id, hostId, false);
+      return ['view', 'operate', 'admin'].includes(permission);
+    } catch { return false; }
+  }
+
+  /** Local delivery for both direct and cross-replica channel broadcasts. */
   _localBroadcast(type, data, channel = null) {
     const message = JSON.stringify({ type, data, channel, time: Date.now() });
     for (const [ws, client] of this.clients) {
       if (ws.readyState !== 1) continue; // OPEN
       if (channel && !client.subscriptions.has(channel)) continue;
+      if (!this._canReceiveBroadcast(client, type, data)) continue;
       try { ws.send(message); } catch { /* ignore */ }
     }
   }
@@ -526,8 +554,9 @@ class WsServer {
   /** Local-only delivery for broadcastAll. */
   _localBroadcastAll(type, data) {
     const message = JSON.stringify({ type, data, time: Date.now() });
-    for (const [ws] of this.clients) {
+    for (const [ws, client] of this.clients) {
       if (ws.readyState !== 1) continue;
+      if (!this._canReceiveBroadcast(client, type, data)) continue;
       try { ws.send(message); } catch { /* ignore */ }
     }
   }
@@ -544,7 +573,7 @@ class WsServer {
 
   /** Start Docker events streams for all active hosts */
   _startAllEventStreams() {
-    const hosts = dockerService.getActiveHosts();
+    const hosts = dockerService.getActiveHosts().filter(host => isDockerCompatible(host.daemonType));
     for (const host of hosts) {
       this._startEventStream(host.id, host.name);
     }
@@ -552,7 +581,7 @@ class WsServer {
 
   /** Refresh event streams (call when hosts are added/removed) */
   refreshEventStreams() {
-    const hosts = dockerService.getActiveHosts();
+    const hosts = dockerService.getActiveHosts().filter(host => isDockerCompatible(host.daemonType));
     const activeIds = new Set(hosts.map(h => h.id));
 
     // Stop streams for removed hosts
@@ -889,7 +918,7 @@ class WsServer {
 
   /** Start exec session for a client */
   async startExec(ws, containerId, shell = '/bin/sh', cols = 80, rows = 24, hostId = 0) {
-    if (!config.features.exec) {
+    if (!config.features.exec || config.features.readOnly) {
       ws.send(JSON.stringify({ type: 'exec:error', message: 'Exec is disabled' }));
       return;
     }
@@ -898,6 +927,12 @@ class WsServer {
     if (!this._authorizeClient(ws, client)) return;
     if (!client || client.user.role === 'viewer') {
       ws.send(JSON.stringify({ type: 'exec:error', message: 'Insufficient permissions' }));
+      return;
+    }
+
+    hostId = parseHostId(hostId);
+    if (hostId === null) {
+      ws.send(JSON.stringify({ type: 'exec:error', code: 'terminal_access_invalid_host', message: 'Invalid hostId' }));
       return;
     }
 
@@ -926,6 +961,13 @@ class WsServer {
           message: access.reason || 'Terminal access is locked by an administrator',
           source: access.source,
         }));
+        return;
+      }
+      // Pin the daemon for this request before yielding to container inspection.
+      hostId = access.hostId;
+      if (client.user.role !== 'admin'
+        && !['operate', 'admin'].includes(require('../services/host-permissions').resolveEffectivePermission(client.user.id, hostId, false))) {
+        ws.send(JSON.stringify({ type: 'exec:error', code: 'HOST_ACCESS_DENIED', message: 'Insufficient permissions for this host' }));
         return;
       }
 

@@ -2506,6 +2506,14 @@ DB_PASS=secret"></textarea>
     } catch (err) {
       run.ok = false;
       run.error = err && err.message ? err.message : String(err);
+      const progress = err.body?.progress;
+      if (progress?.completed?.length) {
+        run.reclaimed = progress.spaceReclaimed || 0;
+        run.error += ' · ' + i18n.t('pages.system.prunePartial', {
+          completed: progress.completed.join(', '), freed: Utils.formatBytes(run.reclaimed),
+        });
+      }
+      if (err.body?.recoveryRequired) run.error += ' · ' + i18n.t('pages.system.pruneRecoveryRequired');
       Toast.error(run.error);
     } finally {
       run.finishedAt = Date.now();

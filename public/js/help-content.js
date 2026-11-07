@@ -280,8 +280,8 @@ const HelpContent = {
       title: 'Feature Comparison', icon: 'fa-table-columns',
       intro: 'How Docker Dash compares against other container management tools, feature by feature.',
       sections: [
-        { icon: 'fa-check-double', title: 'Reading the matrix', body: 'Each row is a capability; the marks say whether it exists, partially exists, or is deliberately absent.' },
-        { icon: 'fa-circle-question', title: 'Deliberate gaps', body: 'Some absences are choices, not omissions. Where that is the case the reasoning is stated.' },
+        { icon: 'fa-check-double', title: 'Reading the matrix', body: 'Each row describes a capability. Text labels show its scope or conditions, and a question mark indicates an unverified entry.' },
+        { icon: 'fa-link', title: 'Sources', body: 'Rows with documentation links show which third-party details were reviewed. Other entries are historical reference data.' },
       ],
       tip: 'Use this to decide whether a missing capability is on the roadmap or out of scope by design.',
     },
@@ -289,8 +289,8 @@ const HelpContent = {
       title: 'Comparatie functionalitati', icon: 'fa-table-columns',
       intro: 'Cum se compara Docker Dash cu alte unelte de management de containere, functionalitate cu functionalitate.',
       sections: [
-        { icon: 'fa-check-double', title: 'Cum se citeste', body: 'Fiecare rand e o capabilitate; marcajele spun daca exista, exista partial sau lipseste deliberat.' },
-        { icon: 'fa-circle-question', title: 'Absente deliberate', body: 'Unele lipsuri sunt alegeri, nu omisiuni. Acolo unde e cazul, motivul e scris.' },
+        { icon: 'fa-check-double', title: 'Cum se citește', body: 'Fiecare rând descrie o funcționalitate. Etichetele arată condițiile, iar semnul întrebării marchează o informație neverificată.' },
+        { icon: 'fa-link', title: 'Surse', body: 'Linkurile către documentație indică detaliile verificate pentru alte produse. Celelalte date rămân orientative.' },
       ],
       tip: 'Foloseste pagina ca sa decizi daca o capabilitate lipsa e pe roadmap sau e in afara scopului prin design.',
     },

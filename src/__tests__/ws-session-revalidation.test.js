@@ -106,6 +106,29 @@ test('late log stream is destroyed when logout happens during Docker logs startu
   expect(logs.destroy).toHaveBeenCalledTimes(1); expect(send).not.toHaveBeenCalled();
 });
 
+test('a superseded log subscription cannot attach to the newer host selection', async () => {
+  const {ws,client,send}=connect(), held=deferred(), old=stream(), current=stream();
+  const subscribe = hostId => server._handleMessage(ws, Buffer.from(JSON.stringify({
+    type: 'logs:subscribe', containerId: 'same-name', hostId,
+  })));
+  docker.getDocker.mockImplementation(hostId => ({
+    getContainer: () => ({ logs: () => hostId === 1 ? held.promise : Promise.resolve(current) }),
+  }));
+  const pending = subscribe(1);
+  for(let i=0;i<4;i++) await Promise.resolve();
+  await subscribe(71);
+  held.resolve(old);
+  await pending;
+  expect(old.destroy).toHaveBeenCalledTimes(1);
+  expect(client.logStreams.get('same-name')).toBe(current);
+  send.mockClear();
+  old.emit('data', Buffer.from('from old daemon'));
+  expect(send).not.toHaveBeenCalled();
+  await subscribe('71invalid');
+  expect(client.logStreams.get('same-name')).toBe(current);
+  expect(send).toHaveBeenCalledWith(expect.stringContaining('Invalid hostId'));
+});
+
 test.each(['ready','shell'])('late SSH %s callback closes the connection without granting a console', async phase => {
   const {token,ws,send}=connect();
   const hostId=db.prepare("INSERT INTO docker_hosts(name,connection_type,daemon_type,daemon_config) VALUES ('ws-ssh','ssh','vsphere',?)")

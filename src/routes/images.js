@@ -18,15 +18,15 @@ router.use(extractHostId);
 router.use(requireHostAccessForMethod());
 
 router.get('/', requireAuth, asyncHandler(async (req, res) => {
-  res.json(await dockerService.listImages(req.hostId));
+  res.json(await dockerService.listImages(req.resolvedHostId ?? req.hostId));
 }));
 
 router.get('/:id/inspect', requireAuth, asyncHandler(async (req, res) => {
-  res.json(await dockerService.inspectImage(req.params.id, req.hostId));
+  res.json(await dockerService.inspectImage(req.params.id, req.resolvedHostId ?? req.hostId));
 }));
 
 router.get('/:id/history', requireAuth, asyncHandler(async (req, res) => {
-  res.json(await dockerService.imageHistory(req.params.id, req.hostId));
+  res.json(await dockerService.imageHistory(req.params.id, req.resolvedHostId ?? req.hostId));
 }));
 
 // v8.95.0 — is this a Wasm image, and can this host actually run it?
@@ -42,7 +42,7 @@ router.get('/:id/history', requireAuth, asyncHandler(async (req, res) => {
 router.get('/:id/wasm', requireAuth, asyncHandler(async (req, res) => {
   let inspect;
   try {
-    inspect = await dockerService.inspectImage(req.params.id, req.hostId);
+    inspect = await dockerService.inspectImage(req.params.id, req.resolvedHostId ?? req.hostId);
   } catch (err) {
     return res.status(err.statusCode === 404 ? 404 : 500).json({ error: err.message });
   }
@@ -55,7 +55,7 @@ router.get('/:id/wasm', requireAuth, asyncHandler(async (req, res) => {
   // is, but we must not claim anything about whether it will run here.
   let wasmRuntimes = null;
   try {
-    const info = await dockerService.getInfo(req.hostId);
+    const info = await dockerService.getInfo(req.resolvedHostId ?? req.hostId);
     wasmRuntimes = (info && info.runtimeCategories && info.runtimeCategories.wasm) || [];
   } catch { /* leave null — "unknown", not "incompatible" */ }
 
@@ -70,7 +70,7 @@ router.get('/:id/wasm', requireAuth, asyncHandler(async (req, res) => {
 router.post('/pull', requireAuth, requireRole('admin', 'operator'), writeable, asyncHandler(async (req, res) => {
   const { image } = req.body;
   if (!image) return res.status(400).json({ error: 'Image name required' });
-  const output = await dockerService.pullImage(image, req.hostId);
+  const output = await dockerService.pullImage(image, req.resolvedHostId ?? req.hostId);
   auditService.log({ userId: req.user.id, username: req.user.username,
     action: 'image_pull', targetType: 'image', targetId: image, ip: getClientIp(req) });
   res.json({ ok: true, output });
@@ -82,7 +82,7 @@ router.post('/pull-stream', requireAuth, requireRole('admin', 'operator'), write
   if (!image) return res.status(400).json({ error: 'Image name required' });
 
   try {
-    const docker = dockerService.getDocker(req.hostId);
+    const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
 
     docker.pull(image, (err, stream) => {
       if (err) {
@@ -130,7 +130,7 @@ router.post('/pull-stream', requireAuth, requireRole('admin', 'operator'), write
 });
 
 router.delete('/:id', requireAuth, requireRole('admin'), writeable, asyncHandler(async (req, res) => {
-  await dockerService.removeImage(req.params.id, { force: req.query.force === 'true' }, req.hostId);
+  await dockerService.removeImage(req.params.id, { force: req.query.force === 'true' }, req.resolvedHostId ?? req.hostId);
   auditService.log({ userId: req.user.id, username: req.user.username,
     action: 'image_remove', targetType: 'image', targetId: req.params.id, ip: getClientIp(req) });
   res.json({ ok: true });
@@ -138,7 +138,7 @@ router.delete('/:id', requireAuth, requireRole('admin'), writeable, asyncHandler
 
 // ─── Image Config (for creation wizard) ─────────────
 router.get('/:id/config', requireAuth, asyncHandler(async (req, res) => {
-  const data = await dockerService.inspectImage(req.params.id, req.hostId);
+  const data = await dockerService.inspectImage(req.params.id, req.resolvedHostId ?? req.hostId);
   const config = data.Config || data.ContainerConfig || {};
   res.json({
     exposedPorts: Object.keys(config.ExposedPorts || {}),
@@ -432,7 +432,7 @@ router.get('/:id/scan', requireAuth, asyncHandler(async (req, res) => {
   if (['docker-scout', 'scout'].includes(String(req.query.scanner || '').toLowerCase())) {
     return res.status(503).json({ error: SCOUT_DISABLED_REASON, code: 'SCOUT_TEMPORARILY_DISABLED', scanner: 'none', status: 'disabled' });
   }
-  const imageData = await dockerService.inspectImage(req.params.id, req.hostId);
+  const imageData = await dockerService.inspectImage(req.params.id, req.resolvedHostId ?? req.hostId);
     const imageName = imageData.RepoTags?.[0] || req.params.id;
     const preferredScanner = (req.query.scanner || 'auto').toLowerCase();
 
@@ -552,7 +552,7 @@ router.post('/scan-history/delete', requireAuth, requireRole('admin'), writeable
 router.post('/:id/tag', requireAuth, requireRole('admin', 'operator'), writeable, asyncHandler(async (req, res) => {
   const { repo, tag } = req.body;
   if (!repo) return res.status(400).json({ error: 'repo required' });
-  const docker = dockerService.getDocker(req.hostId);
+  const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
   const image = docker.getImage(req.params.id);
   await image.tag({ repo, tag: tag || 'latest' });
   auditService.log({
@@ -565,7 +565,7 @@ router.post('/:id/tag', requireAuth, requireRole('admin', 'operator'), writeable
 
 // Export image as tar
 router.get('/:id/export', requireAuth, asyncHandler(async (req, res) => {
-  const docker = dockerService.getDocker(req.hostId);
+  const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
   const image = docker.getImage(req.params.id);
   const info = await image.inspect();
   const name = (info.RepoTags?.[0] || req.params.id.substring(0, 12)).replace(/[/:]/g, '_');
@@ -579,7 +579,7 @@ router.get('/:id/export', requireAuth, asyncHandler(async (req, res) => {
 // Import image from tar
 router.post('/import', requireAuth, requireRole('admin'), writeable, (req, res) => {
   try {
-    const docker = dockerService.getDocker(req.hostId);
+    const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
     docker.loadImage(req, (err, stream) => {
       if (err) return res.status(500).json({ error: err.message });
       let output = '';
@@ -603,7 +603,7 @@ router.post('/build', requireAuth, requireRole('admin'), writeable, asyncHandler
   const { dockerfile, tag, buildArgs = {}, noCache = false, target = '' } = req.body;
   if (!dockerfile || !tag) return res.status(400).json({ error: 'dockerfile and tag required' });
 
-  const docker = dockerService.getDocker(req.hostId);
+  const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
     // Create a tar archive containing the Dockerfile
     const tarHeader = Buffer.alloc(512);
     const content = Buffer.from(dockerfile, 'utf8');

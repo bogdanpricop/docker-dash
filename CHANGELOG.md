@@ -4,6 +4,22 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Pin a request to its resolved host across nested routes and Docker operations.
+- Claim scheduled actions once per minute in SQLite, and apply the same cron
+  rules to preview and execution.
+- Bound Docker event streams, recheck access while connected, and report partial
+  prune completion even when a later stage or reservation cleanup fails.
+- Allow exact token-authenticated container webhook URLs through CSRF and
+  keep the audit log intact during strict-mode database cleanup.
+- Refresh Feature Comparison with verified capabilities and distinguish
+  unverified entries from explicit product limitations.
+- Reject ambiguous or unavailable Docker host targets instead of falling back
+  to the default daemon. Bind new schedules to their original host and enforce
+  host grants on event, metrics, network, Compose and provider routes.
+- Repair container webhook restart, pull and guarded replacement. Protect
+  trigger tokens, kubeconfigs and full stack exports with administrator access.
+- Prevent superseded WebSocket log subscriptions from delivering data from
+  a previously selected host.
 - Show each log forwarder's last successful live delivery and latest failure,
   with transport diagnostics and retry information in Settings.
 - Stream new container logs to enabled Loki, Elasticsearch, HTTP webhook and
