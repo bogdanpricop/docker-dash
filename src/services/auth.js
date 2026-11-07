@@ -228,30 +228,30 @@ class AuthService {
 
       // Check if MFA is enabled for this user
       if (user.totp_enabled) {
-        // Create a temporary MFA token (5 min TTL)
-        const mfaToken = generateToken(32);
-        const mfaTokenHash = sha256(mfaToken);
-        const mfaExpiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-
-        db.prepare('INSERT INTO mfa_tokens (token_hash, user_id, ip, user_agent, expires_at) VALUES (?, ?, ?, ?, ?)')
-          .run(mfaTokenHash, user.id, ip, userAgent, mfaExpiresAt);
-
-        this.logAttempt(ip, username, user.id, true, userAgent);
-        log.info('Login pending MFA', { username, ip });
-
-        return {
-          mfaRequired: true,
-          mfaToken,
-          user: {
-            id: user.id, username: user.username, displayName: user.display_name, role: user.role,
-            mustChangePassword: !!user.must_change_password,
-          },
-        };
+        return this._beginMfa(user, ip, userAgent);
       }
 
       // No MFA — create full session
       return this._createSession(user, ip, userAgent);
     }).immediate();
+  }
+
+  _beginMfa(user, ip, userAgent) {
+    const mfaToken = generateToken(32);
+    const expires = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    getDb().prepare('INSERT INTO mfa_tokens (token_hash, user_id, ip, user_agent, expires_at) VALUES (?, ?, ?, ?, ?)')
+      .run(sha256(mfaToken), user.id, ip, userAgent, expires);
+    this.logAttempt(ip, user.username, user.id, true, userAgent);
+    return { mfaRequired: true, mfaToken, user: { id: user.id, username: user.username,
+      displayName: user.display_name, role: user.role, mustChangePassword: !!user.must_change_password } };
+  }
+
+  signInWithVerifiedPasskey(user, ip, userAgent) {
+    const db = getDb();
+    if (this.isIpLocked(ip) || (user.is_locked && new Date(user.locked_until) > new Date())) return null;
+    db.prepare('UPDATE users SET failed_attempts = 0, is_locked = 0, locked_until = NULL, last_login_at = ? WHERE id = ?')
+      .run(now(), user.id);
+    return user.totp_enabled ? this._beginMfa(user, ip, userAgent) : this._createSession(user, ip, userAgent);
   }
 
   /** Create a full session for a user (shared by login and MFA verify) */

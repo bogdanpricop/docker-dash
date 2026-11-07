@@ -14,6 +14,8 @@ const SystemPageBackup = {
         <div class="card-header"><h3>Backup and recovery overview</h3><a class="btn btn-sm btn-secondary" href="#/recovery-points">Provider recovery points</a></div>
         <div class="card-body" data-backup-overview aria-live="polite">Loading backup inventory…</div>
       </section>
+      ${App.user?.role === 'admin' || App.user?.roles?.includes('admin')
+        ? '<section class="card" data-storage-backup aria-label="Storage backup"></section>' : ''}
       <div class="card">
         <div class="card-header">
           <h3><i class="fas fa-archive" style="margin-right:8px"></i>${i18n.t('pages.system.backupTitle')}</h3>
@@ -183,6 +185,7 @@ const SystemPageBackup = {
     `;
 
     this._loadBackupOverview(el.querySelector('[data-backup-overview]'));
+    void StorageBackupPanel.render(el.querySelector('[data-storage-backup]'));
 
     // S3 backup handlers
     (async () => {

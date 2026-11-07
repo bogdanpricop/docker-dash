@@ -78,7 +78,7 @@ const Api = {
     }
     try {
       const res = await fetch(`/api${this._appendHostId(path)}`, options);
-      if (res.status === 401 && !path.startsWith('/auth/login')) {
+      if (res.status === 401 && !path.startsWith('/auth/login') && !path.startsWith('/auth/passkeys/login/')) {
         // v7.3.1: mute error toasts for 6s so parallel in-flight requests
         // don't bury the login form with "Failed to load X: Unauthorized".
         // App.handleUnauthorized() is idempotent so repeated 401s are harmless.

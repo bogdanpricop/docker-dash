@@ -158,6 +158,7 @@ app.use('/api/git/webhook', webhookReceiverLimiter, require('./routes/gitWebhook
 app.use('/api/automation/webhooks', webhookReceiverLimiter, require('./routes/infrastructure-webhooks'));
 
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/auth/passkeys', require('./routes/passkeys'));
 app.use('/api/identity-federation', apiLimiter, require('./routes/identity-federation'));
 app.use('/api/workload-identity', apiLimiter, require('./routes/workload-identity'));
 app.use('/api/scim/v2', apiLimiter, require('./routes/scim'));

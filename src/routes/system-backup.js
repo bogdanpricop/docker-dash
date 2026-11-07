@@ -19,6 +19,7 @@ const { getDb } = require('../db');
 const config = require('../config');
 
 const router = Router();
+router.use('/storage', require('./storage-backup'));
 
 function configRestorePlan(db, data) {
   const input = data?.settings ?? [];

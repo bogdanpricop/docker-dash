@@ -12,6 +12,7 @@ const path = require('path');
 const os = require('os');
 const dockerService = require('../services/docker');
 const { runCompose, auditTail, parseComposePlan } = require('../services/compose-runner');
+const { runProjectCheck } = require('../services/compose-project-check');
 const stacksFs = require('../services/stacks-fs');
 const auditService = require('../services/audit');
 const { requireAuth, requireRole, writeable } = require('../middleware/auth');
@@ -243,22 +244,46 @@ function _isPlanUnsupported(err) {
   return /(?:unknown|unrecognized|no such|not supported).{0,80}(?:dry-run|progress)|(?:dry-run|progress).{0,80}(?:unknown|unrecognized|not supported)/i.test(message);
 }
 
-async function _resolveStackWorkingDir(req, stack) {
+async function _resolveStackProject(req, stack) {
   const containers = await dockerService.listContainers(req.resolvedHostId ?? req.hostId);
   const stackContainers = containers.filter(container => _stackMatches(container, stack));
   if (!stackContainers.length) {
+    if (req.hostConnectionType && req.hostConnectionType !== 'socket') {
+      throw Object.assign(new Error('Stack not found on the selected Docker host'), { status: 404 });
+    }
     const discovered = _filesystemStack(stack);
     if (!discovered) throw Object.assign(new Error('Stack not found'), { status: 404 });
-    return discovered.path;
+    return { directory: discovered.path, files: [discovered.composeFile] };
   }
 
   const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
-  const inspection = await docker.getContainer(stackContainers[0].id).inspect();
-  const workingDir = inspection.Config?.Labels?.['com.docker.compose.project.working_dir'] || '';
+  const candidate = stackContainers.find(container => container.state === 'running'
+    && container.labels?.['com.docker.compose.project.working_dir'])
+    || stackContainers.find(container => container.labels?.['com.docker.compose.project.working_dir'])
+    || stackContainers[0];
+  const inspection = await docker.getContainer(candidate.id).inspect();
+  const labels = inspection.Config?.Labels || {};
+  const workingDir = labels['com.docker.compose.project.working_dir'] || '';
   if (!workingDir || !path.isAbsolute(workingDir)) {
     throw Object.assign(new Error('Cannot determine compose working directory'), { status: 400 });
   }
-  return workingDir;
+  const projectPath = workingDir.startsWith('/') ? path.posix : path;
+  const files = (labels['com.docker.compose.project.config_files'] || '').split(',').filter(Boolean)
+    .map(file => projectPath.resolve(workingDir, file));
+  return { directory: workingDir, files };
+}
+
+async function _resolveStackWorkingDir(req, stack) {
+  return (await _resolveStackProject(req, stack)).directory;
+}
+
+function _runProjectCheck(req, stack, project, args, options) {
+  return runProjectCheck({
+    ...project, stack, hostId: req.resolvedHostId ?? req.hostId,
+    local: !req.hostConnectionType || req.hostConnectionType === 'socket',
+    allowHostProject: !req.user.apiKey && (req.user.role === 'admin' || req.user.roles?.includes('admin')),
+    dockerCliContext: _dockerCliContext,
+  }, args, options);
 }
 
 function _dockerCliContext(hostId) {
@@ -319,13 +344,12 @@ router.post('/compose/:stack/:action/plan', requireAuth, hostAccess, requireRole
 
   let workingDir;
   let release;
-  let cliContext;
   try {
     release = _acquireComposeSlot(req.user.id);
-    workingDir = await _resolveStackWorkingDir(req, stack);
-    cliContext = _dockerCliContext(req.resolvedHostId ?? req.hostId);
-    const result = await runCompose(['--progress', 'json', '--dry-run', ...args], {
-      cwd: workingDir, env: cliContext.env, timeoutMs: 60_000, maxBytes: 1024 * 1024,
+    const project = await _resolveStackProject(req, stack);
+    workingDir = project.directory;
+    const result = await _runProjectCheck(req, stack, project, ['--progress', 'json', '--dry-run', ...args], {
+      timeoutMs: 60_000, maxBytes: 1024 * 1024,
     });
     const plan = parseComposePlan(result);
     _auditCompose(req, stack, `${action}_plan`, workingDir, 'success', result);
@@ -345,25 +369,22 @@ router.post('/compose/:stack/:action/plan', requireAuth, hostAccess, requireRole
         : _errorMessage(err),
     });
   } finally {
-    cliContext?.cleanup();
     release?.();
   }
 });
 
 router.post('/compose/:stack/check', requireAuth, hostAccess, requireRole('admin', 'operator'), async (req, res) => {
   let release;
-  let cliContext;
   const hostId = req.resolvedHostId ?? req.hostId;
   try {
     release = _acquireComposeSlot(req.user.id);
-    const cwd = await _resolveStackWorkingDir(req, req.params.stack);
-    cliContext = _dockerCliContext(hostId);
-    await runCompose(['config', '--quiet'], { cwd, env: cliContext.env, timeoutMs: 10_000, maxBytes: 65536 });
+    const stack = req.params.stack;
+    const project = await _resolveStackProject(req, stack);
+    await _runProjectCheck(req, stack, project, ['config', '--quiet'], { timeoutMs: 10_000, maxBytes: 65536 });
     res.json({ valid: true, host: { id: hostId, name: req.hostName } });
   } catch (err) {
     res.status(err.status || 422).json({ error: _errorMessage(err) });
   } finally {
-    cliContext?.cleanup();
     release?.();
   }
 });

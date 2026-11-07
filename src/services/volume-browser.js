@@ -5,6 +5,7 @@ const { once } = require('node:events');
 const { PassThrough } = require('node:stream');
 const { TextDecoder } = require('node:util');
 const dockerService = require('./docker');
+const { applicationImage } = require('./docker-helper-image');
 
 const MAX_LIST_ENTRIES = 5000;
 const MAX_FILE_BYTES = 5_000_000;
@@ -33,9 +34,8 @@ function _safePath(userPath) {
 
 async function helperImage(docker) {
   if (process.env.DD_VOLUME_BROWSER_IMAGE) return process.env.DD_VOLUME_BROWSER_IMAGE;
-  const running = await docker.listContainers();
-  const application = running.find(container => dockerService.isSelf(container.Id));
-  if (application?.ImageID) return application.ImageID;
+  const image = await applicationImage(docker);
+  if (image) return image;
   try { return (await docker.getImage('alpine:3').inspect()).Id; }
   catch (error) {
     if (error.statusCode !== 404) throw error;
@@ -133,4 +133,4 @@ async function readFile(hostId, volumeName, filePath, maxBytes = MAX_FILE_BYTES)
   }
 }
 
-module.exports = { list, remove, readFile, readBuffer, MAX_FILE_BYTES, _safePath };
+module.exports = { list, remove, readFile, readBuffer, helperImage, MAX_FILE_BYTES, _safePath };

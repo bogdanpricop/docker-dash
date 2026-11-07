@@ -45,6 +45,7 @@ jest.mock('../services/git', () => ({
 }));
 
 const express = require('express');
+const fs = require('node:fs');
 const request = require('supertest');
 const dockerService = require('../services/docker');
 const composeRunner = require('../services/compose-runner');
@@ -78,6 +79,9 @@ describe('Compose action streaming API', () => {
     jest.clearAllMocks();
     stacksFs.discover.mockReturnValue([]);
     runningStack();
+    const stat = fs.statSync;
+    jest.spyOn(fs, 'statSync').mockImplementation((file, ...args) =>
+      file === '/srv/demo' ? { isDirectory: () => true } : stat(file, ...args));
     composeRunner.runCompose.mockImplementation(async (_args, options) => {
       options.onOutput?.({ stream: 'stdout', data: 'Creating demo\n', truncated: false });
       return {
@@ -86,6 +90,7 @@ describe('Compose action streaming API', () => {
       };
     });
   });
+  afterEach(() => jest.restoreAllMocks());
 
   it('requires authentication and an operating role', async () => {
     await request(app).post('/api/system/compose/demo/up/stream').expect(401);
@@ -113,7 +118,7 @@ describe('Compose action streaming API', () => {
     const response = await request(app).post('/api/system/compose/demo/up/plan')
       .set(auth()).send({}).expect(200);
     expect(composeRunner.runCompose).toHaveBeenCalledWith(
-      ['--progress', 'json', '--dry-run', 'up', '-d'],
+      ['--project-name', 'demo', '--progress', 'json', '--dry-run', 'up', '-d'],
       expect.objectContaining({ cwd: '/srv/demo', maxBytes: 1024 * 1024 })
     );
     expect(response.body).toMatchObject({
@@ -121,6 +126,13 @@ describe('Compose action streaming API', () => {
     });
     expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'compose_up_plan' }));
     expect(mockCliCleanup).toHaveBeenCalledTimes(1);
+  });
+
+  it('gives operators an actionable response for a project outside the application filesystem', async () => {
+    fs.statSync.mockReturnValueOnce(undefined);
+    const response = await request(app).post('/api/system/compose/demo/check').set(auth()).send({}).expect(422);
+    expect(response.body.error).toContain('original Compose project files');
+    expect(composeRunner.runCompose).not.toHaveBeenCalled();
   });
 
   it('reports unsupported dry-run capability without executing the real action', async () => {

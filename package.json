@@ -1,6 +1,6 @@
 {
   "name": "docker-dash",
-  "version": "8.96.32",
+  "version": "8.96.33",
   "description": "Full-featured Docker management dashboard",
   "main": "src/server.js",
   "scripts": {
@@ -27,6 +27,7 @@
   },
   "dependencies": {
     "@novnc/novnc": "1.7.0",
+    "@simplewebauthn/server": "14.1.0",
     "bcrypt": "^6.0.0",
     "better-sqlite3": "^13.0.3",
     "cookie-parser": "^1.4.7",

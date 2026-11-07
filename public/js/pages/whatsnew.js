@@ -9,6 +9,11 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.96.33', date: '2026-11-08', title: 'Compose checks, storage recovery and passkeys', changes: [
+      { type: 'fix', text: 'Check and Plan can use the original Compose files on the Docker host and explain when the project is unavailable.' },
+      { type: 'feature', text: 'Create encrypted volume and bind mount backups, review the destination and restore to a new volume on another managed host.' },
+      { type: 'security', text: 'Enroll and revoke WebAuthn passkeys for local accounts. Passkey sign-in preserves existing two-step verification.' },
+    ] },
     { version: '8.96.32', date: '2026-11-07', title: 'Operator review, recovery and security triage', changes: [
       { type: 'feature', text: 'Review bulk container actions by host and retry only failures. Pin service names and switch between column presets.' },
       { type: 'feature', text: 'Explore single, multi and grouped logs with shared controls. Open incident logs from Docker Activity and failed forwarding batches.' },

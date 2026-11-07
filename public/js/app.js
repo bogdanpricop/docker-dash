@@ -139,6 +139,22 @@ const App = {
 
     // IMPORTANT: re-query errEl from the NEW form (old ref is detached from DOM)
     const errEl = newForm.querySelector('#login-error');
+    void Passkeys.loginButton(newForm, res => {
+      if (res.mfaRequired) {
+        this._showMfaPrompt(res.mfaToken, newForm, errEl);
+        return;
+      }
+      Api._bearerToken = null;
+      this.user = res.user;
+      this._securityFlags = {
+        setupRequired: res.setupRequired,
+        mustChangePassword: res.mustChangePassword,
+        defaultAdminActive: res.defaultAdminActive,
+      };
+      newForm.reset();
+      this._showApp();
+      if (res.defaultAdminActive) setTimeout(() => this._showSecurityBanner(), 500);
+    });
 
     // Auto-focus username so the user can start typing immediately
     setTimeout(() => {
@@ -299,6 +315,7 @@ const App = {
     formGroups.forEach(g => g.style.display = 'none');
     const forgotEl = form.querySelector('#login-forgot');
     if (forgotEl) forgotEl.style.display = 'none';
+    form.querySelector('#login-passkey')?.classList.add('hidden');
 
     // Create MFA input UI
     const mfaDiv = document.createElement('div');

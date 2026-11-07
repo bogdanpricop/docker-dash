@@ -1,6 +1,7 @@
 'use strict';
 
 const { spawn } = require('child_process');
+const fs = require('node:fs');
 
 const DEFAULT_TIMEOUT_MS = 120_000;
 const DEFAULT_MAX_BYTES = 5 * 1024 * 1024;
@@ -101,7 +102,15 @@ function runCompose(args, options = {}) {
       settled = true;
       clearTimeout(timer);
       if (forceTimer) clearTimeout(forceTimer);
-      reject(new ComposeRunError(err.message, {
+      let message = err.message;
+      if (err.code === 'ENOENT') {
+        let directory = !options.cwd;
+        try { directory ||= fs.statSync(options.cwd, { throwIfNoEntry: false })?.isDirectory(); } catch {}
+        message = directory
+          ? 'Docker CLI is missing from the Docker Dash runtime PATH'
+          : 'The Compose project directory is not available in the Docker Dash runtime';
+      }
+      reject(new ComposeRunError(message, {
         cause: err, stdout, stderr, output: stdout + stderr,
         exitCode: null, timedOut, truncated, durationMs: Date.now() - startedAt,
       }));

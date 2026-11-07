@@ -106,6 +106,7 @@ const SettingsPage = {
           </form>
         </div>
       </div>
+      <section class="card" id="profile-passkeys" style="max-width:650px"></section>
     `;
 
     el.querySelector('#pw-form').addEventListener('submit', async (e) => {
@@ -123,6 +124,7 @@ const SettingsPage = {
         el.querySelector('#pw-form').reset();
       } catch (err) { Toast.error(err.message); }
     });
+    void Passkeys.profile(el.querySelector('#profile-passkeys'));
   },
 
   // Users tab moved to public/js/pages/settings-users.js.

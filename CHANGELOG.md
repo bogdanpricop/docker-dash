@@ -4,6 +4,13 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Fix Check and Plan for Compose projects whose original files live on the
+  Docker host. Report unavailable project files separately from a missing CLI.
+- Archive Docker volumes and eligible bind mounts with encryption at rest.
+  Review and restore into a new volume on a managed Docker host.
+- Add passkey sign-in and enrollment for local accounts on the configured
+  HTTPS origin, with one-time challenges and existing TOTP enforcement.
+
 - Add persistent container column presets and review eligible bulk actions on
   their resolved host before execution. Retry only failed containers.
 - Share log search navigation, pause, auto-scroll and wrapping between the
