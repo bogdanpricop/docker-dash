@@ -4,6 +4,7 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Require Alpine zlib 1.4-r0 or later in the runtime image (CVE-2026-4738).
 - Keep the last notification test result on each channel while Settings is
   open. Show timing, retry and editing actions, HTTP rate-limit guidance, and
   partial SMTP recipient acceptance.

@@ -28,9 +28,8 @@ RUN apk update && apk upgrade --no-cache
 # System tools + Docker CLI/Compose plugin
 # Compose is executed from inside Docker Dash for stack plans, Git deploys,
 # pull-request previews, and OCI Compose artifacts.
-# Git pulls in libexpat. Require the fixed release even when an older
-# Alpine upgrade layer is reused by the image build cache.
-RUN apk add --no-cache tini curl git openssh-client openssl 'libexpat>=2.10.0-r0'
+# Require patched libexpat and zlib even when the Alpine upgrade layer is cached.
+RUN apk add --no-cache tini curl git openssh-client openssl 'libexpat>=2.10.0-r0' 'zlib>=1.4-r0'
 
 # Use the verified source build instead of Alpine's independently packaged CLI.
 COPY --from=scanner-build /out/docker-cli /usr/local/bin/docker

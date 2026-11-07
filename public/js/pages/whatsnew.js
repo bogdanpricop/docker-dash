@@ -9,6 +9,9 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.96.25', date: '2026-11-07', title: 'Runtime security update', changes: [
+      { type: 'security', text: 'Require Alpine zlib 1.4-r0 or later in the runtime image (CVE-2026-4738).' },
+    ] },
     { version: '8.96.24', date: '2026-11-07', title: 'Notification test follow-up', changes: [
       { type: 'improvement', text: 'Reopen the last test from its channel, see timing and partial SMTP results, and retry or edit the configuration from the details dialog.' },
     ] },
