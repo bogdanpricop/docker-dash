@@ -243,7 +243,7 @@ const SettingsPage = {
             <table class="data-table">
               <thead><tr><th style="text-align:left">Name</th><th>Provider</th><th>Status</th><th></th></tr></thead>
               <tbody>${channels.map(c => `
-                <tr data-nc-row="${c.id}">
+                <tr data-nc-row="${c.id}" data-nc-provider="${esc(c.provider)}" data-nc-active="${Boolean(c.is_active)}">
                   <td style="text-align:left"><i class="${providerIcons[c.provider] || 'fas fa-bell'}" style="margin-right:8px;color:var(--accent)"></i><strong>${Utils.escapeHtml(c.name)}</strong></td>
                   <td>
                     <span class="badge badge-info">${esc(providerById.get(c.provider)?.name || c.provider)}</span>
@@ -257,6 +257,7 @@ const SettingsPage = {
                   </td>
                   <td>
                     <div class="action-btns">
+                      <button type="button" class="action-btn" data-action="toggle-nc" data-id="${c.id}" title="${esc(t(c.is_active ? 'notificationPause' : 'notificationActivate'))}" aria-label="${esc(t(c.is_active ? 'notificationPause' : 'notificationActivate'))}"><i class="fas fa-${c.is_active ? 'pause' : 'play'}" aria-hidden="true"></i></button>
                       <button type="button" class="action-btn" data-action="edit-nc" data-id="${c.id}" title="${i18n.t('common.edit')}" aria-label="${i18n.t('common.edit')}"><i class="fas fa-edit" aria-hidden="true"></i></button>
                       <button type="button" class="action-btn" data-action="test-nc" data-id="${c.id}" title="${esc(t(c.is_active ? 'notificationTestRun' : 'notificationTestInactive'))}" aria-label="${esc(t(c.is_active ? 'notificationTestRun' : 'notificationTestInactive'))}" ${c.is_active ? '' : 'disabled'}><i class="fas fa-paper-plane" aria-hidden="true"></i></button>
                       <button class="action-btn danger" data-action="delete-nc" data-id="${c.id}" title="Delete"><i class="fas fa-trash"></i></button>
@@ -297,8 +298,17 @@ const SettingsPage = {
       };
       const runTest = async (channel, trigger) => {
         if (!channel.is_active || tests.get(channel.id)?.pending) return;
-        tests.set(channel.id, { pending: true });
+        const previous = tests.get(channel.id)?.result;
+        const delay = previous?.details?.retryAfterSeconds;
+        const remaining = Number.isFinite(delay) ? Math.ceil((Date.parse(previous.testedAt) + delay * 1000 - Date.now()) / 1000) : 0;
+        if (remaining > 0) {
+          Toast.warning(i18n.t('pages.settings.notificationRetryWait', { seconds: remaining }));
+          return;
+        }
+        const attempt = { pending: true };
+        tests.set(channel.id, attempt);
         trigger.disabled = true;
+        if (trigger.id === 'nc-test-retry') trigger.textContent = t('sendingTest');
         paintTest(channel);
         let result;
         try {
@@ -306,6 +316,7 @@ const SettingsPage = {
           if (typeof result?.ok !== 'boolean') throw new Error(t('notificationTestUnavailable'));
         }
         catch (err) { result = { ok: false, error: err.message }; }
+        if (tests.get(channel.id) !== attempt) return;
         result.testedAt ||= new Date().toISOString();
         tests.set(channel.id, { result });
         paintTest(channel);
@@ -320,6 +331,16 @@ const SettingsPage = {
         const channel = channelById.get(id);
         if (btn.dataset.action === 'smtp-nc') {
           await this._openNotificationSmtpSettings();
+        } else if (btn.dataset.action === 'toggle-nc' && channel) {
+          btn.disabled = true;
+          try {
+            await Api.updateNotificationChannel(id, { is_active: !channel.is_active });
+            tests.delete(id);
+            await this._renderTab();
+          } catch (err) {
+            Toast.error(err.message);
+            btn.disabled = false;
+          }
         } else if (btn.dataset.action === 'edit-nc') {
           if (channel) await this._openNotificationChannel(providers, channel);
         } else if (btn.dataset.action === 'test-nc') {
@@ -388,7 +409,6 @@ const SettingsPage = {
     Modal._content.querySelector('#nc-test-edit')?.addEventListener('click', edit);
     Modal._content.querySelector('#nc-test-smtp')?.addEventListener('click', smtp);
     Modal._content.querySelector('#nc-test-retry')?.addEventListener('click', event => {
-      event.currentTarget.textContent = t('sendingTest');
       retry(event.currentTarget);
     });
     Modal._content.querySelector('#nc-test-copy').addEventListener('click', async () => {
@@ -473,6 +493,7 @@ const SettingsPage = {
       },
     });
     if (saved) {
+      if (channel) this._notificationTests.delete(channel.id);
       Toast.success(t(channel ? 'channelUpdated' : 'channelCreated'));
       await this._renderTab();
     }
@@ -576,6 +597,15 @@ const SettingsPage = {
         submit.disabled = true;
         try {
           await Api.saveNotificationSmtpSettings(data);
+          for (const row of document.querySelectorAll('[data-nc-provider="email"]')) {
+            this._notificationTests.delete(Number(row.dataset.ncRow));
+            row.querySelector('[data-nc-result]').hidden = true;
+            row.querySelector('[data-nc-test-status]').textContent = '';
+            const test = row.querySelector('[data-action="test-nc"]');
+            test.disabled = row.dataset.ncActive !== 'true';
+            test.setAttribute('aria-busy', 'false');
+            test.querySelector('i').className = 'fas fa-paper-plane';
+          }
           Toast.success(i18n.t('pages.settings.notificationSmtpSaved'));
           close();
         } catch (err) {
@@ -604,12 +634,12 @@ const SettingsPage = {
             ${secrets.length === 0
               ? '<div class="empty-msg">No secrets yet. Click "Add Secret" to create one.</div>'
               : `<table class="data-table">
-                <thead><tr><th>Name</th><th>Description</th><th>Created</th><th>Actions</th></tr></thead>
+                <thead><tr><th>Name</th><th>Description</th><th>Updated</th><th>Actions</th></tr></thead>
                 <tbody>${secrets.map(s => `
-                  <tr>
+                  <tr data-secret-row="${s.id}">
                     <td class="mono">${Utils.escapeHtml(s.name)}</td>
                     <td class="text-sm">${s.description ? Utils.escapeHtml(s.description) : '<span class="text-muted">-</span>'}</td>
-                    <td class="text-sm">${Utils.timeAgo(s.created_at)}</td>
+                    <td class="text-sm">${Utils.timeAgo(s.updated_at || s.created_at)}</td>
                     <td>
                       <div class="action-btns">
                         <button class="action-btn" data-action="copy-secret" data-id="${s.id}" title="Copy value"><i class="fas fa-copy"></i></button>
@@ -620,11 +650,29 @@ const SettingsPage = {
                   </tr>
                 `).join('')}</tbody>
               </table>`}
+            ${secrets.length ? '<div class="empty-msg hidden" id="sec-no-match">No matching secrets.</div>' : ''}
           </div>
         </div>
       `;
 
       el.querySelector('#secret-create').addEventListener('click', () => this._openSecret());
+      if (secrets.length) {
+        const search = document.createElement('input');
+        search.type = 'search';
+        search.className = 'form-control';
+        search.placeholder = 'Search secrets';
+        search.setAttribute('aria-label', 'Search secret names and descriptions');
+        el.querySelector('.data-table').before(search);
+        const rows = [...el.querySelectorAll('[data-secret-row]')];
+        search.addEventListener('input', () => {
+          const term = search.value.trim().toLowerCase();
+          rows.forEach((row, index) => {
+            const secret = secrets[index];
+            row.classList.toggle('hidden', ![secret.name, secret.description].some(value => value?.toLowerCase().includes(term)));
+          });
+          el.querySelector('#sec-no-match').classList.toggle('hidden', rows.some(row => !row.classList.contains('hidden')));
+        });
+      }
 
       el.querySelector('.card').addEventListener('click', async (e) => {
         const btn = e.target.closest('[data-action]');
@@ -632,11 +680,13 @@ const SettingsPage = {
         const id = parseInt(btn.dataset.id);
 
         if (btn.dataset.action === 'copy-secret') {
+          btn.disabled = true;
           try {
             const secret = await Api.get('/secrets/' + id);
-            await navigator.clipboard.writeText(secret.value);
+            await Utils.copyToClipboard(secret.value);
             Toast.success('Secret value copied to clipboard');
           } catch (err) { Toast.error(err.message); }
+          finally { btn.disabled = false; }
         } else if (btn.dataset.action === 'edit-secret') {
           await this._openSecret({ id, name: btn.dataset.name, description: btn.dataset.desc });
         } else if (btn.dataset.action === 'delete-secret') {

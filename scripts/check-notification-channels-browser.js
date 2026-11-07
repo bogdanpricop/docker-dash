@@ -25,7 +25,7 @@ async function main() {
     const base = `http://127.0.0.1:${server.address().port}`;
     await page.goto(`${base}/smoke`);
     for (const script of ['i18n.js', 'i18n/en.js', 'utils.js', 'components/modal.js',
-      'pages/settings-logforwarding.js', 'pages/settings.js']) {
+      'pages/settings-logforwarding.js', 'pages/settings-ai.js', 'pages/settings.js']) {
       await page.addScriptTag({ url: `${base}/js/${script}` });
     }
     const providers = getProviders();
@@ -159,6 +159,29 @@ async function main() {
     await page.waitForFunction(() => document.querySelector('#nc-test-details')?.textContent.includes('Duration: 42 ms'));
     assert.match(await page.$eval('#nc-test-details', el => el.textContent), /Check the destination for delivery/);
     await page.click('.modal-footer [data-nc-test-close]');
+    await page.waitForSelector('#modal-overlay.hidden');
+    await page.evaluate(() => {
+      window.rateTestCalls = 0;
+      Api.testNotificationChannel = async () => {
+        window.rateTestCalls++;
+        return { ok: false, error: 'HTTP 429', testedAt: new Date().toISOString(), details: { retryAfterSeconds: 60 } };
+      };
+      Toast.warning = message => { window.retryWarning = message; };
+      Api.updateNotificationChannel = async (id, data) => { window.createdChannels[id - 1].paused = !data.is_active; };
+      Api.getNotificationChannels = async () => window.createdChannels.map((channel, index) => ({
+        ...channel, id: index + 1, is_active: !channel.paused,
+      }));
+    });
+    await page.click('[data-action="test-nc"]');
+    await page.waitForSelector('#nc-test-retry');
+    await page.click('#nc-test-retry');
+    assert.equal(await page.evaluate(() => window.rateTestCalls), 1);
+    assert.match(await page.evaluate(() => window.retryWarning), /Retry in/);
+    await page.click('.modal-footer [data-nc-test-close]');
+    await page.waitForSelector('#modal-overlay.hidden');
+    await page.click('[data-action="toggle-nc"]');
+    await page.waitForFunction(() => document.querySelector('[data-action="test-nc"]').disabled);
+    assert.equal(await page.$eval('[data-nc-result]', field => field.hidden), true);
     console.log('Notification channel create/edit, validation, and external SMTP settings passed.');
     await checkSettingsForms(page);
     assert.deepEqual(errors, []);
@@ -192,10 +215,11 @@ async function checkSettingsForms(page) {
   await page.locator('#lf-host').fill('syslog.example.test');
   await page.locator('#lf-port').fill('1514');
   await page.select('#lf-protocol', 'tcp');
+  await page.click('#lf-enabled');
   await page.click('#modal-submit');
   await page.waitForSelector('#modal-overlay.hidden');
   assert.deepEqual(await page.evaluate(() => window.settingsWrites[0]), ['/log-forwarders', {
-    name: 'Example logs', type: 'syslog', config: { host: 'syslog.example.test', port: 1514, protocol: 'tcp' },
+    name: 'Example logs', type: 'syslog', config: { host: 'syslog.example.test', port: 1514, protocol: 'tcp' }, enabled: false,
   }]);
   await page.evaluate(async () => {
     SettingsPage._tab = 'secrets';
@@ -215,6 +239,35 @@ async function checkSettingsForms(page) {
   assert.deepEqual(await page.evaluate(() => window.settingsWrites[1]), ['/secrets', {
     name: 'MY-SECRET_01', description: '', value: 'fixture-value',
   }]);
+  await page.evaluate(async () => {
+    Api.get = async route => route === '/secrets' ? [
+      { id: 1, name: 'DB_PASSWORD', description: 'Database login', created_at: '2026-11-07T00:00:00Z' },
+      { id: 2, name: 'SERVICE_TOKEN', description: 'Automation', created_at: '2026-11-07T00:00:00Z' },
+    ] : { value: 'fixture-value' };
+    await SettingsPage._renderTab();
+  });
+  await page.locator('input[type="search"]').fill('automation');
+  assert.equal(await page.$eval('[data-secret-row="1"]', row => row.classList.contains('hidden')), true);
+  await page.click('[data-secret-row="2"] [data-action="copy-secret"]');
+  await page.waitForFunction(() => window.copiedDetails === 'fixture-value');
+  await page.evaluate(async () => {
+    Api.get = async route => route === '/ai/providers' ? [{
+      id: 'openai', name: 'OpenAI', recommendedModel: 'gpt-6-luna',
+      models: [{ id: 'gpt-6-luna', label: 'GPT-6 Luna' }], requiresApiKey: true,
+    }] : { provider: 'openai', model: 'configured-model', hasApiKey: true, enabled: true };
+    Api.put = async (route, data) => { window.aiSaved = { route, data }; };
+    SettingsPage._tab = 'ai';
+    await SettingsPage._renderTab();
+  });
+  assert.equal(await page.$eval('#ai-custom-model', field => field.value), 'configured-model');
+  await page.click('#ai-clear-key');
+  await page.locator('#ai-api-key').fill('replacement-fixture-key');
+  await page.locator('#ai-custom-model').fill('new-model-id');
+  assert.equal(await page.$eval('#ai-test', button => button.disabled), true);
+  await page.click('#ai-save');
+  await page.waitForFunction(() => window.aiSaved);
+  assert.equal(await page.evaluate(() => window.aiSaved.data.apiKey), 'replacement-fixture-key');
+  assert.equal(await page.evaluate(() => window.aiSaved.data.model), 'new-model-id');
   console.log('Log Forwarding and Secrets create forms passed.');
 }
 

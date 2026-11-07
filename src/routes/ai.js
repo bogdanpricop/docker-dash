@@ -77,6 +77,7 @@ router.get('/providers', asyncHandler((req, res) => {
 }));
 
 router.get('/settings', asyncHandler((req, res) => {
+  res.set('Cache-Control', 'no-store');
   res.json(aiService.getSettingsForApi());
 }));
 
@@ -109,6 +110,7 @@ router.put('/settings', writeable, asyncHandler((req, res) => {
 }));
 
 router.post('/test', asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
   // Test the CURRENTLY-SAVED config. If the operator wants to test a draft,
   // they save first then test. Keeps the contract simple and guarantees the
   // tested credentials are the ones that'll actually be used.

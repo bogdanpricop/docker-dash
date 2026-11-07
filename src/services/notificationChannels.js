@@ -4,6 +4,8 @@ const { getDb } = require('../db');
 const { encrypt, decrypt } = require('../utils/crypto');
 const { now } = require('../utils/helpers');
 const { httpDiagnostic, networkDiagnostic, safeProviderText } = require('../utils/notification-diagnostics');
+const addressparser = require('nodemailer/lib/addressparser');
+const httpUrl = require('../utils/http-url');
 const log = require('../utils/logger')('notify');
 const activeTests = new Set();
 
@@ -317,11 +319,21 @@ class NotificationChannelService {
     }
     const hasText = value => typeof value === 'string' && value.trim().length > 0;
     for (const field of definition.fields) {
-      if (!field.required) continue;
       const value = config?.[field.key];
       // SMTP also accepts recipient arrays from existing API clients.
       const recipients = field.type === 'email' && Array.isArray(value) && value.length > 0 && value.every(hasText);
-      if (!hasText(value) && !recipients) throw invalid(`${field.label} is required`);
+      if (field.required && !hasText(value) && !recipients) throw invalid(`${field.label} is required`);
+      if (field.type === 'url' && value != null && value !== '' && !httpUrl(value)) {
+        throw invalid(`${field.label} must be an HTTP or HTTPS URL without embedded credentials or a fragment`);
+      }
+      if (field.type === 'email' && (hasText(value) || recipients)) {
+        for (const list of [value].flat()) {
+          const parsed = addressparser(list, { flatten: true });
+          if (/[\r\n]/.test(list) || !parsed.length || parsed.some(item => !/^(?:[^\s@<>"]+|"(?:[^"\\]|\\.)+")@[^\s@<>"]+$/.test(item.address))) {
+            throw invalid('Enter valid recipient email addresses');
+          }
+        }
+      }
     }
   }
 

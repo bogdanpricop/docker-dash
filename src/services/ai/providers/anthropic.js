@@ -5,6 +5,7 @@
 const https = require('https');
 const { AiProvider, AiProviderError } = require('./base');
 const cloudSchema = require('./cloud-schema');
+const { httpDiagnostic, networkDiagnostic } = require('../../../utils/notification-diagnostics');
 
 const ANTHROPIC_API_VERSION = '2023-06-01';
 
@@ -30,7 +31,8 @@ class AnthropicProvider extends AiProvider {
         modelEcho: result.id || this.model,
       };
     } catch (err) {
-      return { ok: false, error: err.message, latencyMs: Date.now() - start };
+      const details = err.statusCode ? httpDiagnostic(err.statusCode) : networkDiagnostic(err);
+      return { ok: false, error: details.reason || 'Anthropic connection test failed.', ...details, latencyMs: Date.now() - start };
     }
   }
 

@@ -5,6 +5,7 @@
 const https = require('https');
 const { AiProvider, AiProviderError } = require('./base');
 const cloudSchema = require('./cloud-schema');
+const { httpDiagnostic, networkDiagnostic } = require('../../../utils/notification-diagnostics');
 
 class OpenAiProvider extends AiProvider {
   static defaultModel = 'gpt-6-luna';
@@ -20,18 +21,20 @@ class OpenAiProvider extends AiProvider {
   async test() {
     const start = Date.now();
     try {
-      // Cheapest possible test: list models. Verifies key is valid.
-      const result = await this._request('GET', '/v1/models', null, 5000);
-      const found = (result.data || []).some(m => m.id === this.model);
+      const result = await this._request('GET', '/v1/models/' + encodeURIComponent(this.model), null, 5000);
+      const found = typeof result.id === 'string' && Boolean(result.id);
       return {
-        ok: true,
+        ok: found,
         model: this.model,
         latencyMs: Date.now() - start,
         modelAvailable: found,
-        warning: found ? null : `Model "${this.model}" not in account's available models — verify access.`,
+        ...(found ? { modelEcho: result.id } : { error: 'The provider did not confirm access to the selected model.' }),
       };
     } catch (err) {
-      return { ok: false, error: err.message, latencyMs: Date.now() - start };
+      const details = err.statusCode ? httpDiagnostic(err.statusCode) : networkDiagnostic(err);
+      const error = err.statusCode === 404 ? 'The selected model was not found or is unavailable to this API key.'
+        : details.reason || 'OpenAI connection test failed.';
+      return { ok: false, error, ...details, latencyMs: Date.now() - start };
     }
   }
 

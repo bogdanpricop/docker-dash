@@ -22,6 +22,15 @@ beforeEach(() => {
 afterAll(closeDb);
 afterEach(() => jest.restoreAllMocks());
 
+test('accepts formatted SMTP recipients and rejects invalid addresses and provider URLs', () => {
+  expect(() => channels.create({ name: 'Email', provider: 'email',
+    config: { to: ['Ops <ops@example.test>', 'second@example.test'] }, created_by: 1 })).not.toThrow();
+  expect(() => channels.create({ name: 'Email', provider: 'email',
+    config: { to: 'invalid-address' }, created_by: 1 })).toThrow('valid recipient');
+  expect(() => channels.create({ name: 'Hook', provider: 'webhook',
+    config: { url: 'https://user:secret@example.test' }, created_by: 1 })).toThrow('without embedded credentials');
+});
+
 test.each([undefined, {}, { to: '   ' }])('rejects an email channel without a recipient (%j)', config => {
   expect(() => channels.create({ name: 'Email', provider: 'email', config, created_by: 1 }))
     .toThrow('Recipient Email is required');

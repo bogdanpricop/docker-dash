@@ -61,3 +61,14 @@ test('keeps the saved Claude 4.5 tool response and rejects truncated JSON', asyn
   });
   await expect(current.structured(request)).rejects.toMatchObject({ code: 'empty-response' });
 });
+
+test('OpenAI verifies the selected model and hides raw upstream errors', async () => {
+  const provider = new OpenAiProvider({ apiKey: 'fixture', model: 'team/test' });
+  provider._request = jest.fn().mockResolvedValueOnce({ id: 'team/test' })
+    .mockRejectedValueOnce(Object.assign(new Error('secret upstream body'), { statusCode: 404 }));
+  await expect(provider.test()).resolves.toMatchObject({ ok: true, modelEcho: 'team/test' });
+  expect(provider._request).toHaveBeenCalledWith('GET', '/v1/models/team%2Ftest', null, 5000);
+  const failed = await provider.test();
+  expect(failed).toMatchObject({ ok: false, httpStatus: 404 });
+  expect(JSON.stringify(failed)).not.toContain('secret upstream body');
+});

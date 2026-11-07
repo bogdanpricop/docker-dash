@@ -19,6 +19,7 @@ const log = require('../../utils/logger')('ai');
 const { redact } = require('./redactor');
 const { AiProviderError, AiNotConfiguredError } = require('./providers/base');
 const auditService = require('../audit');
+const httpUrl = require('../../utils/http-url');
 
 const KNOWN_PROVIDERS = ['anthropic', 'openai', 'ollama'];
 
@@ -84,6 +85,15 @@ function saveSettings(updates, userId = null) {
   }
   if (merged.provider === 'ollama' && !merged.endpointUrl) {
     throw new Error('Ollama provider requires endpoint_url');
+  }
+  if (updates.model != null && (typeof updates.model !== 'string' || !/^[!-~]{1,200}$/.test(updates.model))) {
+    throw new Error('Enter a model ID using 1 to 200 printable characters without spaces');
+  }
+  if (updates.apiKey != null && (typeof updates.apiKey !== 'string' || !updates.apiKey.trim() || /[\r\n]/.test(updates.apiKey))) {
+    throw new Error('Enter a valid API key');
+  }
+  if (merged.endpointUrl && !httpUrl(merged.endpointUrl, { httpsOnly: merged.provider !== 'ollama' })) {
+    throw new Error(merged.provider === 'ollama' ? 'Enter a valid Ollama HTTP or HTTPS URL' : 'Cloud provider endpoints must use HTTPS without embedded credentials');
   }
   if (merged.customRedactionPatterns) {
     // Compile to validate — throws on bad regex

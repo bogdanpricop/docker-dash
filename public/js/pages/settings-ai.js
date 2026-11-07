@@ -19,7 +19,7 @@ const SettingsPageAi = {
     }
 
     const sel = settings.provider || providers[0]?.id;
-    const cur = providers.find(p => p.id === sel);
+    let dirty = false, testing = false;
 
     el.innerHTML = `
       <div class="card" style="max-width:760px">
@@ -60,7 +60,7 @@ const SettingsPageAi = {
           <div style="display:flex;gap:8px;margin:18px 0">
             <button class="btn btn-primary" id="ai-save"><i class="fas fa-save"></i> Save</button>
             <button class="btn btn-secondary" id="ai-test"><i class="fas fa-plug"></i> Test connection</button>
-            <span id="ai-test-result" style="margin-left:10px;align-self:center;font-size:12px"></span>
+            <span id="ai-test-result" role="status" style="margin-left:10px;align-self:center;font-size:12px"></span>
           </div>
 
           <details style="margin-top:18px">
@@ -98,19 +98,21 @@ const SettingsPageAi = {
       const fields = document.getElementById('ai-provider-fields');
       if (!p) { fields.innerHTML = ''; return; }
       const selectedModel = settings.provider === p.id && settings.model ? settings.model : p.recommendedModel;
-      const models = [...p.models];
-      if (selectedModel && !models.some(model => model.id === selectedModel)) {
-        models.unshift({ id: selectedModel, label: selectedModel + ' (saved)' });
-      }
+      const custom = Boolean(selectedModel && !p.models.some(model => model.id === selectedModel));
 
       fields.innerHTML = `
         <div class="form-group">
-          <label>Model
+          <label for="ai-model">Model
             ${p.recommendedModel ? `<span class="text-muted text-sm" style="margin-left:6px;font-weight:normal">recommended: <code>${Utils.escapeHtml(p.recommendedModel)}</code></span>` : ''}
           </label>
           <select id="ai-model" class="form-control">
-            ${models.map(m => `<option value="${Utils.escapeHtml(m.id)}" ${m.id === selectedModel ? 'selected' : ''}>${Utils.escapeHtml(m.label)}</option>`).join('')}
+            ${p.models.map(m => `<option value="${Utils.escapeHtml(m.id)}" ${m.id === selectedModel ? 'selected' : ''}>${Utils.escapeHtml(m.label)}</option>`).join('')}
+            <option value="" ${custom ? 'selected' : ''}>Custom model ID…</option>
           </select>
+          <div id="ai-custom-model-wrap" ${custom ? '' : 'hidden'}>
+            <input id="ai-custom-model" class="form-control" aria-label="Custom model ID" placeholder="Enter the provider's exact model ID"
+              maxlength="200" value="${Utils.escapeHtml(custom ? selectedModel : '')}">
+          </div>
         </div>
         ${p.requiresApiKey ? `
           <div class="form-group">
@@ -136,9 +138,26 @@ const SettingsPageAi = {
       document.getElementById('ai-clear-key')?.addEventListener('click', () => {
         document.getElementById('ai-api-key').value = '';
         document.getElementById('ai-api-key').dataset.cleared = '1';
+        markDirty();
+      });
+      document.getElementById('ai-model').addEventListener('change', event => {
+        document.getElementById('ai-custom-model-wrap').hidden = Boolean(event.target.value);
       });
     };
 
+    const testButton = el.querySelector('#ai-test');
+    const testResult = el.querySelector('#ai-test-result');
+    const markDirty = () => {
+      dirty = true;
+      testButton.disabled = true;
+      testResult.textContent = 'Save your changes before testing the connection.';
+    };
+    if (!settings.provider) {
+      testButton.disabled = true;
+      testResult.textContent = 'Save a provider before testing the connection.';
+    }
+    el.querySelector('.card').addEventListener('input', markDirty);
+    el.querySelector('.card').addEventListener('change', markDirty);
     renderProviderFields(sel);
 
     el.querySelectorAll('input[name="ai-provider"]').forEach(r => {
@@ -148,7 +167,11 @@ const SettingsPageAi = {
     document.getElementById('ai-save').addEventListener('click', async () => {
       const enabled = document.getElementById('ai-enabled').checked;
       const provider = el.querySelector('input[name="ai-provider"]:checked')?.value;
-      const model = document.getElementById('ai-model')?.value;
+      const model = document.getElementById('ai-model')?.value || document.getElementById('ai-custom-model')?.value.trim();
+      if (!model || !/^[!-~]{1,200}$/.test(model)) {
+        Toast.error('Enter a valid model ID without spaces');
+        return;
+      }
       const apiKeyInput = document.getElementById('ai-api-key');
       const endpointInput = document.getElementById('ai-endpoint');
       const patternsRaw = document.getElementById('ai-custom-patterns').value || '';
@@ -157,8 +180,8 @@ const SettingsPageAi = {
       const updates = { enabled, provider, model, customRedactionPatterns };
       if (apiKeyInput) {
         const v = apiKeyInput.value.trim();
-        if (apiKeyInput.dataset.cleared === '1') updates.apiKey = null;
-        else if (v) updates.apiKey = v;
+        if (v) updates.apiKey = v;
+        else if (apiKeyInput.dataset.cleared === '1') updates.apiKey = null;
         // else: undefined → leave alone
       }
       if (endpointInput) updates.endpointUrl = endpointInput.value.trim();
@@ -177,24 +200,26 @@ const SettingsPageAi = {
       }
     });
 
-    document.getElementById('ai-test').addEventListener('click', async () => {
-      const btn = document.getElementById('ai-test');
-      const result = document.getElementById('ai-test-result');
-      btn.disabled = true;
-      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Testing…';
-      result.innerHTML = '';
+    testButton.addEventListener('click', async () => {
+      if (dirty || testing) return;
+      testing = true;
+      testButton.disabled = true;
+      testButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Testing…';
+      testResult.textContent = '';
       try {
         const r = await Api.post('/ai/test', {});
+        if (dirty) return;
         if (r.ok) {
-          result.innerHTML = `<span style="color:var(--green)"><i class="fas fa-check"></i> OK — ${r.latencyMs}ms${r.warning ? ` <small style="color:var(--yellow)">(${Utils.escapeHtml(r.warning)})</small>` : ''}</span>`;
+          testResult.textContent = ['Model available', r.modelEcho || r.model, Number.isFinite(r.latencyMs) ? `${r.latencyMs} ms` : ''].filter(Boolean).join(' · ');
         } else {
-          result.innerHTML = `<span style="color:var(--red)"><i class="fas fa-times"></i> ${Utils.escapeHtml(r.error)}</span>`;
+          testResult.textContent = [r.error || 'Connection test failed', r.httpStatus ? `HTTP ${r.httpStatus}` : r.code].filter(Boolean).join(' · ');
         }
       } catch (err) {
-        result.innerHTML = `<span style="color:var(--red)"><i class="fas fa-times"></i> ${Utils.escapeHtml(err.message)}</span>`;
+        if (!dirty) testResult.textContent = err.message;
       } finally {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-plug"></i> Test connection';
+        testing = false;
+        testButton.disabled = dirty;
+        testButton.innerHTML = '<i class="fas fa-plug"></i> Test connection';
       }
     });
   },

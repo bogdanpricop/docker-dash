@@ -7,6 +7,8 @@ const net = require('net');
 const { getDb } = require('../db');
 const { decrypt } = require('../utils/crypto');
 const log = require('../utils/logger')('log-forwarder');
+const httpUrl = require('../utils/http-url');
+const { httpDiagnostic } = require('../utils/notification-diagnostics');
 
 // ─── Batch buffer per forwarder ─────────────────────────
 const _buffers = new Map(); // forwarderId -> { lines: [], timer }
@@ -64,6 +66,19 @@ async function _flush(forwarder) {
   }
 }
 
+function discardBuffer(id) {
+  const buffer = _buffers.get(id);
+  if (buffer?.timer) clearTimeout(buffer.timer);
+  _buffers.delete(id);
+}
+
+function collectorPath(value, suffix) {
+  const url = httpUrl(value);
+  if (!url) throw new Error('Invalid collector URL');
+  url.pathname = url.pathname.replace(/\/+$/, '') + suffix;
+  return url.href;
+}
+
 // ─── Loki Push API ──────────────────────────────────────────
 async function _sendLoki(config, lines) {
   // Group by container
@@ -82,7 +97,7 @@ async function _sendLoki(config, lines) {
     })),
   };
 
-  await _httpPost(config.url + '/loki/api/v1/push', payload, config.headers || {});
+  await _httpPost(collectorPath(config.url, '/loki/api/v1/push'), payload, config.headers || {});
 }
 
 // ─── Elasticsearch Bulk API ─────────────────────────────────
@@ -99,10 +114,17 @@ async function _sendElasticsearch(config, lines) {
     }) + '\n';
   }
 
-  await _httpPost(config.url + '/_bulk', bulk, {
+  const data = await _httpPost(collectorPath(config.url, '/_bulk'), bulk, {
     'Content-Type': 'application/x-ndjson',
     ...(config.headers || {}),
   }, true);
+  let response;
+  try { response = JSON.parse(data); } catch { /* Report malformed acknowledgements below. */ }
+  if (response?.errors !== false) {
+    const rejected = Array.isArray(response?.items) ? response.items.filter(item => item?.index?.status >= 300).length : 0;
+    const reason = rejected ? 'Elasticsearch rejected one or more log entries.' : 'Elasticsearch did not return a successful bulk acknowledgement.';
+    throw Object.assign(new Error(reason), { details: { reason, ...(rejected ? { rejected } : {}) } });
+  }
 }
 
 // ─── Generic HTTP Webhook ───────────────────────────────────
@@ -137,7 +159,7 @@ async function _sendSyslog(config, lines) {
 
     if (protocol === 'udp') {
       await new Promise((resolve, reject) => {
-        const client = dgram.createSocket('udp4');
+        const client = dgram.createSocket(net.isIP(host) === 6 ? 'udp6' : 'udp4');
         const buf = Buffer.from(msg);
         client.send(buf, 0, buf.length, port, host, (err) => {
           client.close();
@@ -151,7 +173,7 @@ async function _sendSyslog(config, lines) {
           client.write(msg + '\n', () => { client.end(); resolve(); });
         });
         client.on('error', reject);
-        client.setTimeout(5000, () => { client.destroy(); reject(new Error('Syslog TCP timeout')); });
+        client.setTimeout(5000, () => { client.destroy(); reject(Object.assign(new Error('Syslog TCP timeout'), { code: 'ETIMEDOUT' })); });
       });
     }
   }
@@ -160,37 +182,51 @@ async function _sendSyslog(config, lines) {
 // ─── Shared HTTP POST helper ────────────────────────────────
 function _httpPost(url, body, extraHeaders = {}, rawBody = false) {
   return new Promise((resolve, reject) => {
-    let parsedUrl;
-    try { parsedUrl = new URL(url); } catch { return reject(new Error('Invalid URL: ' + url)); }
+    const parsedUrl = httpUrl(url);
+    if (!parsedUrl) return reject(new Error('Invalid collector URL'));
 
     const isHttps = parsedUrl.protocol === 'https:';
     const transport = isHttps ? https : http;
     const payload = rawBody ? body : JSON.stringify(body);
 
+    const custom = Object.fromEntries(Object.entries(extraHeaders).filter(([name]) => !/^(content-length|transfer-encoding)$/i.test(name)));
     const headers = {
       'Content-Type': rawBody ? (extraHeaders['Content-Type'] || 'text/plain') : 'application/json',
+      ...custom,
       'Content-Length': Buffer.byteLength(payload),
-      ...extraHeaders,
     };
 
     const req = transport.request({
       method: 'POST',
-      hostname: parsedUrl.hostname,
+      hostname: parsedUrl.hostname.replace(/^\[|\]$/g, ''),
       port: parsedUrl.port || (isHttps ? 443 : 80),
       path: parsedUrl.pathname + parsedUrl.search,
       headers,
       rejectUnauthorized: true,
     }, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        if (res.statusCode >= 200 && res.statusCode < 300) resolve(data);
-        else reject(new Error(`HTTP ${res.statusCode}: ${data.substring(0, 300)}`));
+      res.on('error', reject);
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        const details = httpDiagnostic(res.statusCode, res.headers['retry-after']);
+        reject(Object.assign(new Error(`HTTP ${res.statusCode}`), { details }));
+        res.destroy();
+        return;
+      }
+      let size = 0;
+      const chunks = [];
+      if (rawBody) res.on('data', chunk => {
+        size += chunk.length;
+        if (size > 1024 * 1024) {
+          reject(new Error('Bulk acknowledgement exceeded the size limit'));
+          res.destroy();
+        } else chunks.push(chunk);
       });
+      else res.resume();
+      res.on('end', () => resolve(rawBody ? Buffer.concat(chunks).toString('utf8') : undefined));
     });
 
     req.on('error', reject);
-    req.setTimeout(15000, () => { req.destroy(); reject(new Error('HTTP POST timeout')); });
+    const timer = setTimeout(() => req.destroy(Object.assign(new Error('HTTP POST timeout'), { code: 'ETIMEDOUT' })), 15000).unref();
+    req.once('close', () => clearTimeout(timer));
     req.write(payload);
     req.end();
   });
@@ -219,7 +255,8 @@ async function testForwarder(forwarder) {
     default: throw new Error('Unknown forwarder type: ' + forwarder.type);
   }
 
-  return { ok: true, message: 'Test message sent successfully' };
+  const udp = forwarder.type === 'syslog' && (config.protocol || 'udp').toLowerCase() === 'udp';
+  return { ok: true, message: udp ? 'Test datagram sent. Check the Syslog collector for receipt.' : 'Test message sent successfully' };
 }
 
 /**
@@ -232,4 +269,4 @@ function stopAll() {
   _buffers.clear();
 }
 
-module.exports = { ingestLine, testForwarder, stopAll };
+module.exports = { ingestLine, testForwarder, discardBuffer, stopAll };

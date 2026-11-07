@@ -80,7 +80,7 @@ router.delete('/:id', requireAuth, requireRole('admin'), writeable, (req, res) =
   res.json({ ok: true });
 });
 
-router.post('/:id/test', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/:id/test', requireAuth, requireRole('admin'), writeable, async (req, res) => {
   res.set('Cache-Control', 'no-store');
   const started = performance.now();
   const completed = () => ({ testedAt: new Date().toISOString(), durationMs: Math.round(performance.now() - started) });

@@ -15,7 +15,7 @@ const SettingsPageLogforwarding = {
             <button class="btn btn-sm btn-primary" id="lf-create"><i class="fas fa-plus"></i> Add Forwarder</button>
           </div>
           <div class="card-body">
-            <p class="text-muted mb-md">Forward container logs to external systems: Grafana Loki, Elasticsearch, HTTP webhooks, or Syslog.</p>
+            <p class="text-muted mb-md">Configure destinations and send a test log to Grafana Loki, Elasticsearch, HTTP webhooks, or Syslog.</p>
             ${forwarders.length === 0
               ? '<div class="empty-msg">No log forwarders configured.</div>'
               : `<table class="data-table">
@@ -23,12 +23,12 @@ const SettingsPageLogforwarding = {
                 <tbody>${forwarders.map(f => `
                   <tr>
                     <td class="mono">${Utils.escapeHtml(f.name)}</td>
-                    <td><span class="badge badge-info">${f.type}</span></td>
+                    <td><span class="badge badge-info">${Utils.escapeHtml(f.type)}</span></td>
                     <td>${f.enabled ? '<span class="text-green">Enabled</span>' : '<span class="text-muted">Disabled</span>'}</td>
                     <td class="text-sm">${Utils.timeAgo(f.created_at)}</td>
                     <td>
                       <div class="action-btns">
-                        <button class="action-btn" data-action="toggle-lf" data-id="${f.id}" data-enabled="${f.enabled}" title="${f.enabled ? 'Disable' : 'Enable'}"><i class="fas fa-${f.enabled ? 'pause' : 'play'}"></i></button>
+                        <button class="action-btn" data-action="toggle-lf" data-id="${f.id}" title="${f.enabled ? 'Disable' : 'Enable'}"><i class="fas fa-${f.enabled ? 'pause' : 'play'}"></i></button>
                         <button class="action-btn" data-action="test-lf" data-id="${f.id}" title="Test"><i class="fas fa-vial"></i></button>
                         <button class="action-btn" data-action="edit-lf" data-id="${f.id}" title="Edit"><i class="fas fa-edit"></i></button>
                         <button class="action-btn danger" data-action="delete-lf" data-id="${f.id}" data-name="${Utils.escapeHtml(f.name)}" title="Delete"><i class="fas fa-trash"></i></button>
@@ -49,17 +49,25 @@ const SettingsPageLogforwarding = {
         const id = parseInt(btn.dataset.id);
 
         if (btn.dataset.action === 'toggle-lf') {
+          btn.disabled = true;
           try {
-            await Api.put('/log-forwarders/' + id, { enabled: btn.dataset.enabled !== '1' });
+            await Api.put('/log-forwarders/' + id, { enabled: !forwarders.find(f => f.id === id)?.enabled });
             Toast.success('Forwarder updated');
-            this._renderTab();
+            await this._renderTab();
           } catch (err) { Toast.error(err.message); }
+          finally { btn.disabled = false; }
         } else if (btn.dataset.action === 'test-lf') {
+          btn.disabled = true;
           try {
             Toast.info('Sending test log...');
             const result = await Api.post('/log-forwarders/' + id + '/test');
             Toast.success(result.message || 'Test successful');
-          } catch (err) { Toast.error('Test failed: ' + err.message); }
+          } catch (err) {
+            const details = err.body?.details || {};
+            const status = details.httpStatus ? `HTTP ${details.httpStatus}` : details.code;
+            Toast.error(['Test failed: ' + err.message, status,
+              details.retryAfterSeconds != null ? `Retry after ${details.retryAfterSeconds} s` : ''].filter(Boolean).join(' · '));
+          } finally { btn.disabled = false; }
         } else if (btn.dataset.action === 'edit-lf') {
           try {
             await this._openLogForwarder(await Api.get('/log-forwarders/' + id));
@@ -91,6 +99,7 @@ const SettingsPageLogforwarding = {
       <div class="form-group"><label for="lf-type">Type</label>
         <select id="lf-type" class="form-control" ${forwarder ? 'disabled' : ''}>${options}</select></div>
       <div id="lf-config-fields"></div>
+      ${!forwarder ? '<label><input type="checkbox" id="lf-enabled" checked> Enable forwarder</label>' : ''}
     `, {
       title: forwarder ? 'Edit Log Forwarder' : 'Add Log Forwarder',
       onMount: content => {
@@ -110,6 +119,8 @@ const SettingsPageLogforwarding = {
               <input id="lf-url" type="url" class="form-control" value="${esc(cfg.url || '')}" placeholder="${type.value === 'loki' ? 'http://loki:3100' : 'https://logs.example.com'}" required></div>
             <div class="form-group"><label for="lf-headers">Custom Headers (JSON, optional)</label>
               <input id="lf-headers" class="form-control" autocomplete="off" value="${esc(cfg.headers ? JSON.stringify(cfg.headers) : '')}" placeholder='{"X-Token":"…"}'></div>
+            ${type.value === 'elasticsearch' ? `<div class="form-group"><label for="lf-index">Elasticsearch index</label>
+              <input id="lf-index" class="form-control" value="${esc(cfg.index || 'docker-dash-logs')}" required></div>` : ''}
           `;
         };
         type.addEventListener('change', render);
@@ -137,13 +148,17 @@ const SettingsPageLogforwarding = {
             return false;
           }
           config.url = destination.value;
-          if (type === 'elasticsearch') config.index ||= 'docker-dash-logs';
+          if (type === 'elasticsearch') {
+            field('index').value = field('index').value.trim();
+            if (!field('index').reportValidity()) return false;
+            config.index = field('index').value;
+          }
         }
         const submit = content.querySelector('#modal-submit');
         submit.disabled = true;
         try {
           if (forwarder) await Api.put('/log-forwarders/' + forwarder.id, { name: name.value, config });
-          else await Api.post('/log-forwarders', { name: name.value, type, config });
+          else await Api.post('/log-forwarders', { name: name.value, type, config, enabled: field('enabled').checked });
           return true;
         } catch (err) {
           Toast.error(err.message);

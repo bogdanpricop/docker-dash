@@ -15,6 +15,7 @@
 const http = require('http');
 const https = require('https');
 const { AiProvider, AiProviderError } = require('./base');
+const { httpDiagnostic, networkDiagnostic } = require('../../../utils/notification-diagnostics');
 
 class OllamaProvider extends AiProvider {
   constructor(config) {
@@ -33,15 +34,16 @@ class OllamaProvider extends AiProvider {
       const models = (result.models || []).map(m => m.name);
       const found = models.includes(this.model) || models.some(m => m.startsWith(this.model + ':'));
       return {
-        ok: true,
+        ok: found,
         model: this.model,
         latencyMs: Date.now() - start,
         availableModels: models.length,
         modelInstalled: found,
-        warning: found ? null : `Model "${this.model}" is not pulled. Run: ollama pull ${this.model}`,
+        ...(found ? {} : { error: 'The selected model is not installed on this Ollama server.' }),
       };
     } catch (err) {
-      return { ok: false, error: err.message, latencyMs: Date.now() - start };
+      const details = err.statusCode ? httpDiagnostic(err.statusCode) : networkDiagnostic(err);
+      return { ok: false, error: details.reason || 'Ollama connection test failed.', ...details, latencyMs: Date.now() - start };
     }
   }
 

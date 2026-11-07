@@ -1,7 +1,7 @@
 'use strict';
 
 const { Router } = require('express');
-const { requireAuth, requireRole } = require('../middleware/auth');
+const { requireAuth, requireRole, writeable } = require('../middleware/auth');
 const { getClientIp } = require('../utils/helpers');
 const { encrypt, decrypt } = require('../utils/crypto');
 const auditService = require('../services/audit');
@@ -9,6 +9,8 @@ const { getDb } = require('../db');
 const asyncHandler = require('../utils/asyncHandler');
 
 const router = Router();
+const validName = name => typeof name === 'string' && /^[a-zA-Z0-9_-]+$/.test(name.trim());
+const nameError = 'Name must contain only letters, numbers, dashes, and underscores';
 
 // ─── List secrets (names + descriptions only, no values) ────
 router.get('/', requireAuth, requireRole('admin', 'operator'), asyncHandler((req, res) => {
@@ -22,6 +24,7 @@ router.get('/', requireAuth, requireRole('admin', 'operator'), asyncHandler((req
 
 // ─── Get single secret with decrypted value (admin only) ────
 router.get('/:id', requireAuth, requireRole('admin'), asyncHandler((req, res) => {
+  res.set('Cache-Control', 'no-store');
   const db = getDb();
   const secret = db.prepare('SELECT * FROM secrets_vault WHERE id = ?').get(parseInt(req.params.id));
   if (!secret) return res.status(404).json({ error: 'Secret not found' });
@@ -50,15 +53,11 @@ router.get('/:id', requireAuth, requireRole('admin'), asyncHandler((req, res) =>
 }));
 
 // ─── Create secret ──────────────────────────────────────────
-router.post('/', requireAuth, requireRole('admin'), asyncHandler((req, res) => {
-  const { name, value, description } = req.body;
-  if (!name || !name.trim()) return res.status(400).json({ error: 'Name is required' });
-  if (!value) return res.status(400).json({ error: 'Value is required' });
-
-  // Validate name format (alphanumeric, dashes, underscores)
-  if (!/^[a-zA-Z0-9_-]+$/.test(name.trim())) {
-    return res.status(400).json({ error: 'Name must contain only letters, numbers, dashes, and underscores' });
-  }
+router.post('/', requireAuth, requireRole('admin'), writeable, asyncHandler((req, res) => {
+  const { name, value, description = '' } = req.body || {};
+  if (!validName(name)) return res.status(400).json({ error: nameError });
+  if (typeof value !== 'string' || !value) return res.status(400).json({ error: 'Value must be a non-empty string' });
+  if (description != null && typeof description !== 'string') return res.status(400).json({ error: 'Description must be a string' });
 
   const db = getDb();
   const existing = db.prepare('SELECT id FROM secrets_vault WHERE name = ?').get(name.trim());
@@ -80,30 +79,30 @@ router.post('/', requireAuth, requireRole('admin'), asyncHandler((req, res) => {
 }));
 
 // ─── Update secret ──────────────────────────────────────────
-router.put('/:id', requireAuth, requireRole('admin'), asyncHandler((req, res) => {
+router.put('/:id', requireAuth, requireRole('admin'), writeable, asyncHandler((req, res) => {
   const db = getDb();
   const id = parseInt(req.params.id);
   const existing = db.prepare('SELECT id FROM secrets_vault WHERE id = ?').get(id);
   if (!existing) return res.status(404).json({ error: 'Secret not found' });
 
-  const { name, value, description } = req.body;
+  const { name, value, description } = req.body || {};
   const updates = [];
   const params = [];
 
   if (name !== undefined) {
-    if (!/^[a-zA-Z0-9_-]+$/.test(name.trim())) {
-      return res.status(400).json({ error: 'Name must contain only letters, numbers, dashes, and underscores' });
-    }
+    if (!validName(name)) return res.status(400).json({ error: nameError });
     const dup = db.prepare('SELECT id FROM secrets_vault WHERE name = ? AND id != ?').get(name.trim(), id);
     if (dup) return res.status(409).json({ error: 'A secret with this name already exists' });
     updates.push('name = ?');
     params.push(name.trim());
   }
   if (value !== undefined) {
+    if (typeof value !== 'string') return res.status(400).json({ error: 'Value must be a string' });
     updates.push('value_encrypted = ?');
     params.push(encrypt(value));
   }
   if (description !== undefined) {
+    if (description !== null && typeof description !== 'string') return res.status(400).json({ error: 'Description must be a string' });
     updates.push('description = ?');
     params.push(description);
   }
@@ -124,7 +123,7 @@ router.put('/:id', requireAuth, requireRole('admin'), asyncHandler((req, res) =>
 }));
 
 // ─── Delete secret ──────────────────────────────────────────
-router.delete('/:id', requireAuth, requireRole('admin'), asyncHandler((req, res) => {
+router.delete('/:id', requireAuth, requireRole('admin'), writeable, asyncHandler((req, res) => {
   const db = getDb();
   const id = parseInt(req.params.id);
   const secret = db.prepare('SELECT name FROM secrets_vault WHERE id = ?').get(id);

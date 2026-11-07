@@ -4,6 +4,8 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Improve notification activation, address validation, retry pacing and stale
+  test feedback. Harden Secrets, log destination settings and AI model checks.
 - Require Alpine zlib 1.4-r0 or later in the runtime image (CVE-2026-4738).
 - Keep the last notification test result on each channel while Settings is
   open. Show timing, retry and editing actions, HTTP rate-limit guidance, and
