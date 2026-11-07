@@ -27,16 +27,41 @@ function fieldValues(field, [minimum, maximum, aliases]) {
   return result;
 }
 
-function compileScheduleCron(expression) {
+function parseSchedule(expression) {
   if (typeof expression !== 'string' || expression.length > 120) return null;
   const parts = expression.trim().toLowerCase().split(/\s+/);
   if (parts.length !== fields.length) return null;
   const values = parts.map((part, index) => fieldValues(part, fields[index]));
-  if (values.some(value => value === null)) return null;
+  return values.some(value => value === null) ? null : values;
+}
+
+function compileScheduleCron(expression) {
+  const values = parseSchedule(expression);
+  if (!values) return null;
   return date => [date.getMinutes(), date.getHours(), date.getDate(), date.getMonth() + 1, date.getDay()]
     .every((value, index) => values[index].has(value));
 }
 
+function nextScheduleRuns(expression, after = new Date(), limit = 1) {
+  const values = parseSchedule(expression);
+  if (!values || !Number.isFinite(after.getTime())) return [];
+  const [minutes, hours, days, months, weekdays] = values;
+  const deadline = new Date(after);
+  deadline.setFullYear(deadline.getFullYear() + 9);
+  const current = new Date(Math.floor(after.getTime() / 60000) * 60000 + 60000);
+  const runs = [];
+  while (current <= deadline && runs.length < limit) {
+    if (!days.has(current.getDate()) || !months.has(current.getMonth() + 1) || !weekdays.has(current.getDay())) {
+      current.setDate(current.getDate() + 1);
+      current.setHours(0, 0, 0, 0);
+      continue;
+    }
+    if (hours.has(current.getHours()) && minutes.has(current.getMinutes())) runs.push(current.toISOString());
+    current.setTime(current.getTime() + 60000);
+  }
+  return runs;
+}
+
 const validScheduleCron = expression => Boolean(compileScheduleCron(expression));
 const cronMatchesNow = (expression, now) => compileScheduleCron(expression)?.(now) ?? false;
-module.exports = { compileScheduleCron, validScheduleCron, cronMatchesNow };
+module.exports = { compileScheduleCron, validScheduleCron, cronMatchesNow, nextScheduleRuns };

@@ -9,6 +9,12 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.96.31', date: '2026-11-07', title: 'Fleet, Compose and resource workflows', changes: [
+      { type: 'feature', text: 'Compare Docker host cards and open filtered container lists. Schedules shows the host, timezone, next run and last result.' },
+      { type: 'feature', text: 'Expand stack services, check and plan Compose changes, and see the current YAML relationships in Graph.' },
+      { type: 'feature', text: 'Browse volume files, check network address pools, group image tags and pull a pinned registry digest to selected hosts.' },
+      { type: 'security', text: 'Verify scans against the exact image on the selected Docker host and isolate volume file helpers.' },
+    ] },
     { version: '8.96.30', date: '2026-11-07', title: 'Logs and stats in the Containers list', changes: [
       { type: 'feature', text: 'Open live logs or resource stats beside the list. Switch containers without losing search, filters, or bulk selection.' },
       { type: 'improvement', text: 'Keep the Docker host and connection status visible. Search or pause logs and see recent snapshots when live streaming is unavailable.' },

@@ -13,6 +13,7 @@ const MultiHostPage = {
   _hostView: 'tabs', // 'list' | 'tabs' — Tab View is the default per user request 2026-04-20
   _groupFilter: 'all',
   _groups: [],
+  _diskMeasurements: new Map(),
 
   async render(container) {
     container.innerHTML = `
@@ -120,22 +121,32 @@ const MultiHostPage = {
       }, 200));
 
     await this._load();
+    if (!container.querySelector('#mh-content')) return;
     this._refreshTimer = setInterval(() => this._load(), 15000);
   },
 
   async _load() {
+    const view = document.getElementById('mh-content');
+    if (!view || this._loadingView === view) return;
+    this._loadingView = view;
     try {
-      [this._data, this._groups] = await Promise.all([
+      const [data, groups] = await Promise.all([
         Api.getMultiHostOverview(), Api.listHostGroups().catch(() => []),
       ]);
+      if (this._loadingView !== view || !view.isConnected) return;
+      this._data = data;
+      this._groups = groups;
       this._renderGroupFilters();
       this._renderStats();
       this._loadRecommendations();
       this._renderContent();
       this._applySearch(this._searchFilter);
     } catch (err) {
-      const el = document.getElementById('mh-content');
-      if (el) el.innerHTML = `<div class="empty-msg"><i class="fas fa-exclamation-triangle"></i> Error: ${Utils.escapeHtml(err.message)}</div>`;
+      if (this._loadingView !== view || !view.isConnected) return;
+      document.getElementById('mh-stats')?.replaceChildren();
+      view.innerHTML = `<div class="empty-msg"><i class="fas fa-exclamation-triangle"></i> Error: ${Utils.escapeHtml(err.message)}</div>`;
+    } finally {
+      if (this._loadingView === view) this._loadingView = null;
     }
   },
 
@@ -227,7 +238,60 @@ const MultiHostPage = {
           </div>
         </div>
       </div>
+      <div id="mh-fleet-cards"></div>
     `;
+    this._renderFleetCards();
+  },
+
+  _renderFleetCards() {
+    const element = document.getElementById('mh-fleet-cards');
+    if (!element) return;
+    const escape = Utils.escapeHtml;
+    const time = value => value ? new Date(value).toLocaleTimeString() : '—';
+    const hosts = this._filteredHosts().filter(host => ['docker', 'podman'].includes(host.daemonType));
+    element.innerHTML = hosts.map(host => {
+      const disk = this._diskMeasurements.get(host.id);
+      const metric = (label, value, filter) => `<button type="button" class="btn btn-secondary" data-mh-filter="${filter}"
+        data-mh-target="${host.id}"><strong>${value}</strong><span>${label}</span></button>`;
+      return `<article class="card fleet-host-card">
+        <header><h3>${escape(host.name)}</h3><span class="container-connection" data-status="${host.healthy ? 'connected' : 'unavailable'}">${host.healthy ? 'Docker connected' : 'Docker unavailable'}</span></header>
+        ${host.healthy ? `
+          <div class="fleet-metrics">
+            ${metric('Running', host.counts.running, 'running')}
+            ${metric('Degraded', host.counts.degraded ?? 0, 'degraded')}
+            ${metric('Stopped', host.counts.stopped, 'stopped')}
+          </div>
+          <dl>
+            <div><dt>Container CPU</dt><dd>${host.stats.sampledAt ? host.stats.cpu.toFixed(1) + '%' : '—'}</dd></div>
+            <div><dt>Container RAM</dt><dd>${host.stats.sampledAt ? Utils.formatBytes(host.stats.memory) : '—'}</dd></div>
+            <div><dt>Docker image layers</dt><dd>${disk?.bytes == null ? '—' : Utils.formatBytes(disk.bytes)}
+              <button class="btn btn-xs btn-secondary" type="button" data-mh-measure="${host.id}" ${disk?.pending ? 'disabled' : ''}>${disk?.pending ? 'Measuring…' : 'Measure'}</button></dd></div>
+          </dl>
+          <p class="text-xs text-muted">Inventory ${escape(time(host.refreshedAt))} · Metrics ${escape(time(host.stats.sampledAt))}${disk?.at ? ' · Disk ' + escape(time(disk.at)) : ''}</p>
+          ${disk?.error ? `<p class="text-xs text-muted" role="status">${escape(disk.error)}</p>` : ''}
+        ` : '<p class="text-muted">Container counts and measurements are unavailable.</p>'}
+      </article>`;
+    }).join('');
+    element.querySelectorAll('[data-mh-filter]').forEach(button => button.addEventListener('click', () => {
+      const id = Number(button.dataset.mhTarget);
+      const route = '#/containers/filter/' + button.dataset.mhFilter;
+      if (id === 0) location.hash = route;
+      else App._activateHost(id, route);
+    }));
+    element.querySelectorAll('[data-mh-measure]').forEach(button => button.addEventListener('click', async () => {
+      const id = Number(button.dataset.mhMeasure);
+      const measurements = this._diskMeasurements;
+      const previous = measurements.get(id);
+      measurements.set(id, { ...previous, pending: true, error: null });
+      this._renderFleetCards();
+      try {
+        const result = await Api.get(`/system/disk-usage?summary=1&hostId=${id}`);
+        measurements.set(id, { bytes: result.imageLayerBytes, at: new Date() });
+      } catch (error) {
+        measurements.set(id, { ...previous, error: error.message, pending: false });
+      }
+      if (measurements === this._diskMeasurements) this._renderFleetCards();
+    }));
   },
 
   _renderContent() {
@@ -1271,6 +1335,8 @@ const MultiHostPage = {
   },
 
   destroy() {
+    this._loadingView = null;
+    this._diskMeasurements = new Map();
     clearInterval(this._refreshTimer);
     this._refreshTimer = null;
   },

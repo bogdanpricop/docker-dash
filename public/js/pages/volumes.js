@@ -102,8 +102,11 @@ const VolumesPage = {
     const host = container.querySelector('#vol-detail-shell');
     let vol;
     try {
-      vol = await Api.getVolume(name);
+      const result = await Api.get(`/volumes/${encodeURIComponent(name)}/inspect?context=1`);
+      if (!host.isConnected) return;
+      vol = result.volume;
       this._volData = vol;
+      this._volumeHost = result.host;
     } catch (err) {
       host.innerHTML = `<div class="empty-msg">Error: ${Utils.escapeHtml(err.message)}</div>`;
       return;
@@ -116,11 +119,12 @@ const VolumesPage = {
       header: {
         icon: 'fa-database',
         title: () => vol.Name || name,
-        subtitle: () => [vol.Driver, vol.Scope].filter(Boolean).join(' · '),
+        subtitle: () => [vol.Driver, vol.Scope, this._volumeHost.name || 'Local Docker'].filter(Boolean).join(' · '),
       },
       tabs: [
         { key: 'summary', label: i18n.t('detail.tabs.summary'), render: (el) => this._renderVolTab('overview', el) },
-        { key: 'monitor', label: i18n.t('detail.tabs.monitor'), render: (el) => this._renderVolTab('containers', el) },
+        { key: 'monitor', label: 'Mounted by', render: (el) => this._renderVolTab('containers', el) },
+        ...(App.user?.role === 'admin' ? [{ key: 'files', label: 'Files', render: el => this._renderVolumeFiles(el, name, this._volumeHost) }] : []),
         { key: 'inspect', label: i18n.t('detail.tabs.inspect'), render: (el) => this._renderVolTab('inspect', el) },
       ],
       defaultTab: 'summary',
@@ -162,22 +166,23 @@ const VolumesPage = {
       `;
     } else if (tab === 'containers') {
       el.innerHTML = '<div class="text-muted"><i class="fas fa-spinner fa-spin"></i> Finding connected containers...</div>';
-      Api.getContainers(true).then(containers => {
-        const connected = containers.filter(c =>
-          (c.mounts || []).some(m => m.Name === vol.Name || m.Source === vol.Mountpoint)
-        );
+      const loading = el.firstElementChild;
+      const sameVolume = mount => mount.type === 'volume' && mount.name === vol.Name;
+      Api.get(`/containers?hostId=${this._volumeHost.id}`).then(containers => {
+        if (!loading.isConnected) return;
+        const connected = containers.filter(c => (c.mounts || []).some(sameVolume));
         if (connected.length === 0) {
           el.innerHTML = '<div class="empty-msg"><i class="fas fa-inbox"></i><p>No containers use this volume.</p></div>';
         } else {
           const rows = connected.map(c => {
-            const mount = (c.mounts || []).find(m => m.Name === vol.Name || m.Source === vol.Mountpoint);
+            const mounts = (c.mounts || []).filter(sameVolume);
             const tr = document.createElement('tr');
             tr.style.cursor = 'pointer';
             tr.innerHTML = `
               <td>${Utils.escapeHtml(c.name)}</td>
               <td class="text-sm text-muted">${Utils.escapeHtml(c.image)}</td>
               <td><span class="badge ${Utils.statusBadgeClass(c.state)}">${c.state}</span></td>
-              <td class="mono text-sm">${Utils.escapeHtml(mount?.Destination || '—')}</td>
+              <td class="mono text-sm">${mounts.map(mount => `${Utils.escapeHtml(mount.destination)} <span class="badge">${mount.rw ? 'RW' : 'RO'}</span>`).join('<br>')}</td>
             `;
             tr.addEventListener('click', () => App.navigate(`/containers/${c.id}`));
             return tr;
@@ -197,7 +202,7 @@ const VolumesPage = {
           rows.forEach(tr => tbody.appendChild(tr));
         }
       }).catch(err => {
-        el.innerHTML = `<div class="empty-msg">Error: ${err.message}</div>`;
+        if (loading.isConnected) el.innerHTML = `<div class="empty-msg">Error: ${Utils.escapeHtml(err.message)}</div>`;
       });
     } else if (tab === 'inspect') {
       el.innerHTML = `
@@ -215,6 +220,70 @@ const VolumesPage = {
         Utils.copyToClipboard(JSON.stringify(vol, null, 2)).then(() => Toast.success('Copied'));
       });
     }
+  },
+
+  _renderVolumeFiles(el, volume, host) {
+    const escape = Utils.escapeHtml;
+    const endpoint = `/volumes/${encodeURIComponent(volume)}`;
+    const url = (action, path) => endpoint + '/' + action + '?' + new URLSearchParams({ hostId: host.id, path });
+    el.innerHTML = `<section class="card"><div class="card-header">
+      <h3>Volume files</h3><span class="badge">${escape(host.name || 'Local Docker')} · Read only</span>
+      </div><div class="card-body">
+        <nav class="files-breadcrumb" aria-label="Volume path"></nav>
+        <p class="text-xs text-muted">Downloads up to 5 MB. Links are listed without following them.</p>
+        <div data-volume-files></div>
+        <pre class="inspect-json" data-volume-preview hidden></pre>
+      </div></section>`;
+    const body = el.querySelector('[data-volume-files]');
+    const breadcrumbs = el.querySelector('nav');
+    const preview = el.querySelector('[data-volume-preview]');
+    let listRequest = 0;
+    let previewRequest = 0;
+    const load = async path => {
+      const request = ++listRequest;
+      ++previewRequest;
+      preview.hidden = true;
+      breadcrumbs.innerHTML = Utils.fileBreadcrumb(path);
+      breadcrumbs.querySelectorAll('[data-path]').forEach(button => button.addEventListener('click', () => load(button.dataset.path)));
+      body.textContent = 'Loading…';
+      try {
+        const { entries, truncated } = await Api.get(url('browse', path));
+        if (request !== listRequest || !body.isConnected) return;
+        const sorted = [...entries].sort((a, b) => Number(b.type === 'dir') - Number(a.type === 'dir') || a.name.localeCompare(b.name));
+        body.innerHTML = sorted.length ? `<div class="file-list-scroll"><table class="data-table compact">
+          <thead><tr><th>Name</th><th>Size</th><th>Modified</th><th>Read actions</th></tr></thead>
+          <tbody>${sorted.map(entry => {
+            const full = (path === '/' ? '' : path) + '/' + entry.name;
+            const modified = Number.isFinite(entry.mtime) ? new Date(entry.mtime * 1000).toLocaleString() : '—';
+            return `<tr><td>${entry.type === 'dir'
+              ? `<button type="button" class="btn btn-xs btn-secondary" data-folder="${escape(full)}"><i class="fas fa-folder"></i> ${escape(entry.name)}</button>`
+              : `<span class="mono">${escape(entry.name)}</span> ${entry.type === 'symlink' ? '<span class="badge">Link</span>' : ''}`}</td>
+              <td>${entry.type === 'file' ? Utils.formatBytes(entry.size) : '—'}</td>
+              <td>${escape(modified)}</td>
+              <td>${entry.type === 'file' ? `<button type="button" class="btn btn-xs btn-secondary" data-preview="${escape(full)}">Preview</button>
+              <a class="btn btn-xs btn-secondary" href="/api${escape(url('download', full))}">Download</a>` : ''}</td>
+            </tr>`;
+          }).join('')}</tbody></table></div>` : '<p class="text-muted">Empty directory.</p>';
+        if (truncated) body.insertAdjacentHTML('beforeend', '<p class="text-muted">This directory has more entries than the preview limit.</p>');
+        body.querySelectorAll('[data-folder]').forEach(button => button.addEventListener('click', () => load(button.dataset.folder)));
+        body.querySelectorAll('[data-preview]').forEach(button => button.addEventListener('click', async () => {
+          const id = ++previewRequest;
+          preview.hidden = false;
+          preview.textContent = 'Loading…';
+          try {
+            const data = await Api.get(url('read', button.dataset.preview));
+            if (id !== previewRequest) return;
+            preview.textContent = data.encoding === 'utf8' ? data.content || '(empty file)' : 'Binary file. Use Download to read it locally.';
+            if (data.truncated) preview.textContent += '\n[Preview truncated]';
+          } catch (error) {
+            if (id === previewRequest) preview.textContent = error.message;
+          }
+        }));
+      } catch (error) {
+        if (request === listRequest) body.textContent = error.message;
+      }
+    };
+    return load('/');
   },
 
   async _load() {

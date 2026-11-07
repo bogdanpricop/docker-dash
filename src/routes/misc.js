@@ -15,6 +15,7 @@ const { getClientIp, formatBytes } = require('../utils/helpers');
 const { getDb } = require('../db');
 const dockerService = require('../services/docker');
 const hostPermissions = require('../services/host-permissions');
+const permissions = require('../services/permissions');
 const providerResourceSnapshots = require('../services/provider-sdk/resource-snapshots');
 const hostGroups = require('../services/host-groups');
 const log = require('../utils/logger')('misc');
@@ -1389,11 +1390,15 @@ router.get('/multi-host/overview', requireAuth, async (req, res) => {
       }
       const docker = dockerService.getDocker(host.id);
 
-      const [containers, info, statsOverview] = await Promise.all([
+      const [allContainers, info, statsOverview] = await Promise.all([
         dockerService.listContainers(host.id),
         docker.info(),
         statsService.getOverview(host.id),
       ]);
+      const containers = isAdmin ? allContainers : permissions.filterContainers(allContainers, req.user.id, req.user.role);
+      const ids = new Set(containers.flatMap(container => [container.id, container.id?.slice(0, 12)]).filter(Boolean));
+      const samples = (statsOverview?.containers || []).filter(sample => ids.has(sample.container_id));
+      const sampledAt = samples[0]?.recorded_at;
 
       return {
         id: host.id,
@@ -1403,6 +1408,7 @@ router.get('/multi-host/overview', requireAuth, async (req, res) => {
         daemonType: host.daemonType || 'docker',
         groups: host.groups,
         healthy: true,
+        refreshedAt: new Date().toISOString(),
         info: {
           hostname: info.Name || host.name,
           os: info.OperatingSystem || '',
@@ -1422,26 +1428,31 @@ router.get('/multi-host/overview', requireAuth, async (req, res) => {
           created: c.created || c.Created,
         })),
         stats: {
-          cpu: statsOverview?.totals?.cpu || 0,
-          memory: statsOverview?.totals?.memory || 0,
-          memoryLimit: statsOverview?.totals?.memoryLimit || 0,
+          cpu: samples.reduce((sum, sample) => sum + (sample.cpu_percent || 0), 0),
+          memory: samples.reduce((sum, sample) => sum + (sample.mem_usage || 0), 0),
+          memoryLimit: samples.reduce((sum, sample) => sum + (sample.mem_limit || 0), 0),
+          sampledAt: sampledAt ? sampledAt.replace(' ', 'T') + 'Z' : null,
         },
         counts: {
           total: containers.length,
           running: containers.filter(c => (c.state || c.State) === 'running').length,
           stopped: containers.filter(c => (c.state || c.State) !== 'running').length,
+          degraded: containers.filter(c => ['restarting', 'dead'].includes(c.state) || /\(unhealthy\)/i.test(c.status || '')).length,
           images: info.Images || 0,
         },
       };
     }));
 
-    const hosts = results
-      .map((r, i) => r.status === 'fulfilled' ? r.value : {
-        ...hostList[i], healthy: false, containers: [],
+    const hosts = results.map((result, index) => {
+      if (result.status === 'fulfilled') return result.value;
+      const { id, name, connectionType, environment, daemonType, groups } = hostList[index];
+      return {
+        id, name, connectionType, environment, daemonType, groups, healthy: false, containers: [],
         stats: { cpu: 0, memory: 0, memoryLimit: 0 },
         counts: { total: 0, running: 0, stopped: 0, images: 0 },
-        info: { hostname: hostList[i].name, os: '', dockerVersion: '', cpus: 0, memTotal: 0, kernelVersion: '', storageDriver: '' },
-      });
+        info: { hostname: name, os: '', dockerVersion: '', cpus: 0, memTotal: 0, kernelVersion: '', storageDriver: '' },
+      };
+    });
 
     const totals = {
       hosts: hosts.length,

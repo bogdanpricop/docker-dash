@@ -44,7 +44,8 @@ const ContainersPage = {
   },
 
   async render(container, params = {}) {
-    if (params.id) {
+    const filter = /^filter\/(running|degraded|stopped)$/.exec(params.id || '')?.[1];
+    if (params.id && !filter) {
       this._view = 'detail';
       this._detailId = params.id;
       try { await this._loadDetailModule(); }
@@ -57,6 +58,7 @@ const ContainersPage = {
       await this._renderDetail(container);
     } else {
       this._view = 'list';
+      this._stateFilter = filter || '';
       await this._renderList(container);
     }
   },
@@ -132,9 +134,10 @@ const ContainersPage = {
       </div>
       <div id="container-filter-bar" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px">
         <div id="container-filter-presets" style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">
-          <button class="btn btn-xs filter-preset active" data-filter-preset="">All</button>
-          <button class="btn btn-xs filter-preset" data-filter-preset="running">Running</button>
-          <button class="btn btn-xs filter-preset" data-filter-preset="stopped">Stopped</button>
+          <button class="btn btn-xs filter-preset ${!this._stateFilter ? 'active' : ''}" data-filter-preset="">All</button>
+          <button class="btn btn-xs filter-preset ${this._stateFilter === 'running' ? 'active' : ''}" data-filter-preset="running">Running</button>
+          <button class="btn btn-xs filter-preset ${this._stateFilter === 'stopped' ? 'active' : ''}" data-filter-preset="stopped">Stopped</button>
+          <button class="btn btn-xs filter-preset ${this._stateFilter === 'degraded' ? 'active' : ''}" data-filter-preset="degraded">Degraded</button>
           <button class="btn btn-xs filter-preset" data-filter-preset="unhealthy">Unhealthy</button>
           <button class="btn btn-xs filter-preset" data-filter-preset="sandbox">Sandbox</button>
           <button class="btn btn-xs" id="save-filter-btn" style="color:var(--accent)"><i class="fas fa-plus"></i> Save</button>
@@ -567,6 +570,7 @@ const ContainersPage = {
     else if (this._stateFilter === 'exited') containers = containers.filter(c => c.state === 'exited');
     else if (this._stateFilter === 'stopped') containers = containers.filter(c => c.state !== 'running');
     else if (this._stateFilter === 'unhealthy') containers = containers.filter(c => (c.status || '').toLowerCase().includes('unhealthy'));
+    else if (this._stateFilter === 'degraded') containers = containers.filter(c => ['restarting', 'dead'].includes(c.state) || /\(unhealthy\)/i.test(c.status || ''));
     else if (this._stateFilter === 'sandbox') containers = containers.filter(c => c.labels?.['docker-dash.sandbox'] === 'true');
     else if (this._stateFilter === 'other') containers = containers.filter(c => c.state !== 'running' && c.state !== 'exited');
     else if (this._stateFilter === 'attention') containers = containers.filter(c => _getScore(c) < 80);

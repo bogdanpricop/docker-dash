@@ -6,6 +6,9 @@ const auditService = require('../services/audit');
 const { requireAuth, requireRole, writeable } = require('../middleware/auth');
 const { getClientIp } = require('../utils/helpers');
 const asyncHandler = require('../utils/asyncHandler');
+const { extractHostId } = require('../middleware/hostId');
+const { requireHostAccess } = require('../middleware/hostAccess');
+const { pullImage } = require('../utils/docker-pull');
 
 const router = Router();
 
@@ -206,7 +209,7 @@ router.post('/:id/push', requireAuth, requireRole('admin', 'operator'), writeabl
 }));
 
 // Pull image from a configured registry
-router.post('/:id/pull', requireAuth, requireRole('admin', 'operator'), writeable, asyncHandler(async (req, res) => {
+router.post('/:id/pull', requireAuth, extractHostId, requireHostAccess('operate'), requireRole('admin', 'operator'), writeable, asyncHandler(async (req, res) => {
   const { image, tag } = req.body;
   if (!image) return res.status(400).json({ error: 'image name is required' });
 
@@ -219,11 +222,11 @@ router.post('/:id/pull', requireAuth, requireRole('admin', 'operator'), writeabl
 
   // Get Docker and pull with auth
   const dockerService = require('../services/docker');
-  const docker = dockerService.getDocker(req.hostId);
+  const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
 
   // v8.7.28 — shared 10-min timeout via utils/docker-pull, authconfig forwarded.
   const auth = registryService.getAuthForImage(fullImage);
-  await require('../utils/docker-pull').pullImage(docker, fullImage, auth ? { authconfig: auth } : undefined);
+  await pullImage(docker, fullImage, auth ? { authconfig: auth } : undefined);
 
   auditService.log({
     userId: req.user.id, username: req.user.username,
@@ -232,6 +235,51 @@ router.post('/:id/pull', requireAuth, requireRole('admin', 'operator'), writeabl
   });
 
   res.json({ ok: true, image: fullImage });
+}));
+
+router.post('/:id/pull-stream', requireAuth, extractHostId, requireHostAccess('operate'), requireRole('admin', 'operator'), writeable, asyncHandler(async (req, res) => {
+  const { repository, tag, digest, platform } = req.body;
+  const component = '[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*';
+  if (typeof repository !== 'string' || repository.length > 255
+    || !new RegExp(`^${component}(?:/${component})*$`).test(repository)
+    || typeof tag !== 'string' || !/^[\w][\w.-]{0,127}$/.test(tag)
+    || typeof digest !== 'string' || !/^sha256:[a-f0-9]{64}$/.test(digest)
+    || (platform && (typeof platform !== 'string' || !/^[a-z0-9_-]+\/[a-z0-9_-]+(?:\/[a-z0-9_-]+)?$/.test(platform)))) {
+    return res.status(400).json({ error: 'A valid repository, tag, digest and optional platform are required' });
+  }
+  const registry = registryService.get(Number(req.params.id));
+  if (!registry) return res.status(404).json({ error: 'Registry not found' });
+  const hostId = req.resolvedHostId ?? req.hostId;
+  const docker = require('../services/docker').getDocker(hostId);
+  const repo = new URL(registry.url).host + '/' + repository;
+  const reference = repo + '@' + digest;
+  const auth = registryService.getAuthForImage(repo + ':' + tag);
+  const controller = new AbortController();
+  res.on('close', () => controller.abort());
+  res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no' });
+  res.flushHeaders();
+  const send = data => { if (!res.destroyed && !res.writableEnded) res.write(`data: ${JSON.stringify(data)}\n\n`); };
+  try {
+    await pullImage(docker, reference, {
+      authconfig: auth, platform, signal: controller.signal,
+      onProgress: event => send({ type: 'progress', layer: event.id, status: event.status, detail: event.progressDetail }),
+    });
+    if (controller.signal.aborted) return;
+    const image = docker.getImage(reference);
+    const installed = await image.inspect();
+    if (controller.signal.aborted) return;
+    await image.tag({ repo, tag });
+    auditService.log({
+      userId: req.user.id, username: req.user.username, action: 'registry_pull',
+      targetType: 'image', targetId: reference,
+      details: { hostId, repository, tag, digest, platform }, ip: getClientIp(req),
+    });
+    send({ type: 'done', hostId, imageId: installed.Id, digest, reference: repo + ':' + tag });
+  } catch (error) {
+    send({ type: 'error', error: error.message });
+  } finally {
+    res.end();
+  }
 }));
 
 // ───────────────────────────────────────────────────────────────────────

@@ -481,8 +481,11 @@ const RegistryBrowsePage = {
     card.style.display = 'block';
     titleTag.textContent = `${repo}:${tag}`;
     body.innerHTML = `<div class="text-muted text-sm" style="text-align:center;padding:14px"><i class="fas fa-spinner fa-spin"></i> Inspecting…</div>`;
+    const registryId = this._selectedId;
+    const request = this._manifestRequest = Symbol('manifest');
     try {
-      const data = await Api.get(`/registries/${this._selectedId}/manifest/${repo}:${tag}`);
+      const data = await Api.get(`/registries/${registryId}/manifest/${repo}:${tag}`);
+      if (!body.isConnected || this._manifestRequest !== request || registryId !== this._selectedId) return;
       this._renderManifest(data, repo, tag);
     } catch (err) {
       body.innerHTML = `<div class="text-muted text-sm" style="text-align:center;padding:14px;color:var(--red)"><i class="fas fa-exclamation-triangle"></i> ${Utils.escapeHtml(err.message)}</div>`;
@@ -491,6 +494,7 @@ const RegistryBrowsePage = {
 
   _renderManifest(data, repo, tag) {
     const body = document.getElementById('rb-manifest-body');
+    const registryId = this._selectedId;
     const m = data.manifest || {};
     // Detect format. Multi-arch indexes have "manifests" array; single-arch has "layers".
     const isIndex = Array.isArray(m.manifests);
@@ -535,6 +539,8 @@ const RegistryBrowsePage = {
         </div>
       ` : ''}
       <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+        ${['admin', 'operator'].includes(App.user?.role) && /^sha256:[a-f0-9]{64}$/.test(data.digest || '')
+          ? '<button type="button" class="btn btn-sm btn-primary" id="rb-pull-image"><i class="fas fa-download"></i> Pull to Docker host</button>' : ''}
         <button class="btn btn-sm" id="rb-copy-pull">
           <i class="fas fa-clipboard"></i> Copy pull command
         </button>
@@ -545,6 +551,8 @@ const RegistryBrowsePage = {
         ` : ''}
       </div>
     `;
+    body.querySelector('#rb-pull-image')?.addEventListener('click', () =>
+      this._pullManifest(registryId, repo, tag, data).catch(error => Toast.error(error.message)));
     document.getElementById('rb-copy-pull')?.addEventListener('click', () => {
       const reg = this._registries.find(r => String(r.id) === String(this._selectedId));
       const host = reg ? new URL(reg.url).host : '';
@@ -561,6 +569,120 @@ const RegistryBrowsePage = {
 
   // v8.1.0 — Build provenance panel. Reads OCI annotations + cosign signature
   // presence from the manifest. Pure rendering — server already parsed.
+  async _pullManifest(registryId, repository, tag, manifest) {
+    const hosts = (await Api.getHosts()).filter(host => host.isActive !== false && ['docker', 'podman'].includes(host.daemonType || 'docker'));
+    if (!hosts.length) throw new Error('No Docker host is available');
+    const escape = Utils.escapeHtml;
+    const platforms = [...new Set((manifest.manifest?.manifests || []).map(item =>
+      [item.platform?.os, item.platform?.architecture, item.platform?.variant].filter(Boolean).join('/'))
+      .filter(platform => /^[a-z0-9_-]+\/[a-z0-9_-]+(?:\/[a-z0-9_-]+)?$/.test(platform) && !platform.includes('unknown')))];
+    const selected = await Modal.form(`
+      <p><strong>${escape(repository + ':' + tag)}</strong></p>
+      <p class="mono text-xs" style="overflow-wrap:anywhere">${escape(manifest.digest)}</p>
+      <div class="form-group"><label for="registry-pull-platform">Platform</label>
+        <select id="registry-pull-platform" class="form-control"><option value="">Host default</option>
+        ${platforms.map(platform => `<option>${escape(platform)}</option>`).join('')}</select>
+      </div>
+      <fieldset class="form-group"><legend>Destination hosts</legend>
+        ${hosts.map(host => `<label class="toggle-label"><input type="checkbox" name="registry-target" value="${host.id}"
+          ${host.id === Api.getHostId() || (!Api.getHostId() && host.isDefault) ? 'checked' : ''}> ${escape(host.name)}</label>`).join('')}
+      </fieldset>
+      <p class="text-xs text-muted">Each selected host installs the reviewed digest and points its local tag to that image.</p>
+    `, {
+      title: 'Pull registry image', submitLabel: 'Pull',
+      onSubmit: content => {
+        const ids = [...content.querySelectorAll('[name="registry-target"]:checked')].map(input => Number(input.value));
+        if (!ids.length) { Toast.warning('Select at least one Docker host'); return false; }
+        return { hosts: hosts.filter(host => ids.includes(host.id)), platform: content.querySelector('#registry-pull-platform').value };
+      },
+    });
+    if (!selected) return;
+    Modal.open(`
+      <div class="modal-header"><h3>Pull ${escape(repository + ':' + tag)}</h3></div>
+      <div class="modal-body"><div data-registry-progress></div></div>
+      <div class="modal-footer"><button class="btn btn-secondary" type="button" data-registry-cancel>Cancel remaining pulls</button></div>
+    `, { width: '700px' });
+    const content = Modal._content;
+    const progress = content.querySelector('[data-registry-progress]');
+    const button = content.querySelector('[data-registry-cancel]');
+    const controller = new AbortController();
+    let finished = false;
+    button.addEventListener('click', () => {
+      if (finished) Modal.close();
+      else { controller.abort(); button.disabled = true; }
+    });
+    for (const host of selected.hosts) {
+      if (controller.signal.aborted) break;
+      const section = document.createElement('section');
+      section.className = 'registry-pull-target';
+      section.innerHTML = `<h4>${escape(host.name)}</h4><p role="status">Connecting…</p><pre class="inspect-json"></pre>`;
+      progress.appendChild(section);
+      const status = section.querySelector('p');
+      const output = section.querySelector('pre');
+      const layers = new Map();
+      try {
+        const result = await this._streamRegistryPull(registryId, host.id, {
+          repository, tag, platform: selected.platform, digest: manifest.digest,
+        }, controller.signal, event => {
+          if (event.layer) layers.set(event.layer, event.status + (event.detail?.total ? ` · ${Math.round(100 * event.detail.current / event.detail.total)}%` : ''));
+          else status.textContent = event.status || 'Pulling…';
+          output.textContent = [...layers].slice(-80).map(([id, state]) => id + ' · ' + state).join('\n');
+        });
+        status.textContent = 'Installed ' + result.reference + ' · ' + result.digest;
+        const link = document.createElement('button');
+        link.type = 'button';
+        link.className = 'btn btn-xs btn-secondary';
+        link.textContent = 'Open installed image';
+        link.addEventListener('click', () => {
+          Modal.close();
+          App._activateHost(host.id, '#/images/' + encodeURIComponent(result.imageId));
+        });
+        section.append(link);
+      } catch (error) {
+        status.textContent = controller.signal.aborted ? 'Pull cancelled' : 'Pull failed · ' + error.message;
+      }
+    }
+    finished = true;
+    button.disabled = false;
+    button.textContent = 'Close';
+  },
+
+  async _streamRegistryPull(registryId, hostId, body, signal, progress) {
+    const headers = { 'Content-Type': 'application/json' };
+    const csrf = Api._readXsrfToken();
+    if (csrf) headers['X-XSRF-TOKEN'] = csrf;
+    if (Api._bearerToken) headers.Authorization = 'Bearer ' + Api._bearerToken;
+    const response = await fetch(`/api/registries/${registryId}/pull-stream?hostId=${hostId}`, {
+      method: 'POST', credentials: 'same-origin', headers, body: JSON.stringify(body), signal,
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || `HTTP ${response.status}`);
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const frames = buffer.split('\n\n');
+        buffer = frames.pop();
+        for (const frame of frames) {
+          if (!frame.startsWith('data: ')) continue;
+          const event = JSON.parse(frame.slice(6));
+          if (event.type === 'done') return event;
+          if (event.type === 'error') throw new Error(event.error);
+          if (event.type === 'progress') progress(event);
+        }
+      }
+      throw new Error('Pull connection closed before Docker confirmed completion');
+    } finally {
+      await reader.cancel().catch(() => {});
+    }
+  },
+
   _renderProvenance(p) {
     if (!p || !p.hasProvenance) {
       return `

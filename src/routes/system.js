@@ -30,7 +30,11 @@ router.get('/info', requireAuth, requireHostAccess(), async (req, res) => {
 });
 
 router.get('/disk-usage', requireAuth, requireHostAccess(), async (req, res) => {
-  try { res.json(await dockerService.getDiskUsage(req.resolvedHostId ?? req.hostId)); }
+  try {
+    const usage = await dockerService.getDiskUsage(req.resolvedHostId ?? req.hostId);
+    if (req.query.summary === '1') return res.json({ imageLayerBytes: usage.LayersSize ?? null });
+    res.json(usage);
+  }
   catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 

@@ -8,6 +8,7 @@ const StacksPage = {
   _tab: 'all', // all | compose | git
   _filter: '',
   _listStacks: [],
+  _expandedServices: new Set(),
   _detailStack: null,
   _detailType: null,
   _stackLogUnsubs: [],
@@ -26,7 +27,7 @@ const StacksPage = {
     // Check if navigating to a detail view
     const hash = location.hash;
     const gitMatch = hash.match(/#\/stacks\/git\/(\d+)/);
-    const composeMatch = hash.match(/#\/stacks\/compose\/(.+)/);
+    const composeMatch = hash.match(/^#\/stacks\/compose\/([^/]+)(?:\/(logs|config))?$/);
 
     if (gitMatch) {
       this._detailStack = parseInt(gitMatch[1]);
@@ -36,7 +37,7 @@ const StacksPage = {
     if (composeMatch) {
       this._detailStack = decodeURIComponent(composeMatch[1]);
       this._detailType = 'compose';
-      return this._renderComposeDetail(container);
+      return this._renderComposeDetail(container, composeMatch[2] || 'services');
     }
 
     this._filter = '';
@@ -183,9 +184,20 @@ const StacksPage = {
 
       // Card click to detail
       el.querySelectorAll('.stack-card[data-navigate]').forEach(card => {
-        card.addEventListener('click', () => {
+        card.addEventListener('click', event => {
+          if (event.target.closest('a, button, details')) return;
           location.hash = card.dataset.navigate;
         });
+      });
+
+      el.querySelectorAll('[data-stack-services]').forEach(details => {
+        details.addEventListener('toggle', () => {
+          if (details.open) this._expandedServices.add(details.dataset.stackServices);
+          else this._expandedServices.delete(details.dataset.stackServices);
+        });
+      });
+      el.querySelectorAll('[data-stack-review]').forEach(button => {
+        button.addEventListener('click', () => this._reviewStack(button.dataset.stackName, button.dataset.stackReview, button));
       });
 
       // Remediation Wizard — stack entry point (compose only; v6.6.3)
@@ -226,9 +238,26 @@ const StacksPage = {
       });
   },
 
+  async _reviewStack(stack, operation, button) {
+    button.disabled = true;
+    try {
+      if (operation === 'plan') {
+        await this._confirmComposeAction(stack, 'up', true);
+        return;
+      }
+      const { host } = await Api.checkComposeStack(stack);
+      Toast.success(`Compose configuration is valid · ${stack} · ${this._hostLabel(host)}`);
+    } catch (err) { Toast.error(err.message); }
+    finally { button.disabled = false; }
+  },
+
+  _hostLabel(host) {
+    return host.name || (host.id ? `Host #${host.id}` : 'Local Docker');
+  },
+
   async _runComposeAction(stack, action) {
-    const approved = await this._confirmComposeAction(stack, action);
-    if (!approved) return null;
+    const target = await this._confirmComposeAction(stack, action);
+    if (!target) return null;
 
     Modal.open(`
       <div class="modal-header">
@@ -236,7 +265,7 @@ const StacksPage = {
         <button class="modal-close-btn" id="compose-progress-x"><i class="fas fa-times"></i></button>
       </div>
       <div class="modal-body">
-        <div id="compose-progress-status" class="text-sm" aria-live="polite"><i class="fas fa-spinner fa-spin"></i> Starting Docker Compose…</div>
+        <div id="compose-progress-status" class="text-sm" aria-live="polite"><i class="fas fa-spinner fa-spin"></i> Starting Docker Compose on ${Utils.escapeHtml(this._hostLabel(target))}…</div>
         <pre id="compose-progress-output" role="log" aria-live="polite" aria-label="Docker Compose output" tabindex="0" style="margin-top:12px;background:#0d1117;color:#d7dde5;padding:14px;border-radius:var(--radius);height:min(52vh,420px);overflow:auto;white-space:pre-wrap;word-break:break-word;font-family:var(--mono);font-size:12px;line-height:1.5"></pre>
         <p class="text-xs text-muted" style="margin-top:8px">Closing this window does not cancel the Compose operation.</p>
       </div>
@@ -261,13 +290,13 @@ const StacksPage = {
     try {
       const result = await Api.streamComposeAction(stack, action, event => {
         if (event.type === 'start') {
-          statusEl.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Running in <code>${Utils.escapeHtml(event.data.workingDir || '')}</code>`;
+          statusEl.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Running on ${Utils.escapeHtml(this._hostLabel(target))} in <code>${Utils.escapeHtml(event.data.workingDir || '')}</code>`;
         } else if (event.type === 'output') {
           append(event.data.data);
         } else if (event.type === 'done') {
           statusEl.innerHTML = `<i class="fas fa-check-circle" style="color:var(--green)"></i> Completed in ${Utils.escapeHtml(String(event.data.durationMs || 0))} ms`;
         }
-      });
+      }, target.id);
       return result;
     } catch (err) {
       statusEl.innerHTML = `<i class="fas fa-times-circle" style="color:var(--red)"></i> ${Utils.escapeHtml(err.message)}`;
@@ -275,36 +304,41 @@ const StacksPage = {
     }
   },
 
-  async _confirmComposeAction(stack, action) {
+  async _confirmComposeAction(stack, action, previewOnly = false) {
     let plan;
     try {
       plan = await Api.composePlan(stack, action);
     } catch (err) {
-      if (err.status !== 501 || err.body?.code !== 'compose_dry_run_unsupported') throw err;
-      return Modal.confirm(`
+      if (previewOnly || err.status !== 501 || err.body?.code !== 'compose_dry_run_unsupported') throw err;
+      const target = err.body.host;
+      if (!target || !Number.isSafeInteger(target.id)) throw new Error('Could not verify the deployment host');
+      const approved = await Modal.confirm(`
         <div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> This host's Docker Compose version cannot produce a safe dry-run plan.</div>
-        <p style="margin-top:12px">Run <strong>${Utils.escapeHtml(action)}</strong> for <strong>${Utils.escapeHtml(stack)}</strong> without a preview?</p>
+        <p style="margin-top:12px">Run <strong>${Utils.escapeHtml(action)}</strong> for <strong>${Utils.escapeHtml(stack)}</strong> on <strong>${Utils.escapeHtml(this._hostLabel(target))}</strong> without a preview?</p>
       `, {
         html: true, title: 'Deployment plan unavailable',
         confirmText: `Run ${action}`, danger: action === 'down', width: '560px',
       });
+      return approved ? target : null;
     }
 
+    if (!plan.host || !Number.isSafeInteger(plan.host.id)) throw new Error('Could not verify the deployment host');
     const summary = Object.entries(plan.summary || {})
       .filter(([, count]) => count > 0)
       .map(([operation, count]) => `<span class="badge" style="margin-right:6px">${Utils.escapeHtml(operation)}: ${Utils.escapeHtml(String(count))}</span>`)
       .join('');
     const warningCount = (plan.steps || []).filter(step => step.status === 'warning').length;
     const raw = plan.rawOutput || (plan.steps || []).map(step => `${step.resource ? step.resource + ': ' : ''}${step.text}`).join('\n');
-    return Modal.confirm(`
-      <p>Review the read-only Docker Compose plan for <strong>${Utils.escapeHtml(stack)}</strong>.</p>
+    const approved = await Modal.confirm(`
+      <p>Review the Docker Compose plan for <strong>${Utils.escapeHtml(stack)}</strong> on <strong>${Utils.escapeHtml(this._hostLabel(plan.host))}</strong>.</p>
       <div style="margin:10px 0">${summary || '<span class="text-muted">No classified changes</span>'}${warningCount ? `<span class="badge badge-warning">warnings: ${warningCount}</span>` : ''}</div>
       <pre role="log" aria-label="Docker Compose deployment plan" tabindex="0" style="background:#0d1117;color:#d7dde5;padding:12px;border-radius:var(--radius);max-height:340px;overflow:auto;white-space:pre-wrap;word-break:break-word;font-family:var(--mono);font-size:12px">${Utils.escapeHtml(raw || 'Compose reported no changes.')}</pre>
       ${plan.truncated ? '<p class="text-xs" style="color:var(--yellow);margin-top:8px">Plan output was truncated; review the stack configuration before continuing.</p>' : ''}
     `, {
       html: true, title: `Compose plan — ${stack}`,
-      confirmText: `Run ${action}`, danger: action === 'down', width: '760px',
+      confirmText: previewOnly ? 'Done' : `Run ${action}`, danger: !previewOnly && action === 'down', width: '760px',
     });
+    return approved && !previewOnly ? plan.host : null;
   },
 
   _renderStackCard(s) {
@@ -322,7 +356,7 @@ const StacksPage = {
             ${Utils.escapeHtml(s.name)}
           </h3>
           <div style="display:flex;align-items:center;gap:6px">
-            <span class="badge" style="background:${isGit ? 'var(--surface2)' : 'var(--surface2)'};color:var(--text-muted)">${isGit ? 'Git' : 'Compose'}</span>
+            <span class="badge">${isGit ? 'Git' : s.discovered ? 'Local Compose file' : 'Discovered on host'}</span>
             <span style="width:8px;height:8px;border-radius:50%;background:${statusColor};display:inline-block"></span>
           </div>
         </div>
@@ -334,16 +368,17 @@ const StacksPage = {
           ` : `
             ${s.total === 0 && s.discovered
               ? `<div style="margin-bottom:7px"><span class="badge badge-stopped"><i class="fas fa-folder-open" style="margin-right:4px"></i>Stopped · discovered on disk</span></div>
-                <div class="text-sm text-muted">${s.serviceCount || s.services.length} configured service(s)</div>
-                ${s.services.length ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">${s.services.slice(0, 12).map(name => `<span class="badge" style="font-size:10px">${Utils.escapeHtml(name)}</span>`).join('')}</div>` : ''}`
-              : `<div class="text-sm" style="margin-bottom:6px">${i18n.t('pages.stacks.containersRunning', { running: '<strong>' + s.running + '</strong>', total: s.total })}</div>
-                ${s.containers ? `<div style="display:flex;flex-wrap:wrap;gap:4px">${s.containers.map(c => `<span class="badge ${c.state === 'running' ? 'badge-running' : 'badge-stopped'}" style="font-size:10px">${Utils.escapeHtml(c.name)}</span>`).join('')}</div>` : ''}`}
+                <div class="text-sm text-muted">${s.serviceCount || s.services.length} configured service(s)</div>`
+              : `<div class="text-sm">${i18n.t('pages.stacks.containersRunning', { running: '<strong>' + s.running + '</strong>', total: s.total })}</div>`}
+            ${this._renderServicePreview(s, navPath)}
           `}
           <div style="display:flex;gap:4px;margin-top:8px;justify-content:flex-end">
             ${isGit ? `
               <button class="action-btn stack-action-btn" data-source="git" data-stack="${Utils.escapeHtml(s.name)}" data-stack-id="${s.id}" data-action="deploy" title="Deploy"><i class="fas fa-rocket"></i></button>
             ` : `
-              <button class="action-btn stack-action-btn" data-source="compose" data-stack="${Utils.escapeHtml(s.name)}" data-action="up" title="Up"><i class="fas fa-play"></i></button>
+              <button class="action-btn stack-action-btn" data-source="compose" data-stack="${Utils.escapeHtml(s.name)}" data-action="up" title="Deploy" aria-label="Deploy"><i class="fas fa-play"></i></button>
+              <button class="btn btn-xs btn-secondary" data-stack-name="${Utils.escapeHtml(s.name)}" data-stack-review="check">Check</button>
+              <button class="btn btn-xs btn-secondary" data-stack-name="${Utils.escapeHtml(s.name)}" data-stack-review="plan">Plan</button>
               ${s.total > 0 ? `<button class="action-btn stack-action-btn" data-source="compose" data-stack="${Utils.escapeHtml(s.name)}" data-action="down" title="Down"><i class="fas fa-stop"></i></button>
               <button class="action-btn stack-action-btn" data-source="compose" data-stack="${Utils.escapeHtml(s.name)}" data-action="restart" title="Restart"><i class="fas fa-sync-alt"></i></button>` : ''}
               <button class="action-btn stack-action-btn" data-source="compose" data-stack="${Utils.escapeHtml(s.name)}" data-action="pull" title="Pull"><i class="fas fa-download"></i></button>
@@ -355,8 +390,24 @@ const StacksPage = {
     `;
   },
 
+  _renderServicePreview(stack, navPath) {
+    const escape = Utils.escapeHtml;
+    const containers = stack.containers || [];
+    const configured = (stack.services || []).filter(service => !containers.some(container => container.service === service));
+    return `<details class="stack-services-preview" data-stack-services="${escape(stack.name)}" ${this._expandedServices.has(stack.name) ? 'open' : ''}>
+      <summary>Services <span class="badge">${containers.length + configured.length}</span></summary>
+      <ul>${containers.map(container => `<li>
+        <a href="#/containers/${encodeURIComponent(container.id)}">${escape(container.name)}</a>
+        <span class="badge ${Utils.statusBadgeClass(container.state)}">${escape(container.state)}</span>
+        <span class="mono">${escape(container.image)}</span>
+        <span class="text-muted">${escape(Utils.formatPorts(container.ports))}</span>
+      </li>`).join('')}${configured.map(service => `<li><strong>${escape(service)}</strong> <span class="text-muted">Configured</span></li>`).join('')}</ul>
+      ${containers.length ? `<a class="btn btn-xs btn-secondary" href="${navPath}/logs"><i class="fas fa-file-alt" aria-hidden="true"></i> Stack logs</a>` : ''}
+    </details>`;
+  },
+
   // ─── Compose Detail ──────────────────────────────
-  async _renderComposeDetail(container) {
+  async _renderComposeDetail(container, initialTab) {
     container.innerHTML = `
       <div class="page-header">
         <div style="display:flex;align-items:center;gap:12px">
@@ -372,9 +423,9 @@ const StacksPage = {
         </div>
       </div>
       <div class="tabs" style="margin-bottom:16px">
-        <button class="tab active" data-tab="services">${i18n.t('pages.stacks.services')}</button>
-        <button class="tab" data-tab="logs">Logs</button>
-        <button class="tab" data-tab="config">${i18n.t('pages.stacks.composeConfig')}</button>
+        <button class="tab ${initialTab === 'services' ? 'active' : ''}" data-tab="services">${i18n.t('pages.stacks.services')}</button>
+        <button class="tab ${initialTab === 'logs' ? 'active' : ''}" data-tab="logs">Logs</button>
+        <button class="tab ${initialTab === 'config' ? 'active' : ''}" data-tab="config">${i18n.t('pages.stacks.composeConfig')}</button>
       </div>
       <div id="cs-content"><div class="text-muted"><i class="fas fa-spinner fa-spin"></i> ${i18n.t('common.loading')}</div></div>
     `;
@@ -398,7 +449,7 @@ const StacksPage = {
     container.querySelector('#cs-to-swarm')?.addEventListener('click', () => this._deployStackToSwarm());
 
     // Tabs
-    let activeTab = 'services';
+    let activeTab = initialTab;
     container.querySelectorAll('.tab').forEach(tab => {
       tab.addEventListener('click', () => {
         if (activeTab === 'logs' && tab.dataset.tab !== 'logs') this._stopStackLogs();
@@ -408,16 +459,18 @@ const StacksPage = {
       });
     });
 
-    await this._loadComposeDetail('services');
+    await this._loadComposeDetail(initialTab);
   },
 
   async _loadComposeDetail(tab = 'services') {
     const el = document.getElementById('cs-content');
     if (!el) return;
     this._destroyYamlEditor();
+    const request = this._composeDetailRequest = Symbol('compose detail');
 
     try {
       const stack = await Api.getStack(this._detailStack);
+      if (!el.isConnected || this._composeDetailRequest !== request) return;
 
       const hasContainers = (stack.containers || []).length > 0;
       document.getElementById('cs-down')?.toggleAttribute('disabled', !hasContainers);
@@ -517,9 +570,11 @@ const StacksPage = {
               <div class="compose-editor-switch" role="tablist" aria-label="Compose editor mode">
                 <button class="btn btn-sm btn-secondary active" id="cs-mode-yaml" role="tab" aria-selected="true"><i class="fas fa-code"></i> YAML</button>
                 <button class="btn btn-sm btn-secondary" id="cs-mode-form" role="tab" aria-selected="false"><i class="fas fa-list-alt"></i> Form <span class="badge" style="margin-left:4px">preview</span></button>
+                <button class="btn btn-sm btn-secondary" id="cs-mode-graph" role="tab" aria-selected="false"><i class="fas fa-diagram-project"></i> Graph</button>
               </div>
               <div id="cs-config-yaml-pane"><textarea id="cs-config-editor" class="form-control" aria-label="Docker Compose YAML"></textarea></div>
               <div id="cs-config-form-pane" hidden><div id="cs-config-service-form"></div></div>
+              <div id="cs-config-graph-pane" hidden></div>
               <div id="cs-config-server-status" class="text-xs text-muted" aria-live="polite"></div>
             </div>
           </div>
@@ -539,29 +594,41 @@ const StacksPage = {
           editor: this._yamlEditor, readOnly: !canEdit,
         });
         let configMode = 'yaml';
+        let switching = false;
+        const editor = this._yamlEditor;
+        const form = this._composeServiceForm;
         const switchMode = async nextMode => {
-          if (nextMode === configMode) return true;
+          if (nextMode === configMode || switching) return;
+          switching = true;
           const status = el.querySelector('#cs-config-server-status');
           try {
-            if (nextMode === 'form') await this._composeServiceForm.syncFromYaml();
-            else if (canEdit) {
-              const result = await this._composeServiceForm.applyToYaml();
+            if (configMode === 'form' && canEdit) {
+              const result = await form.applyToYaml();
               if (!result.valid) {
-                status.textContent = 'Fix the highlighted Form fields before returning to YAML.';
+                status.textContent = 'Fix the highlighted Form fields before changing views.';
                 status.style.color = 'var(--red)';
-                return false;
+                return;
               }
             }
-          } catch (err) {
-            status.textContent = err.message;
+            if (nextMode === 'form') await form.syncFromYaml();
+            if (nextMode === 'graph') {
+              const model = await ComposeServiceForm.graphFromYaml(editor.getValue());
+              if (this._yamlEditor !== editor) return;
+              this._renderComposeGraph(el.querySelector('#cs-config-graph-pane'), model);
+            }
+          } catch {
+            status.textContent = 'The Compose model could not be read. Check the YAML syntax.';
             status.style.color = 'var(--red)';
-            Toast.error(err.message);
-            return false;
+            return;
+          } finally {
+            switching = false;
           }
+          if (this._yamlEditor !== editor) return;
           configMode = nextMode;
           el.querySelector('#cs-config-yaml-pane').hidden = nextMode !== 'yaml';
           el.querySelector('#cs-config-form-pane').hidden = nextMode !== 'form';
-          for (const mode of ['yaml', 'form']) {
+          el.querySelector('#cs-config-graph-pane').hidden = nextMode !== 'graph';
+          for (const mode of ['yaml', 'form', 'graph']) {
             const button = el.querySelector(`#cs-mode-${mode}`);
             const active = mode === nextMode;
             button.classList.toggle('active', active);
@@ -570,12 +637,13 @@ const StacksPage = {
           if (nextMode === 'yaml') this._yamlEditor.refresh();
           status.textContent = nextMode === 'form'
             ? 'Common fields are editable here; advanced fields remain in YAML.'
-            : 'Form changes synchronized to YAML.';
+            : nextMode === 'graph' ? 'Read-only view of the current YAML draft.' : '';
           status.style.color = 'var(--text-dim)';
           return true;
         };
         el.querySelector('#cs-mode-yaml').addEventListener('click', () => switchMode('yaml'));
         el.querySelector('#cs-mode-form').addEventListener('click', () => switchMode('form'));
+        el.querySelector('#cs-mode-graph').addEventListener('click', () => switchMode('graph'));
         el.querySelector('#cs-config-save')?.addEventListener('click', async event => {
           const button = event.currentTarget;
           const status = el.querySelector('#cs-config-server-status');
@@ -887,6 +955,22 @@ const StacksPage = {
   },
 
   // v8.9.9-alpha.1 — Dockge G06 closure: docker-run → compose converter dialog.
+  _renderComposeGraph(element, model) {
+    const columns = [['services', 'Depends on'], ['networks', 'Networks'], ['volumes', 'Volumes'], ['configs', 'Configs'], ['secrets', 'Secret references']];
+    const escape = Utils.escapeHtml;
+    element.innerHTML = `
+      ${model.imports ? '<p class="text-sm text-muted">This draft imports other files. Only relationships declared in the current document are shown.</p>' : ''}
+      ${model.services.length ? `<ul class="compose-graph" aria-label="Compose service relationships">
+        ${model.services.map(service => `<li>
+          <h4><i class="fas fa-cube" aria-hidden="true"></i> ${escape(service.name)}</h4>
+          <dl>${columns.filter(([key]) => service[key].length).map(([key, label]) => `
+            <div><dt>${label}</dt><dd>${service[key].map(value => `<span class="badge">${escape(value)}</span>`).join('')}</dd></div>
+          `).join('') || '<div><dt>No declared relationships</dt></div>'}</dl>
+        </li>`).join('')}
+      </ul>` : '<p class="text-muted">The YAML has no services.</p>'}
+    `;
+  },
+
   async _convertDockerRunDialog() {
     let editor = null;
     let suggestedName = '';
@@ -1047,6 +1131,7 @@ const StacksPage = {
   },
 
   destroy() {
+    this._composeDetailRequest = null;
     this._stopStackLogs();
     this._destroyYamlEditor();
     this._detailStack = null;

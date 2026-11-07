@@ -38,35 +38,42 @@ const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000; // 10 min
  */
 function pullImage(docker, image, opts = {}) {
   const timeoutMs = opts.timeoutMs || DEFAULT_TIMEOUT_MS;
-  const pullOpts = opts.authconfig ? { authconfig: opts.authconfig } : undefined;
+  const pullOpts = {
+    ...(opts.authconfig && { authconfig: opts.authconfig }),
+    ...(opts.platform && { platform: opts.platform }),
+  };
 
   return new Promise((resolve, reject) => {
     let stream;
     let finished = false;
-    const timeoutId = setTimeout(() => {
+    const finish = (error, output) => {
       if (finished) return;
       finished = true;
-      if (stream) { try { stream.destroy(); } catch { /* ignore */ } }
-      reject(new Error(`docker pull timeout after ${Math.round(timeoutMs / 1000)}s`));
-    }, timeoutMs);
+      clearTimeout(timeoutId);
+      opts.signal?.removeEventListener('abort', abort);
+      if (error) reject(error);
+      else resolve(output);
+    };
+    const cancel = error => {
+      finish(error);
+      stream?.destroy();
+    };
+    const abort = () => cancel(new Error('Docker pull cancelled'));
+    const timeoutId = setTimeout(() => cancel(new Error(`docker pull timeout after ${Math.round(timeoutMs / 1000)}s`)), timeoutMs);
+    if (opts.signal?.aborted) return abort();
+    opts.signal?.addEventListener('abort', abort, { once: true });
 
     const pullCb = (err, s) => {
-      if (finished) return;
-      if (err) { finished = true; clearTimeout(timeoutId); return reject(err); }
+      if (finished) { s?.destroy(); return; }
+      if (err) return finish(err);
       stream = s;
-      docker.modem.followProgress(stream, (err2, output) => {
-        if (finished) return;
-        finished = true;
-        clearTimeout(timeoutId);
-        if (err2) reject(err2); else resolve(output);
-      });
+      docker.modem.followProgress(stream, finish, opts.onProgress);
     };
 
-    if (pullOpts) {
-      docker.pull(image, pullOpts, pullCb);
-    } else {
-      docker.pull(image, pullCb);
-    }
+    try {
+      if (Object.keys(pullOpts).length) docker.pull(image, pullOpts, pullCb);
+      else docker.pull(image, pullCb);
+    } catch (error) { finish(error); }
   });
 }
 

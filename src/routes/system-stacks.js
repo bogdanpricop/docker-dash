@@ -307,11 +307,13 @@ router.post('/compose/:stack/:action/plan', requireAuth, hostAccess, requireRole
   const args = COMPOSE_ACTIONS[action];
   if (!args) return res.status(400).json({ error: 'Invalid action' });
 
-  const capabilityKey = String(req.hostId || 0);
+  const host = { id: req.resolvedHostId ?? req.hostId, name: req.hostName };
+  const capabilityKey = String(host.id);
   if ((composePlanUnsupportedUntil.get(capabilityKey) || 0) > Date.now()) {
     return res.status(501).json({
       code: 'compose_dry_run_unsupported',
       error: 'This host Docker Compose version does not support safe deployment plans',
+      host,
     });
   }
 
@@ -328,7 +330,7 @@ router.post('/compose/:stack/:action/plan', requireAuth, hostAccess, requireRole
     const plan = parseComposePlan(result);
     _auditCompose(req, stack, `${action}_plan`, workingDir, 'success', result);
     res.json({
-      ok: true, stack, action, workingDir,
+      ok: true, stack, action, workingDir, host,
       durationMs: result.durationMs, ...plan,
     });
   } catch (err) {
@@ -337,10 +339,29 @@ router.post('/compose/:stack/:action/plan', requireAuth, hostAccess, requireRole
     if (workingDir) _auditCompose(req, stack, `${action}_plan`, workingDir, unsupported ? 'unsupported' : 'failed', err);
     res.status(unsupported ? 501 : (err.status || 500)).json({
       code: unsupported ? 'compose_dry_run_unsupported' : 'compose_plan_failed',
+      host,
       error: unsupported
         ? 'This host Docker Compose version does not support safe deployment plans'
         : _errorMessage(err),
     });
+  } finally {
+    cliContext?.cleanup();
+    release?.();
+  }
+});
+
+router.post('/compose/:stack/check', requireAuth, hostAccess, requireRole('admin', 'operator'), async (req, res) => {
+  let release;
+  let cliContext;
+  const hostId = req.resolvedHostId ?? req.hostId;
+  try {
+    release = _acquireComposeSlot(req.user.id);
+    const cwd = await _resolveStackWorkingDir(req, req.params.stack);
+    cliContext = _dockerCliContext(hostId);
+    await runCompose(['config', '--quiet'], { cwd, env: cliContext.env, timeoutMs: 10_000, maxBytes: 65536 });
+    res.json({ valid: true, host: { id: hostId, name: req.hostName } });
+  } catch (err) {
+    res.status(err.status || 422).json({ error: _errorMessage(err) });
   } finally {
     cliContext?.cleanup();
     release?.();
@@ -594,7 +615,10 @@ router.get('/stacks', requireAuth, hostAccess, async (req, res) => {
         });
       }
       const stack = stacks.get(project);
-      stack.containers.push({ id: c.id, name: c.name, state: c.state, image: c.image });
+      stack.containers.push({
+        id: c.id, name: c.name, state: c.state, image: c.image,
+        service: c.labels?.['com.docker.compose.service'], ports: c.ports || [],
+      });
       stack.total++;
       if (c.state === 'running') stack.running++;
     }

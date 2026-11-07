@@ -11,6 +11,11 @@ const { getDb } = require('../db');
 const { extractHostId } = require('../middleware/hostId');
 const { requireHostAccessForMethod } = require('../middleware/hostAccess');
 const asyncHandler = require('../utils/asyncHandler');
+const { scanImageReport } = require('../services/image-admission');
+
+function scanHostScope(req) {
+  return [req.resolvedHostId ?? req.hostId, Number(req.hostId === 0 && req.user.role === 'admin')];
+}
 
 const router = Router();
 router.use(requireAuth);
@@ -27,6 +32,24 @@ router.get('/:id/inspect', requireAuth, asyncHandler(async (req, res) => {
 
 router.get('/:id/history', requireAuth, asyncHandler(async (req, res) => {
   res.json(await dockerService.imageHistory(req.params.id, req.resolvedHostId ?? req.hostId));
+}));
+
+router.get('/:id/tag-status', requireAuth, requireRole('admin', 'operator'), asyncHandler(async (req, res) => {
+  const { reference } = req.query;
+  const hostId = req.resolvedHostId ?? req.hostId;
+  const docker = dockerService.getDocker(hostId);
+  const image = await docker.getImage(req.params.id).inspect();
+  if (typeof reference !== 'string' || !image.RepoTags?.includes(reference)) {
+    return res.status(400).json({ error: 'Choose a tag installed on this image' });
+  }
+  const repository = reference.slice(0, reference.lastIndexOf(':'));
+  const installed = (image.RepoDigests || []).filter(digest => digest.split('@')[0] === repository);
+  const auth = require('../services/registry').getAuthForImage(reference);
+  const remote = await docker.getImage(reference).distribution(auth ? { authconfig: auth } : {});
+  const registryDigest = remote.Descriptor?.digest;
+  if (!/^sha256:[a-f0-9]{64}$/.test(registryDigest || '')) return res.status(502).json({ error: 'Registry did not provide a digest' });
+  res.json({ installed, registryDigest, status: !installed.length ? 'unknown'
+    : installed.some(digest => digest.endsWith('@' + registryDigest)) ? 'same' : 'different' });
 }));
 
 // v8.95.0 — is this a Wasm image, and can this host actually run it?
@@ -165,11 +188,7 @@ function _makeSummary(vulns) {
   };
 }
 
-function _scanWithGrype(imageName) {
-  const output = execFileSync('grype', [imageName, '-o', 'json', '--quiet'], {
-    timeout: 180000, encoding: 'utf8', maxBuffer: 10 * 1024 * 1024, stdio: 'pipe',
-  });
-  const data = JSON.parse(output);
+function _grypeResult(data, imageName) {
   const vulns = [];
   for (const match of (data.matches || [])) {
     const v = match.vulnerability || {};
@@ -205,11 +224,7 @@ function _scanWithGrype(imageName) {
   };
 }
 
-function _scanWithTrivy(imageName) {
-  const output = execFileSync('trivy', ['image', '--format', 'json', '--quiet', imageName], {
-    timeout: 180000, encoding: 'utf8', maxBuffer: 10 * 1024 * 1024, stdio: 'pipe',
-  });
-  const data = JSON.parse(output);
+function _trivyResult(data, imageName) {
   const vulns = [];
   for (const r of (data.Results || [])) {
     for (const v of (r.Vulnerabilities || [])) {
@@ -432,91 +447,59 @@ router.get('/:id/scan', requireAuth, asyncHandler(async (req, res) => {
   if (['docker-scout', 'scout'].includes(String(req.query.scanner || '').toLowerCase())) {
     return res.status(503).json({ error: SCOUT_DISABLED_REASON, code: 'SCOUT_TEMPORARILY_DISABLED', scanner: 'none', status: 'disabled' });
   }
-  const imageData = await dockerService.inspectImage(req.params.id, req.resolvedHostId ?? req.hostId);
-    const imageName = imageData.RepoTags?.[0] || req.params.id;
-    const preferredScanner = (req.query.scanner || 'auto').toLowerCase();
-
-    let result = null;
-
-    if (preferredScanner === 'trivy') {
-      try { result = _scanWithTrivy(imageName); }
-      catch (err) { scanLog.warn('Trivy scan failed', err.message); }
-      if (!result) {
-        return res.json({
-          scanner: 'none', image: imageName, scannedAt: new Date().toISOString(),
-          vulnerabilities: [], summary: _makeSummary([]),
-          message: 'Trivy scan failed. Check that Trivy is installed correctly.',
-        });
-      }
-    } else if (preferredScanner === 'grype') {
-      try { result = _scanWithGrype(imageName); }
-      catch (err) { scanLog.warn('Grype scan failed', err.message); }
-      if (!result) {
-        return res.json({
-          scanner: 'none', image: imageName, scannedAt: new Date().toISOString(),
-          vulnerabilities: [], summary: _makeSummary([]),
-          message: 'Grype scan failed. Check that Grype is installed correctly.',
-        });
-      }
-    } else {
-      // Auto mode: try Trivy first, then Grype
-      try { result = _scanWithTrivy(imageName); }
-      catch (err) { scanLog.debug('Trivy auto-scan failed, trying Grype', err.message); }
-      if (!result) {
-        try { result = _scanWithGrype(imageName); }
-        catch (err) { scanLog.debug('Grype auto-scan failed', err.message); }
-      }
-      if (!result) {
-        result = {
-          scanner: 'none', image: imageName, scannedAt: new Date().toISOString(),
-          vulnerabilities: [], summary: _makeSummary([]),
-          message: 'No vulnerability scanner available. Use the verified Docker Dash image with Trivy and Grype.',
-        };
-      }
-    }
-
-    // Save scan results to database
-    if (result.scanner !== 'none') {
-      try {
-        const db = getDb();
-        const fixable = (result.vulnerabilities || []).filter(v => v.fixedIn).length;
-        db.prepare(`
-          INSERT INTO scan_results (image_id, image_name, scanner, summary_critical, summary_high,
-            summary_medium, summary_low, summary_total, fixable_count, results_json, recommendations_json, scanned_by, host_id)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          req.params.id, result.image, result.scanner,
-          result.summary.critical, result.summary.high, result.summary.medium, result.summary.low, result.summary.total,
-          fixable, JSON.stringify(result.vulnerabilities), JSON.stringify(result.recommendations || []),
-          req.user?.id || null, req.hostId || 0
-        );
-      } catch (e) { scanLog.warn('Failed to save scan result', e.message); }
-    }
-
+  const scanner = typeof req.query.scanner === 'string' ? req.query.scanner.toLowerCase() : 'auto';
+  if (!['auto', 'trivy', 'grype'].includes(scanner)) return res.status(400).json({ error: 'Unknown vulnerability scanner' });
+  const hostId = req.resolvedHostId ?? req.hostId;
+  const imageData = await dockerService.inspectImage(req.params.id, hostId);
+  const imageName = imageData.RepoTags?.[0] || req.params.id;
+  let result;
+  try {
+    const report = await scanImageReport(dockerService.getDocker(hostId), imageData.Id, scanner);
+    result = report.scanner === 'trivy' ? _trivyResult(report.data, imageName) : _grypeResult(report.data, imageName);
+  } catch (error) {
+    scanLog.warn('Verified image scan unavailable', { hostId, imageId: imageData.Id, reason: error.message });
+    return res.json({
+      scanner: 'none', image: imageName, scannedAt: new Date().toISOString(),
+      vulnerabilities: [], summary: _makeSummary([]), message: error.message,
+    });
+  }
+  const db = getDb();
+  const fixable = result.vulnerabilities.filter(v => v.fixedIn).length;
+  const saved = db.prepare(`
+    INSERT INTO scan_results (image_id, image_name, scanner, summary_critical, summary_high,
+      summary_medium, summary_low, summary_total, fixable_count, results_json, recommendations_json, scanned_by, host_id, verified_image_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    imageData.Id, imageName, result.scanner,
+    result.summary.critical, result.summary.high, result.summary.medium, result.summary.low, result.summary.total,
+    fixable, JSON.stringify(result.vulnerabilities), JSON.stringify(result.recommendations),
+    req.user.id, hostId, imageData.Id
+  );
+  result.scanId = Number(saved.lastInsertRowid);
+  result.imageId = imageData.Id;
   res.json(result);
 }));
 
 // Scan history
 router.get('/scan-history', requireAuth, asyncHandler((req, res) => {
   const db = getDb();
-  const { image, limit: lim } = req.query;
-  const hostId = req.hostId || 0;
-  const maxRows = Math.min(parseInt(lim) || 100, 500);
-  const cols = 'id, image_id, image_name, scanner, summary_critical, summary_high, summary_medium, summary_low, summary_total, fixable_count, scanned_at, host_id';
-
-  let rows;
-  if (image) {
-    rows = db.prepare(`SELECT ${cols} FROM scan_results WHERE image_name = ? AND host_id = ? ORDER BY scanned_at DESC LIMIT ?`).all(image, hostId, maxRows);
-  } else {
-    rows = db.prepare(`SELECT ${cols} FROM scan_results WHERE host_id = ? ORDER BY scanned_at DESC LIMIT ?`).all(hostId, maxRows);
-  }
+  const { image, imageId, limit: lim } = req.query;
+  const maxRows = Math.min(Math.max(parseInt(lim, 10) || 100, 1), 500);
+  const cols = 'id, image_id, verified_image_id, image_name, scanner, summary_critical, summary_high, summary_medium, summary_low, summary_total, fixable_count, scanned_at, host_id';
+  const filters = ['(host_id = ? OR (host_id = 0 AND ? = 1))'];
+  const values = scanHostScope(req);
+  if (typeof image === 'string') { filters.push('image_name = ?'); values.push(image); }
+  if (typeof imageId === 'string') { filters.push('verified_image_id = ?'); values.push(imageId); }
+  const rows = db.prepare(`SELECT ${cols} FROM scan_results WHERE ${filters.join(' AND ')}
+    ORDER BY scanned_at DESC, id DESC LIMIT ?`).all(...values, maxRows);
   res.json(rows);
 }));
 
 // Get full scan result by ID
 router.get('/scan-history/:id', requireAuth, asyncHandler((req, res) => {
   const db = getDb();
-  const row = db.prepare('SELECT * FROM scan_results WHERE id = ?').get(parseInt(req.params.id));
+  const row = db.prepare('SELECT * FROM scan_results WHERE id = ? AND (host_id = ? OR (host_id = 0 AND ? = 1))')
+    .get(Number(req.params.id), ...scanHostScope(req));
   if (!row) return res.status(404).json({ error: 'Scan result not found' });
   row.vulnerabilities = JSON.parse(row.results_json || '[]');
   row.recommendations = JSON.parse(row.recommendations_json || '[]');

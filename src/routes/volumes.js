@@ -20,7 +20,9 @@ router.get('/', requireAuth, asyncHandler(async (req, res) => {
 }));
 
 router.get('/:name/inspect', requireAuth, asyncHandler(async (req, res) => {
-  res.json(await dockerService.inspectVolume(req.params.name, req.resolvedHostId ?? req.hostId));
+  const hostId = req.resolvedHostId ?? req.hostId;
+  const volume = await dockerService.inspectVolume(req.params.name, hostId);
+  res.json(req.query.context === '1' ? { volume, host: { id: hostId, name: req.hostName } } : volume);
 }));
 
 // Create volume

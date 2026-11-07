@@ -3,6 +3,7 @@
 // v8.9.9-alpha.1 — Portainer G07 closure: volume file browser routes.
 
 const { Router } = require('express');
+const path = require('node:path');
 const svc = require('../services/volume-browser');
 const auditService = require('../services/audit');
 const { requireAuth, requireRole, writeable } = require('../middleware/auth');
@@ -17,7 +18,7 @@ router.use(extractHostId);
 router.use(requireHostAccessForMethod());
 
 // GET /api/volumes/:name/browse?path=/  — list directory
-router.get('/:name/browse', requireAuth, asyncHandler(async (req, res) => {
+router.get('/:name/browse', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
   const p = req.query.path || '/';
   try {
     const result = await svc.list(req.resolvedHostId ?? req.hostId, req.params.name, p);
@@ -28,7 +29,7 @@ router.get('/:name/browse', requireAuth, asyncHandler(async (req, res) => {
 }));
 
 // GET /api/volumes/:name/read?path=/file  — read a file's contents
-router.get('/:name/read', requireAuth, asyncHandler(async (req, res) => {
+router.get('/:name/read', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
   const p = req.query.path;
   if (!p) return res.status(400).json({ error: 'path is required' });
   try {
@@ -40,6 +41,20 @@ router.get('/:name/read', requireAuth, asyncHandler(async (req, res) => {
       ip: getClientIp(req),
     });
     res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+}));
+
+router.get('/:name/download', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
+  const p = req.query.path;
+  if (typeof p !== 'string' || !p) return res.status(400).json({ error: 'path is required' });
+  try {
+    const data = await svc.readBuffer(req.resolvedHostId ?? req.hostId, req.params.name, p);
+    if (data.length > svc.MAX_FILE_BYTES) return res.status(413).json({ error: 'Download limit is 5 MB' });
+    res.set('Cache-Control', 'no-store');
+    res.attachment(path.posix.basename(p));
+    res.type('application/octet-stream').send(data);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

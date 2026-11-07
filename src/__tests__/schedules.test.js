@@ -117,6 +117,8 @@ describe('GET /api/system/schedules — list after create', () => {
     expect(res.body[0].containerName).toBe('test-container');
     expect(res.body[0].action).toBe('restart');
     expect(res.body[0].enabled).toBe(true);
+    expect(res.body[0].timeZone).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone);
+    expect(Date.parse(res.body[0].nextRunAt)).toBeGreaterThan(Date.now());
   });
 });
 
@@ -162,6 +164,18 @@ describe('PUT /api/system/schedules/:id — update schedule', () => {
 });
 
 describe('GET /api/system/schedules/preview — cron preview', () => {
+  it('previews sparse schedules beyond seven days using the scheduler timezone', async () => {
+    const res = await request(app)
+      .get('/api/system/schedules/preview')
+      .query({ cron: '0 0 29 feb *' })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(res.body.nextRuns.length).toBeGreaterThan(0);
+    const date = new Date(res.body.nextRuns[0]);
+    expect(date.getMonth()).toBe(1);
+    expect(date.getDate()).toBe(29);
+    expect(date.getHours()).toBe(0);
+  });
   it('should return next runs for valid cron', async () => {
     const res = await request(app)
       .get('/api/system/schedules/preview?cron=0 3 * * *')

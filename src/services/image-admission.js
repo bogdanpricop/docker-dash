@@ -165,11 +165,10 @@ async function runGrype(file, directory, signal, platform) {
   return stdout;
 }
 
-async function scanImage(docker, imageId, { maxImageBytes = 5 * 1024 ** 3, timeoutMs = 480000,
-  scanners = { trivy: runTrivy, grype: runGrype }, temporaryRoot = os.tmpdir() } = {}) {
-  const denied = unavailable('trivy+grype', imageId);
-  if (!IMAGE_ID.test(imageId || '') || inFlight >= 2
-    || typeof scanners?.trivy !== 'function' || typeof scanners?.grype !== 'function') return denied;
+async function withVerifiedArchive(docker, imageId, scan, {
+  maxImageBytes = 5 * 1024 ** 3, timeoutMs = 480000, temporaryRoot = os.tmpdir(),
+} = {}) {
+  if (!IMAGE_ID.test(imageId || '') || inFlight >= 2) throw new Error('Image scan slots unavailable');
   inFlight++;
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), timeoutMs);
@@ -204,23 +203,7 @@ async function scanImage(docker, imageId, { maxImageBytes = 5 * 1024 ** 3, timeo
     await pipeline(stream, bound, fs.createWriteStream(archive, { flags: 'wx', mode: 0o600 }), { signal: abort.signal });
     if (!bytes) throw new Error('Empty image export');
     const identity = await archiveIdentity(archive, imageId, selected, abort.signal);
-    const checks = [];
-    for (const [name, assess] of [['trivy', assessReport], ['grype', assessGrypeReport]]) {
-      try {
-        if (abort.signal.aborted) throw new Error('Admission deadline exceeded');
-        const output = await scanners[name](archive, directory, abort.signal, identity.platform);
-        if (abort.signal.aborted) throw new Error('Admission deadline exceeded');
-        checks.push(assess(output, imageId, identity.configId));
-      } catch {
-        checks.push(unavailable(name, imageId));
-      }
-    }
-    const summary = { scanner: 'trivy+grype', imageId, counting: 'scanner-findings', checks };
-    for (const key of COUNTS) summary[key] = checks.reduce((total, check) => total + (check[key] || 0), 0);
-    if (checks.some(check => check.status === 'unavailable')) return { ...summary, ...denied };
-    return verdict(summary);
-  } catch {
-    return denied;
+    return await scan(archive, directory, abort.signal, identity);
   } finally {
     clearTimeout(timer);
     // A daemon that never sends response headers keeps its admission slot until
@@ -234,4 +217,51 @@ async function scanImage(docker, imageId, { maxImageBytes = 5 * 1024 ** 3, timeo
   }
 }
 
-module.exports = { scanImage, assessReport, assessGrypeReport };
+async function scanImage(docker, imageId, {
+  scanners = { trivy: runTrivy, grype: runGrype }, ...options
+} = {}) {
+  const denied = unavailable('trivy+grype', imageId);
+  if (typeof scanners?.trivy !== 'function' || typeof scanners?.grype !== 'function') return denied;
+  try {
+    return await withVerifiedArchive(docker, imageId, async (archive, directory, signal, identity) => {
+      const checks = [];
+      for (const [name, assess] of [['trivy', assessReport], ['grype', assessGrypeReport]]) {
+        try {
+          if (signal.aborted) throw new Error('Admission deadline exceeded');
+          const output = await scanners[name](archive, directory, signal, identity.platform);
+          if (signal.aborted) throw new Error('Admission deadline exceeded');
+          checks.push(assess(output, imageId, identity.configId));
+        } catch {
+          checks.push(unavailable(name, imageId));
+        }
+      }
+      const summary = { scanner: 'trivy+grype', imageId, counting: 'scanner-findings', checks };
+      for (const key of COUNTS) summary[key] = checks.reduce((total, check) => total + (check[key] || 0), 0);
+      if (checks.some(check => check.status === 'unavailable')) return { ...summary, ...denied };
+      return verdict(summary);
+    }, options);
+  } catch {
+    return denied;
+  }
+}
+
+async function scanImageReport(docker, imageId, preferred) {
+  const engines = {
+    trivy: [runTrivy, assessReport], grype: [runGrype, assessGrypeReport],
+  };
+  const names = preferred === 'auto' ? ['trivy', 'grype'] : [preferred];
+  return withVerifiedArchive(docker, imageId, async (archive, directory, signal, identity) => {
+    for (const scanner of names) {
+      try {
+        const [run, verify] = engines[scanner];
+        const output = await run(archive, directory, signal, identity.platform);
+        if (signal.aborted) break;
+        verify(output, imageId, identity.configId);
+        return { scanner, data: JSON.parse(output) };
+      } catch { /* try the next requested scanner */ }
+    }
+    throw new Error('No scanner could verify a complete report for this image');
+  });
+}
+
+module.exports = { scanImage, scanImageReport, assessReport, assessGrypeReport };

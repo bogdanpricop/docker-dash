@@ -119,6 +119,17 @@ const Utils = {
     return String(str).replace(/[&<>"']/g, character => entities[character]);
   },
 
+  fileBreadcrumb(path) {
+    let current = '';
+    const parts = [['/', '/'], ...path.split('/').filter(Boolean).map(segment => {
+      current += '/' + segment;
+      return [segment, current];
+    })];
+    return parts.map(([name, target], index) =>
+      `<button type="button" class="btn btn-xs btn-secondary files-crumb" data-path="${this.escapeHtml(target)}"${index === parts.length - 1 ? ' aria-current="location"' : ''}>${this.escapeHtml(name)}</button>`
+    ).join('<span aria-hidden="true" class="text-muted"> / </span>');
+  },
+
   // Debounce
   debounce(fn, delay = 300) {
     let timer;

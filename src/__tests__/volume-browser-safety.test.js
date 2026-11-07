@@ -18,6 +18,7 @@ describe('volume-browser _safePath (v8.9.9-alpha.1)', () => {
     // path.posix.resolve('/data', '.', '/../../etc/passwd') resolves to
     // '/etc/passwd' which is outside /data → must throw.
     expect(() => _safePath('/../../etc/passwd')).toThrow(/Path traversal/);
+    expect(() => _safePath('/../data-other/secrets')).toThrow(/Path traversal/);
   });
   it('allows a normal absolute path (stays under /data)', () => {
     const p = _safePath('/foo');

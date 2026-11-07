@@ -9,11 +9,12 @@ const NetworksPage = {
   _tab: 'list',
 
   async render(container, params = {}) {
-    if (params.id) {
+    if (params.id && params.id !== 'topology') {
       await this._renderNetworkDetail(container, params.id);
       return;
     }
 
+    this._tab = 'list';
     container.innerHTML = `
       <div class="page-header">
         <h2><i class="fas fa-network-wired"></i> ${i18n.t('pages.networks.title')}</h2>
@@ -55,7 +56,8 @@ const NetworksPage = {
     container.querySelector('#net-help').addEventListener('click', () => this._showHelp());
     container.querySelector('#net-refresh').addEventListener('click', () => this._load());
 
-    await this._load();
+    if (params.id === 'topology') container.querySelector('[data-tab="topology"]').click();
+    else await this._load();
     this._refreshTimer = setInterval(() => this._load(), 30000);
   },
 
@@ -525,49 +527,84 @@ const NetworksPage = {
   },
 
   async _createDialog() {
+    const requestedHost = Api.getHostId();
     const result = await Modal.form(`
-      <div class="form-group">
-        <label>${i18n.t('pages.networks.networkName')}</label>
+      <div class="form-group"><label for="net-name">Name</label>
         <input type="text" id="net-name" class="form-control" required>
       </div>
-      <div class="form-group">
-        <label>${i18n.t('pages.networks.driverLabel')}</label>
+      <div class="form-group"><label for="net-driver">Driver</label>
         <select id="net-driver" class="form-control">
-          <option value="bridge">bridge</option>
-          <option value="overlay">overlay</option>
-          <option value="macvlan">macvlan</option>
+          <option value="bridge">Bridge</option><option value="overlay">Overlay (Swarm)</option><option value="macvlan">Macvlan</option>
         </select>
       </div>
-      <div class="form-group">
-        <label>${i18n.t('pages.networks.subnetLabel')}</label>
-        <input type="text" id="net-subnet" class="form-control" placeholder="${i18n.t('pages.networks.autoPlaceholder')}">
+      <div class="form-group" data-network-driver="macvlan" hidden><label for="net-parent">Parent interface</label>
+        <input type="text" id="net-parent" class="form-control" placeholder="eth0">
       </div>
+      <label class="toggle-label" data-network-driver="overlay" hidden><input type="checkbox" id="net-attachable"> Allow standalone containers to attach</label>
+      <label class="toggle-label" data-network-driver="bridge overlay"><input type="checkbox" id="net-internal"> Internal network</label>
+      <details class="form-group">
+        <summary>Advanced IP addressing</summary>
+        <label for="net-subnet">Subnet (CIDR)</label><input type="text" id="net-subnet" class="form-control" placeholder="Automatic">
+        <label for="net-gateway">Gateway</label><input type="text" id="net-gateway" class="form-control" placeholder="Automatic">
+      </details>
+      <p class="text-sm" data-network-check role="status"></p>
     `, {
       title: i18n.t('pages.networks.createTitle'),
-      width: '420px',
-      onSubmit: (content) => {
-        const name = content.querySelector('#net-name').value.trim();
-        if (!name) { Toast.warning(i18n.t('pages.networks.nameRequired')); return false; }
-        const driver = content.querySelector('#net-driver').value;
-        const subnet = content.querySelector('#net-subnet').value.trim();
-        return { name, driver, subnet: subnet || undefined };
-      }
+      width: '480px',
+      onMount: content => {
+        const driver = content.querySelector('#net-driver');
+        const sync = () => content.querySelectorAll('[data-network-driver]').forEach(group => {
+          group.hidden = !group.dataset.networkDriver.split(' ').includes(driver.value);
+        });
+        driver.addEventListener('change', sync);
+        sync();
+      },
+      onSubmit: async content => {
+        const Name = content.querySelector('#net-name').value.trim();
+        const Driver = content.querySelector('#net-driver').value;
+        const Subnet = content.querySelector('#net-subnet').value.trim();
+        const Gateway = content.querySelector('#net-gateway').value.trim();
+        const parent = content.querySelector('#net-parent').value.trim();
+        const status = content.querySelector('[data-network-check]');
+        if (!Name || (Driver === 'macvlan' && !parent)) {
+          status.textContent = 'A network name and, for Macvlan, a parent interface are required.';
+          return false;
+        }
+        status.textContent = 'Checking address pools on the Docker host…';
+        try {
+          const params = new URLSearchParams({ driver: Driver, subnet: Subnet, gateway: Gateway, hostId: requestedHost });
+          const review = await Api.get('/networks/check-subnet?' + params);
+          if (review.conflicts.length) {
+            status.textContent = 'Subnet overlaps with ' + review.conflicts.map(conflict => conflict.name + ' (' + conflict.subnet + ')').join(', ');
+            return false;
+          }
+          const options = { Name, Driver };
+          if (Subnet) options.IPAM = { Config: [{ Subnet, ...(Gateway && { Gateway }) }] };
+          if (Subnet.includes(':')) options.EnableIPv6 = true;
+          if (Driver === 'macvlan') options.Options = { parent };
+          else options.Internal = content.querySelector('#net-internal').checked;
+          if (Driver === 'overlay') options.Attachable = content.querySelector('#net-attachable').checked;
+          return { options, hostId: review.hostId };
+        } catch (error) {
+          status.textContent = error.message;
+          return false;
+        }
+      },
     });
-
-    if (result) {
-      try {
-        await Api.createNetwork(result);
-        Toast.success(i18n.t('pages.networks.networkCreated', { name: result.name }));
-        await this._load();
-      } catch (err) { Toast.error(err.message); }
-    }
+    if (!result) return;
+    try {
+      await Api.createNetwork(result.options, result.hostId);
+      Toast.success(i18n.t('pages.networks.networkCreated', { name: result.options.Name }));
+      await this._load();
+    } catch (err) { Toast.error(err.message); }
   },
 
   async _inspect(id) {
     try {
       const data = await Api.getNetwork(id);
+      const e = Utils.escapeHtml;
       const containers = Object.entries(data.Containers || {}).map(([cid, c]) =>
-        `<tr><td class="mono text-sm">${Utils.shortId(cid)}</td><td>${Utils.escapeHtml(c.Name)}</td><td class="mono text-sm">${c.IPv4Address || '—'}</td></tr>`
+        `<tr><td class="mono text-sm">${Utils.shortId(cid)}</td><td>${Utils.escapeHtml(c.Name)}</td><td class="mono text-sm">${e(c.IPv4Address || '—')}</td><td class="mono text-sm">${e(c.IPv6Address || '—')}</td></tr>`
       ).join('');
 
       Modal.open(`
@@ -576,15 +613,16 @@ const NetworksPage = {
         </div>
         <div class="modal-body">
           <table class="info-table">
-            <tr><td>${i18n.t('pages.networks.driver')}</td><td>${data.Driver}</td></tr>
-            <tr><td>${i18n.t('pages.networks.scope')}</td><td>${data.Scope}</td></tr>
+            <tr><td>${i18n.t('pages.networks.driver')}</td><td>${e(data.Driver)}</td></tr>
+            <tr><td>${i18n.t('pages.networks.scope')}</td><td>${e(data.Scope)}</td></tr>
             <tr><td>${i18n.t('pages.networks.internal')}</td><td>${data.Internal ? i18n.t('common.yes') : i18n.t('common.no')}</td></tr>
-            <tr><td>${i18n.t('pages.networks.subnet')}</td><td class="mono">${data.IPAM?.Config?.[0]?.Subnet || '—'}</td></tr>
-            <tr><td>${i18n.t('pages.containers.gateway')}</td><td class="mono">${data.IPAM?.Config?.[0]?.Gateway || '—'}</td></tr>
+            <tr><td>${i18n.t('pages.networks.subnet')}</td><td class="mono">${e(data.IPAM?.Config?.map(item => item.Subnet).filter(Boolean).join(', ') || '—')}</td></tr>
+            <tr><td>${i18n.t('pages.containers.gateway')}</td><td class="mono">${e(data.IPAM?.Config?.map(item => item.Gateway).filter(Boolean).join(', ') || '—')}</td></tr>
           </table>
           ${containers ? `<h4 class="mt-md">${i18n.t('pages.networks.connectedContainers')}</h4>
-            <table class="data-table compact"><thead><tr><th>${i18n.t('pages.containers.id')}</th><th>${i18n.t('common.name')}</th><th>${i18n.t('pages.containers.ip')}</th></tr></thead><tbody>${containers}</tbody></table>` : ''}
+            <table class="data-table compact"><thead><tr><th>${i18n.t('pages.containers.id')}</th><th>${i18n.t('common.name')}</th><th>IPv4</th><th>IPv6</th></tr></thead><tbody>${containers}</tbody></table>` : ''}
           <div style="margin-top:12px;display:flex;gap:8px">
+            <a class="btn btn-sm btn-secondary" id="net-topology-link" href="#/networks/topology"><i class="fas fa-diagram-project"></i> Topology</a>
             <button class="btn btn-sm btn-primary" id="net-connect-btn"><i class="fas fa-plug"></i> Connect Container</button>
             ${containers ? '<button class="btn btn-sm btn-warning" id="net-disconnect-btn"><i class="fas fa-unlink"></i> Disconnect</button>' : ''}
           </div>
@@ -595,6 +633,7 @@ const NetworksPage = {
       Modal._content.querySelector('#net-modal-close-x').addEventListener('click', () => Modal.close());
       Modal._content.querySelector('#net-modal-close-btn').addEventListener('click', () => Modal.close());
 
+      Modal._content.querySelector('#net-topology-link').addEventListener('click', () => Modal.close());
       const connectBtn = Modal._content.querySelector('#net-connect-btn');
       if (connectBtn) {
         connectBtn.addEventListener('click', async () => {

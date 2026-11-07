@@ -7,7 +7,7 @@
 const { Router } = require('express');
 const fs = require('fs');
 const dispatch = require('../services/schedule-dispatch');
-const { compileScheduleCron, validScheduleCron } = require('../utils/schedule-cron');
+const { nextScheduleRuns, validScheduleCron } = require('../utils/schedule-cron');
 const { randomUUID } = require('node:crypto');
 const auditService = require('../services/audit');
 const { requireAuth, requireRole, writeable } = require('../middleware/auth');
@@ -23,6 +23,7 @@ router.use(extractHostId);
 // Schedule storage — DB-backed with JSON fallback (extracted from system.js)
 const schedulesFile = '/data/schedules.json';
 const validActions = new Set(['start', 'stop', 'restart', 'pause', 'unpause', 'kill']);
+const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 function loadSchedules() {
   try {
@@ -38,7 +39,8 @@ function saveSchedules(schedules) {
 function getSchedulesFromDb() {
   try {
     const db = getDb();
-    return db.prepare('SELECT * FROM scheduled_actions ORDER BY created_at DESC').all();
+    return db.prepare(`SELECT s.*, h.name AS host_name FROM scheduled_actions s
+      LEFT JOIN docker_hosts h ON h.id = s.host_id ORDER BY s.created_at DESC`).all();
   } catch {
     return null;
   }
@@ -52,15 +54,21 @@ function canAccess(user, hostId, operate = false) {
 
 router.get('/', requireAuth, (req, res) => {
   const dbSchedules = getSchedulesFromDb();
+  const now = new Date();
+  const nextByCron = new Map();
+  const decorate = schedule => {
+    if (schedule.enabled && !nextByCron.has(schedule.cron)) nextByCron.set(schedule.cron, nextScheduleRuns(schedule.cron, now)[0] ?? null);
+    return { ...schedule, timeZone, nextRunAt: schedule.enabled ? nextByCron.get(schedule.cron) : null };
+  };
   if (dbSchedules !== null) {
-    return res.json(dbSchedules.filter(s => canAccess(req.user, s.host_id)).map(s => ({
+    return res.json(dbSchedules.filter(s => canAccess(req.user, s.host_id)).map(s => decorate({
       id: s.id, containerId: s.container_id, containerName: s.container_name,
-      hostId: s.host_id, action: s.action, cron: s.cron, enabled: !!s.enabled,
+      hostId: s.host_id, hostName: s.host_name, action: s.action, cron: s.cron, enabled: !!s.enabled,
       description: s.description, createdBy: s.created_by, createdAt: s.created_at,
       lastRunAt: s.last_run_at, lastRunStatus: s.last_run_status, runCount: s.run_count,
     })));
   }
-  res.json(loadSchedules().filter(s => canAccess(req.user, s.hostId)));
+  res.json(loadSchedules().filter(s => canAccess(req.user, s.hostId)).map(decorate));
 });
 
 router.post('/', requireAuth, requireRole('admin', 'operator'), requireHostAccess('operate'), writeable, (req, res) => {
@@ -98,21 +106,8 @@ router.get('/preview', requireAuth, (req, res) => {
   const cronExpr = req.query.cron;
   if (!cronExpr) return res.status(400).json({ error: 'cron required' });
 
-  const matches = compileScheduleCron(cronExpr);
-  if (!matches) return res.status(400).json({ error: 'Invalid cron expression' });
-
-  const runs = [];
-  const now = new Date();
-  const check = new Date(now);
-  check.setSeconds(0, 0);
-
-  for (let i = 0; i < 60 * 24 * 7 && runs.length < 5; i++) {
-    check.setMinutes(check.getMinutes() + 1);
-    if (matches(check)) {
-      runs.push(check.toISOString());
-    }
-  }
-  res.json({ cron: cronExpr, nextRuns: runs });
+  if (!validScheduleCron(cronExpr)) return res.status(400).json({ error: 'Invalid cron expression' });
+  res.json({ cron: cronExpr, nextRuns: nextScheduleRuns(cronExpr, new Date(), 5), timeZone });
 });
 
 router.delete('/:id', requireAuth, requireRole('admin'), writeable, (req, res) => {

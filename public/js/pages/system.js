@@ -2936,7 +2936,17 @@ DB_PASS=secret"></textarea>
   async _renderSchedules(el) {
     try {
       const schedules = await Api.getSchedules();
-      const containers = await Api.getContainers(true);
+      if (!el.isConnected || this._tab !== 'schedules') return;
+      const e = Utils.escapeHtml;
+      const hostName = schedule => schedule.hostName || (schedule.hostId ? `Host #${schedule.hostId}` : 'Default Docker host');
+      const hosts = new Map(schedules.map(schedule => [String(schedule.hostId ?? 0), hostName(schedule)]));
+      const zone = schedules[0]?.timeZone || 'UTC';
+      const formatter = new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'medium', timeZone: zone });
+      const formatRun = value => {
+        if (!value) return '—';
+        const date = new Date(/^\d{4}-\d{2}-\d{2} /.test(value) ? value.replace(' ', 'T') + 'Z' : value);
+        return Number.isFinite(date.getTime()) ? formatter.format(date) : '—';
+      };
 
       el.innerHTML = `
         <div class="card">
@@ -2947,6 +2957,18 @@ DB_PASS=secret"></textarea>
             </button>
           </div>
           <div class="card-body" id="schedules-list">
+            <div class="schedule-controls">
+              <label>Host <select id="schedule-host-filter" class="form-control">
+                <option value="">All hosts</option>
+                ${[...hosts].map(([id, name]) => `<option value="${e(id)}">${e(name)}</option>`).join('')}
+              </select></label>
+              <label>Result <select id="schedule-result-filter" class="form-control">
+                <option value="">Any result</option><option value="success">Success</option>
+                <option value="error">Failed</option><option value="none">Never run</option>
+              </select></label>
+              <span class="badge">Scheduler timezone · ${e(zone)}</span>
+            </div>
+            <div id="schedule-no-match" class="text-muted" hidden>No matching schedules.</div>
             ${schedules.length === 0 ? `<div class="text-muted text-sm">${i18n.t('pages.containers.noSchedules')}</div>` : `
             <table class="data-table">
               <thead><tr>
@@ -2954,12 +2976,15 @@ DB_PASS=secret"></textarea>
                 <th>${i18n.t('pages.containers.scheduleAction')}</th>
                 <th>${i18n.t('pages.containers.scheduleCron')}</th>
                 <th>${i18n.t('common.status')}</th>
+                <th>Host</th>
                 <th>Last Run</th>
+                <th>Result</th>
+                <th>Next Run</th>
                 <th>Runs</th>
                 <th></th>
               </tr></thead>
               <tbody>${schedules.map(s => `
-                <tr>
+                <tr data-schedule-host="${e(String(s.hostId ?? 0))}" data-schedule-result="${e(s.lastRunStatus || 'none')}">
                   <td class="mono text-sm">${Utils.escapeHtml(s.containerName || s.containerId?.substring(0, 12))}</td>
                   <td><span class="badge badge-info">${s.action}</span></td>
                   <td class="mono text-sm">${Utils.escapeHtml(s.cron)}</td>
@@ -2969,7 +2994,10 @@ DB_PASS=secret"></textarea>
                       <span class="text-sm">${s.enabled ? i18n.t('common.enabled') : i18n.t('common.disabled')}</span>
                     </label>
                   </td>
-                  <td class="text-sm">${s.lastRunAt ? `<span class="${s.lastRunStatus === 'error' ? 'text-danger' : ''}">${Utils.timeAgo(s.lastRunAt)}</span>` : '—'}</td>
+                  <td>${e(hostName(s))}</td>
+                  <td class="text-sm">${e(formatRun(s.lastRunAt))}</td>
+                  <td>${s.lastRunStatus ? `<span class="badge ${s.lastRunStatus === 'success' ? 'badge-success' : 'badge-warning'}">${e(s.lastRunStatus)}</span>` : '—'}</td>
+                  <td class="text-sm">${s.enabled ? e(s.nextRunAt ? formatRun(s.nextRunAt) : 'No upcoming match') : 'Paused'}</td>
                   <td class="text-sm">${s.runCount || 0}</td>
                   <td style="white-space:nowrap">
                     <button class="action-btn" data-run-schedule="${s.id}" title="Run Now"><i class="fas fa-play"></i></button>
@@ -2983,12 +3011,32 @@ DB_PASS=secret"></textarea>
         </div>
       `;
 
+      const hostFilter = el.querySelector('#schedule-host-filter');
+      const resultFilter = el.querySelector('#schedule-result-filter');
+      const rows = [...el.querySelectorAll('[data-schedule-host]')];
+      const applyFilters = () => {
+        this._scheduleFilters = { host: hostFilter.value, result: resultFilter.value };
+        let matching = 0;
+        rows.forEach(row => {
+          row.hidden = Boolean((hostFilter.value && row.dataset.scheduleHost !== hostFilter.value)
+            || (resultFilter.value && row.dataset.scheduleResult !== resultFilter.value));
+          if (!row.hidden) matching++;
+        });
+        el.querySelector('#schedule-no-match').hidden = !rows.length || matching > 0;
+      };
+      if (hosts.has(this._scheduleFilters?.host)) hostFilter.value = this._scheduleFilters.host;
+      resultFilter.value = this._scheduleFilters?.result || '';
+      hostFilter.addEventListener('change', applyFilters);
+      resultFilter.addEventListener('change', applyFilters);
+      applyFilters();
+
       // Toggle schedule enabled/disabled
       el.querySelectorAll('.sched-toggle').forEach(checkbox => {
         checkbox.addEventListener('change', async () => {
           try {
             await Api.updateSchedule(checkbox.dataset.schedId, { enabled: checkbox.checked });
             Toast.success(checkbox.checked ? 'Schedule enabled' : 'Schedule disabled');
+            this._renderSchedules(el);
           } catch (err) { Toast.error(err.message); checkbox.checked = !checkbox.checked; }
         });
       });
@@ -3043,6 +3091,11 @@ DB_PASS=secret"></textarea>
 
       // Add schedule
       el.querySelector('#add-schedule').addEventListener('click', async () => {
+        let containers;
+        try { containers = await Api.getContainers(true); }
+        catch (err) { Toast.error(err.message); return; }
+        if (!containers.length) { Toast.info('No containers available on this host'); return; }
+        if (!el.isConnected || this._tab !== 'schedules') return;
         const containerOpts = containers.map(c =>
           `<option value="${c.id}" data-name="${Utils.escapeHtml(c.name)}">${Utils.escapeHtml(c.name)} (${c.state})</option>`
         ).join('');

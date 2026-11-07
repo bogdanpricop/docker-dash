@@ -2426,11 +2426,14 @@ const ContainersPageDetail = {
     }
 
     const mode = this._filesPreviewMode;
+    const hostId = this._detailData?.hostId ?? Api.getHostId();
+    const host = App._hostSelectorHosts?.find(item => item.id === hostId || (!hostId && item.isDefault));
     el.innerHTML = `
       <div id="files-layout">
         <div class="card" id="files-card">
           <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap">
             <h3 style="margin:0"><i class="fas fa-folder-open" style="margin-right:8px"></i>File Browser</h3>
+            <span class="badge">${Utils.escapeHtml(host?.name || (hostId ? `Host #${hostId}` : 'Local Docker'))}</span>
             <div id="files-preview-mode-radios" style="display:inline-flex;align-items:center;gap:10px;font-size:11px;color:var(--text-dim)">
               <span>Preview:</span>
               ${[
@@ -2445,7 +2448,7 @@ const ContainersPageDetail = {
                 </label>
               `).join('')}
             </div>
-            <button class="btn btn-sm btn-primary" id="file-upload-btn"><i class="fas fa-upload" style="margin-right:4px"></i>Upload</button>
+            ${['admin', 'operator'].includes(App.user?.role) ? '<details class="file-write-tools"><summary>Write files</summary><button class="btn btn-sm btn-secondary" id="file-upload-btn"><i class="fas fa-upload"></i> Upload</button></details>' : ''}
           </div>
           <div class="card-body">
             <div id="files-breadcrumb" class="files-breadcrumb" style="margin-bottom:12px"></div>
@@ -2606,15 +2609,11 @@ const ContainersPageDetail = {
 
     listEl.innerHTML = '<div class="text-muted"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
 
-    // Render breadcrumb
-    const parts = this._filesPath.split('/').filter(Boolean);
-    let breadcrumb = `<a href="#" class="files-crumb" data-path="/">/</a>`;
-    let cumPath = '';
-    for (const p of parts) {
-      cumPath += '/' + p;
-      breadcrumb += ` <span class="text-muted">/</span> <a href="#" class="files-crumb" data-path="${Utils.escapeHtml(cumPath)}">${Utils.escapeHtml(p)}</a>`;
-    }
-    breadcrumbEl.innerHTML = breadcrumb;
+    const path = this._filesPath;
+    const containerId = this._detailId;
+    const hostId = this._detailData?.hostId ?? Api.getHostId();
+    const request = this._filesRequest = Symbol('container files');
+    breadcrumbEl.innerHTML = Utils.fileBreadcrumb(path);
     breadcrumbEl.querySelectorAll('.files-crumb').forEach(a => {
       a.addEventListener('click', (e) => {
         e.preventDefault();
@@ -2624,7 +2623,8 @@ const ContainersPageDetail = {
     });
 
     try {
-      const data = await Api.getContainerFiles(this._detailId, this._filesPath);
+      const data = await Api.get(`/containers/${encodeURIComponent(containerId)}/files?${new URLSearchParams({ path, hostId })}`);
+      if (request !== this._filesRequest || !listEl.isConnected) return;
       const entries = data.entries || [];
 
       if (entries.length === 0) {
@@ -2653,8 +2653,8 @@ const ContainersPageDetail = {
             <span class="file-icon"><i class="fas ${icon}" style="${iconColor}"></i></span>
             <span class="file-name">${Utils.escapeHtml(e.name)}</span>
             <span class="file-size text-muted text-sm">${e.type !== 'directory' ? Utils.formatBytes(e.size) : ''}</span>
-            <span class="file-modified text-muted text-sm">${e.modified || ''}</span>
-            <span class="file-actions">${e.type !== 'directory' ? `<a href="${Api.getFileDownloadUrl(this._detailId, fullPath)}" class="action-btn" title="Download" data-stop-propagation><i class="fas fa-download"></i></a>` : ''}</span>
+            <span class="file-modified text-muted text-sm">${Utils.escapeHtml(e.modified || '')}</span>
+            <span class="file-actions">${e.type !== 'directory' ? `<a href="${Utils.escapeHtml(Api.getFileDownloadUrl(containerId, fullPath, hostId))}" class="action-btn" title="Download" data-stop-propagation><i class="fas fa-download"></i></a>` : ''}</span>
           </div>`;
         }).join('')}
       `;
@@ -2691,7 +2691,7 @@ const ContainersPageDetail = {
         });
       });
     } catch (err) {
-      listEl.innerHTML = `<div class="text-muted">Error: ${Utils.escapeHtml(err.message)}</div>`;
+      if (request === this._filesRequest && listEl.isConnected) listEl.textContent = err.message;
     }
   },
 

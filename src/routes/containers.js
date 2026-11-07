@@ -1820,9 +1820,10 @@ router.get('/:id/files/download', requireAuth, requireContainerAccess('view'), a
     const archive = await container.getArchive({ path: filePath });
     const fileName = filePath.split('/').pop() || 'download';
 
-    res.setHeader('Content-Type', 'application/x-tar');
-    res.setHeader('Content-Disposition', `attachment; filename="${fileName}.tar"`);
-  archive.pipe(res);
+    res.setHeader('Cache-Control', 'no-store');
+    res.attachment(fileName + '.tar');
+    res.type('application/x-tar');
+    archive.pipe(res);
 }));
 
 // ─── Container File Upload ─────────────────────────────

@@ -4,6 +4,13 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Compare Docker hosts from Multi-Host and jump into filtered container views.
+- Expand services in the Stacks list, check saved Compose configuration, review
+  dry-run plans and explore relationships from the YAML and Form editor.
+- Show host, scheduler timezone, next execution and last outcome in Schedules.
+- Browse volume files with read-only helpers, and check for network subnet overlaps.
+- Group images by repository, compare registry digests and pull a reviewed digest
+  to selected hosts. Bind vulnerability reports to the verified image and host.
 - Open live logs and resource stats from the Containers list while keeping
   search, filters and selections in place. Keep the Docker host and its
   connection status visible, with snapshot logs when live streaming is unavailable.

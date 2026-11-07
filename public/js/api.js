@@ -215,7 +215,7 @@ const Api = {
   // ─── Networks ────────────────────────────────────
   getNetworks() { return this.get('/networks'); },
   getNetwork(id) { return this.get(`/networks/${id}/inspect`); },
-  createNetwork(data) { return this.post('/networks', data); },
+  createNetwork(data, hostId = this._currentHostId) { return this.post(`/networks?hostId=${hostId}`, data); },
   removeNetwork(id) { return this.delete(`/networks/${id}`); },
 
   // ─── System ──────────────────────────────────────
@@ -450,8 +450,9 @@ const Api = {
   // ─── Compose (Stacks) ─────────────────────────────
   composeAction(stack, action) { return this.post(`/system/compose/${encodeURIComponent(stack)}/${action}`); },
   composePlan(stack, action) { return this.post(`/system/compose/${encodeURIComponent(stack)}/${encodeURIComponent(action)}/plan`); },
-  async streamComposeAction(stack, action, onEvent) {
-    const path = this._appendHostId(`/system/compose/${encodeURIComponent(stack)}/${encodeURIComponent(action)}/stream`);
+  checkComposeStack(stack) { return this.post(`/system/compose/${encodeURIComponent(stack)}/check`); },
+  async streamComposeAction(stack, action, onEvent, hostId = this._currentHostId) {
+    const path = `/system/compose/${encodeURIComponent(stack)}/${encodeURIComponent(action)}/stream?hostId=${hostId}`;
     const headers = { 'Content-Type': 'application/json' };
     const xsrf = this._readXsrfToken();
     if (xsrf) headers['X-XSRF-TOKEN'] = xsrf;
@@ -1458,7 +1459,7 @@ const Api = {
   // ─── Container Files ─────────────────────────────
   getContainerFiles(id, path = '/') { return this.get(`/containers/${id}/files?path=${encodeURIComponent(path)}`); },
   getFileContent(id, path) { return this.get(`/containers/${id}/files/content?path=${encodeURIComponent(path)}`); },
-  getFileDownloadUrl(id, path) { return `/api/containers/${id}/files/download?path=${encodeURIComponent(path)}`; },
+  getFileDownloadUrl(id, path, hostId = this._currentHostId) { return `/api/containers/${encodeURIComponent(id)}/files/download?${new URLSearchParams({ path, hostId })}`; },
   uploadFile(id, destPath, filename, base64Content) { return this.post(`/containers/${id}/files/upload`, { path: destPath, filename, content: base64Content }); },
 
   // ─── Container Diff ──────────────────────────────

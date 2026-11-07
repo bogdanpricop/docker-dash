@@ -6,6 +6,8 @@
 const ImagesPage = {
   _table: null,
   _refreshTimer: null,
+  _repositoryView: false,
+  _expandedRepositories: new Set(),
 
   async render(container, params = {}) {
     if (params.id) {
@@ -19,6 +21,7 @@ const ImagesPage = {
             <i class="fas fa-search"></i>
             <input type="text" id="image-search" placeholder="${i18n.t('pages.images.filterPlaceholder')}">
           </div>
+          <button class="btn btn-sm btn-secondary" type="button" id="image-group-repos" aria-pressed="${this._repositoryView}">Group by repository</button>
           <button class="btn btn-sm btn-primary" id="pull-btn">
             <i class="fas fa-download"></i> ${i18n.t('pages.images.pullImage')}
           </button>
@@ -39,7 +42,8 @@ const ImagesPage = {
           </button>
         </div>
       </div>
-      <div id="images-table"></div>
+      <div id="images-table" ${this._repositoryView ? 'hidden' : ''}></div>
+      <div id="images-repositories" ${this._repositoryView ? '' : 'hidden'}></div>
       <div id="images-footer" class="table-footer" style="display:none"></div>
     `;
 
@@ -59,6 +63,7 @@ const ImagesPage = {
             <button class="action-btn" data-action="export" data-id="${row.id}" title="Export"><i class="fas fa-file-export"></i></button>
             <button class="action-btn" data-action="push" data-id="${row.id}" data-image="${Utils.escapeHtml((row._repo && row._tag) ? row._repo + ':' + row._tag : row.id)}" title="Push to Registry" style="color:var(--accent)"><i class="fas fa-cloud-upload-alt"></i></button>
             <button class="action-btn" data-action="sandbox" data-id="${row.id}" data-image="${Utils.escapeHtml((row._repo && row._tag) ? row._repo + ':' + row._tag : row.id)}" title="Run in Sandbox" style="color:var(--yellow)"><i class="fas fa-flask"></i></button>
+            <button class="action-btn" data-action="inventory" data-id="${row.id}" title="Image usage and digest" aria-label="Image usage and digest"><i class="fas fa-list"></i></button>
             <button class="action-btn" data-action="layers" data-id="${row.id}" title="View layers"><i class="fas fa-layer-group"></i></button>
             <button class="action-btn" data-action="inspect" data-id="${row.id}" title="${i18n.t('pages.images.inspect')}"><i class="fas fa-info-circle"></i></button>
             <button class="action-btn danger" data-action="remove" data-id="${row.id}" title="${i18n.t('common.remove')}"><i class="fas fa-trash"></i></button>
@@ -69,7 +74,18 @@ const ImagesPage = {
     });
 
     container.querySelector('#image-search').addEventListener('input',
-      Utils.debounce(e => this._table.setFilter(e.target.value), 200));
+      Utils.debounce(e => {
+        if (!e.target.isConnected) return;
+        this._table.setFilter(e.target.value);
+        if (this._repositoryView) this._renderRepositories(e.target.value);
+      }, 200));
+    container.querySelector('#image-group-repos').addEventListener('click', event => {
+      this._repositoryView = !this._repositoryView;
+      event.currentTarget.setAttribute('aria-pressed', String(this._repositoryView));
+      container.querySelector('#images-table').hidden = this._repositoryView;
+      container.querySelector('#images-repositories').hidden = !this._repositoryView;
+      if (this._repositoryView) this._renderRepositories(container.querySelector('#image-search').value);
+    });
 
     container.querySelector('#pull-btn').addEventListener('click', () => this._pullDialog());
     container.querySelector('#build-btn').addEventListener('click', () => this._buildDialog());
@@ -90,6 +106,7 @@ const ImagesPage = {
       else if (btn.dataset.action === 'export') this._exportImage(id);
       else if (btn.dataset.action === 'push') this._pushDialog(id, btn.dataset.image || id);
       else if (btn.dataset.action === 'sandbox') ContainersPage._sandboxDialog(btn.dataset.image || id);
+      else if (btn.dataset.action === 'inventory') this._showImageInventory(this._imageRows.find(image => image.id === id));
       else if (btn.dataset.action === 'layers') this._showLayers(id);
       else if (btn.dataset.action === 'inspect') App.navigate(`/images/${encodeURIComponent(id)}`);
       else if (btn.dataset.action === 'remove') this._remove(id);
@@ -122,17 +139,22 @@ const ImagesPage = {
   },
 
   async _load() {
+    const table = this._table;
+    const view = document.getElementById('images-table');
     try {
       const images = await Api.getImages();
+      if (!view?.isConnected || this._table !== table) return;
+      this._imageRows = images;
       images.forEach(img => {
         const tag = (img.repoTags || [])[0] || '<none>:<none>';
-        const [repo, t] = tag.split(':');
+        const { repo, tag: t } = this._splitImageReference(tag);
         img._repo = repo;
         img._tag = t;
         img._id = img.id;
         img._created = img.created;
       });
-      this._table.setData(images);
+      table.setData(images);
+      if (this._repositoryView) this._renderRepositories(document.getElementById('image-search').value);
 
       // Update footer
       const footer = document.getElementById('images-footer');
@@ -148,8 +170,97 @@ const ImagesPage = {
 
   _renderRepo(row) {
     const tags = row.repoTags || [];
-    const repo = tags[0] ? tags[0].split(':')[0] : '<none>';
+    const repo = tags[0] ? this._splitImageReference(tags[0]).repo : '<none>';
     return `<span class="mono">${Utils.escapeHtml(repo)}</span>`;
+  },
+
+  _splitImageReference(reference) {
+    const colon = reference.lastIndexOf(':');
+    return colon > reference.lastIndexOf('/') ? { repo: reference.slice(0, colon), tag: reference.slice(colon + 1) }
+      : { repo: reference, tag: '' };
+  },
+
+  _renderRepositories(query) {
+    const root = document.getElementById('images-repositories');
+    const search = query.trim().toLowerCase();
+    const groups = new Map();
+    for (const image of this._imageRows || []) {
+      const references = image.repoTags.length ? image.repoTags : ['<none>:<none>'];
+      for (const reference of references) {
+        if (search && !reference.toLowerCase().includes(search) && !image.id.includes(search)) continue;
+        const { repo, tag } = this._splitImageReference(reference);
+        if (!groups.has(repo)) groups.set(repo, []);
+        groups.get(repo).push({ tag, reference, image });
+      }
+    }
+    const escape = Utils.escapeHtml;
+    root.innerHTML = [...groups.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([repo, rows]) => `
+      <details class="card image-repository" data-repository="${escape(repo)}" ${search || this._expandedRepositories.has(repo) ? 'open' : ''}>
+        <summary><strong>${escape(repo)}</strong><span class="badge">${rows.length}</span></summary>
+        <div class="file-list-scroll"><table class="data-table compact"><thead><tr><th>Tag</th><th>Image ID</th><th>Size</th><th></th></tr></thead>
+        <tbody>${rows.map(({ tag, reference, image }) => `<tr>
+          <td>${escape(tag || '—')}</td><td class="mono">${Utils.shortImageId(image.id)}</td><td>${Utils.formatBytes(image.size)}</td>
+          <td><button type="button" class="btn btn-xs btn-secondary" data-image-review="${escape(image.id)}" data-reference="${escape(reference)}">Usage and digest</button>
+          <a class="btn btn-xs btn-secondary" href="#/images/${encodeURIComponent(image.id)}">Details</a></td>
+        </tr>`).join('')}</tbody></table></div>
+      </details>`).join('') || '<p class="text-muted">No matching repositories.</p>';
+    if (!search) root.querySelectorAll('[data-repository]').forEach(group => group.addEventListener('toggle', () => {
+      if (group.open) this._expandedRepositories.add(group.dataset.repository);
+      else this._expandedRepositories.delete(group.dataset.repository);
+    }));
+    root.querySelectorAll('[data-image-review]').forEach(button => button.addEventListener('click', () =>
+      this._showImageInventory(this._imageRows.find(image => image.id === button.dataset.imageReview), button.dataset.reference)));
+  },
+
+  async _showImageInventory(image, tag = image?.repoTags[0]) {
+    if (!image) return;
+    const escape = Utils.escapeHtml;
+    const hostId = image.hostId ?? Api.getHostId();
+    const host = App._hostSelectorHosts?.find(item => item.id === hostId || (!hostId && item.isDefault));
+    const canCheck = ['admin', 'operator'].includes(App.user?.role) && image.repoTags.includes(tag);
+    Modal.open(`<div class="modal-header"><h3>${escape(tag || 'Image usage and digest')}</h3></div>
+      <div class="modal-body">
+        <p class="text-sm text-muted">Docker host · ${escape(host?.name || (hostId ? `Host #${hostId}` : 'Local Docker'))}</p>
+        <p class="mono" style="overflow-wrap:anywhere">${escape(image.id)}</p>
+        <ul class="image-digest-list">${image.repoDigests.map(digest => `<li class="mono">${escape(digest)}</li>`).join('') || '<li>No local registry digest recorded</li>'}</ul>
+        ${canCheck ? '<button class="btn btn-sm btn-secondary" type="button" data-check-image-tag>Check registry digest</button><p role="status" data-tag-status></p>' : ''}
+        <h4>Containers using this exact image</h4><div data-image-consumers>Loading…</div>
+        <h4>Verified scans for this image</h4><div data-image-scans>Loading…</div>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn btn-secondary" data-close-inventory>Close</button></div>`, { width: '730px' });
+    const content = Modal._content;
+    const consumers = content.querySelector('[data-image-consumers]');
+    const scans = content.querySelector('[data-image-scans]');
+    content.querySelector('[data-close-inventory]').addEventListener('click', () => Modal.close());
+    content.querySelector('[data-check-image-tag]')?.addEventListener('click', async event => {
+      const button = event.currentTarget;
+      const status = content.querySelector('[data-tag-status]');
+      button.disabled = true;
+      status.textContent = 'Checking…';
+      try {
+        const query = new URLSearchParams({ reference: tag, hostId });
+        const data = await Api.get(`/images/${encodeURIComponent(image.id)}/tag-status?${query}`);
+        status.textContent = ({
+          same: 'Registry digest matches the installed reference.',
+          different: 'Registry digest differs from the installed reference.',
+          unknown: 'There is no matching local digest to compare.',
+        }[data.status]) + ' ' + data.registryDigest;
+      } catch (error) { status.textContent = error.message; }
+      finally { button.disabled = false; }
+    });
+    await Promise.all([
+      Api.get(`/containers?hostId=${hostId}`).then(containers => {
+        const matches = containers.filter(container => container.imageIdFull === image.id);
+        consumers.innerHTML = matches.length ? `<ul>${matches.map(container =>
+          `<li><a href="#/containers/${encodeURIComponent(container.id)}">${escape(container.name)}</a> <span class="badge">${escape(container.state)}</span></li>`).join('')}</ul>`
+          : '<p class="text-muted">No visible containers use this image.</p>';
+        consumers.querySelectorAll('a').forEach(link => link.addEventListener('click', () => Modal.close()));
+      }).catch(error => { consumers.textContent = error.message; }),
+      Api.get('/images/scan-history?' + new URLSearchParams({ imageId: image.id, hostId, limit: 5 })).then(history => {
+        scans.innerHTML = history.length ? `<ul>${history.map(scan => `<li>${escape(scan.scanner)} · ${scan.summary_total} findings · ${escape(scan.scanned_at)}</li>`).join('')}</ul>`
+          : '<p class="text-muted">No verified scan recorded.</p>';
+      }).catch(error => { scans.textContent = error.message; }),
+    ]);
   },
 
   async _pullDialog() {

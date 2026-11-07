@@ -9,6 +9,7 @@ const { getClientIp } = require('../utils/helpers');
 const { extractHostId } = require('../middleware/hostId');
 const { requireHostAccessForMethod } = require('../middleware/hostAccess');
 const asyncHandler = require('../utils/asyncHandler');
+const { parseSubnet, findOverlaps } = require('../utils/docker-network-subnet');
 
 const router = Router();
 router.use(extractHostId);
@@ -19,6 +20,17 @@ router.get('/', requireAuth, requireHostAccessForMethod(), asyncHandler(async (r
 
 router.get('/:id/inspect', requireAuth, requireHostAccessForMethod(), asyncHandler(async (req, res) => {
   res.json(await dockerService.inspectNetwork(req.params.id, req.resolvedHostId ?? req.hostId));
+}));
+
+router.get('/check-subnet', requireAuth, requireHostAccessForMethod(), requireRole('admin'), asyncHandler(async (req, res) => {
+  const { subnet, driver, gateway } = req.query;
+  const hostId = req.resolvedHostId ?? req.hostId;
+  if (!subnet && !gateway) return res.json({ hostId, conflicts: [] });
+  const range = parseSubnet(subnet);
+  if (!range || !['bridge', 'macvlan', 'overlay'].includes(driver)) return res.status(400).json({ error: 'Enter a valid IPv4 or IPv6 subnet in CIDR notation' });
+  if (gateway && (typeof gateway !== 'string' || !range.includes(gateway))) return res.status(400).json({ error: 'Gateway must be an address inside the subnet' });
+  const networks = await dockerService.getDocker(hostId).listNetworks();
+  res.json({ hostId, conflicts: findOverlaps(networks, range, driver === 'overlay' ? 'swarm' : 'local') });
 }));
 
 router.post('/', requireAuth, requireHostAccessForMethod(), requireRole('admin'), writeable, asyncHandler(async (req, res) => {

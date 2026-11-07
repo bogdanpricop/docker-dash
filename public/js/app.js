@@ -1572,7 +1572,7 @@ const App = {
     tree.innerHTML = sections.join('') || '<div class="text-muted text-sm" style="padding:8px">No matching hosts</div>';
   },
 
-  _activateHost(id) {
+  _activateHost(id, page) {
     const host = (this._hostSelectorHosts || []).find(item => item.id === id);
     if (!host) return;
     Api.setHost(host.isDefault ? 0 : id);
@@ -1590,6 +1590,8 @@ const App = {
     if (daemonPage) {
       if (location.hash === daemonPage) this._route();
       else location.hash = daemonPage;
+    } else if (page && location.hash !== page) {
+      location.hash = page;
     } else if (nonDockerPages.includes(location.hash)) {
       location.hash = '#/dashboard';
     } else {

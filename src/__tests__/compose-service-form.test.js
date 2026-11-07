@@ -51,6 +51,32 @@ services:
     expect(parsed.services.web.healthcheck.test).toEqual(['CMD', 'curl', 'localhost']);
   });
 
+  test('graphs references from short, long and merged syntax without exposing values', () => {
+    const graph = form.graph(`
+include: [extra.yml]
+x-default: &defaults
+  networks: {edge: {}}
+services:
+  app:
+    <<: *defaults
+    depends_on: {db: {condition: service_started}}
+    volumes: [store:/var/lib/app, /sensitive/path:/mnt]
+    configs: [{source: flags, target: /run/app.ini}]
+    secrets: [key]
+    environment: {TOKEN: very-sensitive-value}
+  db: {image: postgres}
+volumes: {store: {}}
+configs: {flags: {content: private}}
+secrets: {key: {environment: TOKEN}}
+`, YAML);
+    expect(graph.imports).toBe(true);
+    expect(graph.services[0]).toEqual({
+      name: 'app', services: ['db'], networks: ['edge'], volumes: ['store'], configs: ['flags'], secrets: ['key'],
+    });
+    expect(graph.services[1].networks).toEqual(['default']);
+    expect(JSON.stringify(graph)).not.toMatch(/sensitive|private|TOKEN/);
+  });
+
   test('adds and removes services without replacing the rest of the document', () => {
     const source = 'name: demo\nservices:\n  old:\n    image: busybox\nvolumes:\n  data: {}\n';
     const services = form.extractServices(source, YAML);

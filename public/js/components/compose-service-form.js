@@ -22,9 +22,9 @@ const ComposeServiceForm = (() => {
     return yamlModulePromise;
   }
 
-  function parseDocument(text, YAML) {
+  function parseDocument(text, YAML, { merge = false } = {}) {
     const documentNode = YAML.parseDocument(String(text || ''), {
-      keepSourceTokens: true, prettyErrors: true, uniqueKeys: true,
+      keepSourceTokens: true, prettyErrors: true, uniqueKeys: true, merge,
     });
     if (documentNode.errors.length) throw documentNode.errors[0];
     const value = documentNode.toJS() || {};
@@ -54,6 +54,34 @@ const ComposeServiceForm = (() => {
     if (Array.isArray(value)) return value.join('\n');
     if (value && typeof value === 'object') return Object.keys(value).join('\n');
     return '';
+  }
+
+  function graph(text, YAML) {
+    const { value } = parseDocument(text, YAML, { merge: true });
+    const keys = input => Object.keys(input || {});
+    const references = input => Array.isArray(input)
+      ? input.map(entry => typeof entry === 'string' ? entry : entry?.source).filter(name => typeof name === 'string')
+      : keys(input);
+    const namedVolumes = new Set(keys(value.volumes));
+    const services = Object.entries(value.services || {}).map(([name, input]) => {
+      const service = input || {};
+      const volumes = (Array.isArray(service.volumes) ? service.volumes : [])
+        .map(mount => typeof mount === 'string' ? mount.split(':')[0] : mount?.type === 'volume' ? mount.source : '')
+        .filter(volume => namedVolumes.has(volume));
+      const networks = references(service.networks);
+      return {
+        name,
+        services: references(service.depends_on),
+        networks: networks.length || service.network_mode ? networks : ['default'],
+        volumes: [...new Set(volumes)],
+        configs: references(service.configs),
+        secrets: references(service.secrets),
+      };
+    });
+    return {
+      services,
+      imports: Boolean(value.include || Object.values(value.services || {}).some(service => service?.extends)),
+    };
   }
 
   function extractServices(text, YAML) {
@@ -339,7 +367,7 @@ const ComposeServiceForm = (() => {
     };
   }
 
-  return { mount, extractServices, applyChanges, validateServices };
+  return { mount, extractServices, applyChanges, validateServices, graph, async graphFromYaml(text) { return graph(text, await loadYamlModule()); } };
 })();
 
 if (typeof window !== 'undefined') window.ComposeServiceForm = ComposeServiceForm;
