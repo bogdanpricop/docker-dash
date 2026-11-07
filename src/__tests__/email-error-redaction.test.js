@@ -46,3 +46,20 @@ test.each([
   expect(error.details).toMatchObject(expected);
   expect(error.details.response).toBeUndefined();
 });
+
+test('a partial SMTP acceptance reports counts without returning recipient addresses', async () => {
+  const accepted = 'accepted@example.test';
+  const rejected = 'rejected@example.test';
+  const smtp = { host: 'smtp.example.test', port: 25 };
+  mailer.createTransport.mockReturnValue({ sendMail: jest.fn().mockResolvedValue({
+    accepted: [accepted], rejected: [rejected],
+    rejectedErrors: [{ code: 'EENVELOPE', command: 'RCPT TO', responseCode: 550, response: '550 5.1.1 No mailbox for ' + rejected }],
+  }) });
+  const error = await email.send({ smtp, to: [accepted, rejected], diagnostics: true }).catch(error => error);
+  expect(error.message).toMatch(/accepted only some recipients/);
+  expect(error.details).toMatchObject({
+    acceptedRecipients: 1, rejectedRecipients: 1, smtpStatus: 550, smtpEnhancedStatus: '5.1.1',
+    response: expect.stringContaining('No mailbox'),
+  });
+  expect(JSON.stringify(error.details)).not.toContain('@example.test');
+});

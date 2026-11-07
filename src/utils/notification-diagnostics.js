@@ -22,6 +22,25 @@ const networkReasons = {
   ERR_INVALID_URL: 'The configured provider URL is invalid.',
 };
 
+const httpReasons = {
+  400: 'The provider rejected the test request. Check the channel configuration.',
+  401: 'The provider rejected the credentials. Check the token or webhook URL.',
+  403: 'The provider denied access. Check the permissions for the target.',
+  404: 'The target was not found. Check the webhook, topic or chat configuration.',
+  410: 'The target is gone. Check whether it has been removed or replaced.',
+  429: 'The provider is rate limiting requests. Wait before testing again.',
+};
+
+function httpDiagnostic(status, retryAfter, now = Date.now()) {
+  const details = { httpStatus: status, reason: httpReasons[status] };
+  if (status >= 500) details.reason = 'The provider encountered a server error.';
+  if ((status === 429 || status === 503) && retryAfter) {
+    const seconds = /^\d+$/.test(retryAfter) ? Number(retryAfter) : Math.ceil((Date.parse(retryAfter) - now) / 1000);
+    if (Number.isSafeInteger(seconds) && seconds >= 0) details.retryAfterSeconds = seconds;
+  }
+  return details;
+}
+
 function networkDiagnostic(error) {
   const cause = error?.cause;
   const codes = [error?.originalCode, error?.code, cause?.code, cause?.errors?.[0]?.code];
@@ -39,32 +58,47 @@ function safeProviderText(value, sensitive = []) {
   // at a truncation boundary can escape the known-value replacements.
   if (value.length > 4096) return undefined;
   let text = value;
-  const secrets = new Set();
+  const secrets = new Map();
+  const addSecret = (secret, pathWord = false) => {
+    if (!secret) return;
+    const encoded = Buffer.from(secret);
+    for (const form of [secret, encodeURIComponent(secret.toWellFormed()), JSON.stringify(secret).slice(1, -1),
+      encoded.toString('base64'), encoded.toString('base64url')]) {
+      secrets.set(form, pathWord && secrets.get(form) !== false);
+    }
+  };
   for (const value of sensitive) {
     if (typeof value !== 'string' || !value.trim()) continue;
-    secrets.add(value);
-    secrets.add(value.trim());
-    secrets.add(encodeURIComponent(value.toWellFormed()));
-    secrets.add(Buffer.from(value).toString('base64'));
+    addSecret(value);
+    addSecret(value.trim());
     // Webhook URLs carry credentials in the path and query even without
     // HTTP userinfo. Servers sometimes echo just those pieces.
     if (/^https?:\/\//i.test(value)) {
       try {
         const url = new URL(value);
-        for (const part of [url.username, url.password, ...url.searchParams.values(), ...url.pathname.split('/').filter(part => part.length >= 8)]) {
-          if (part) {
-            secrets.add(part);
-            secrets.add(encodeURIComponent(part.toWellFormed()));
-            try { secrets.add(decodeURIComponent(part)); } catch { /* malformed percent encoding */ }
-          }
+        for (const part of [url.username, url.password, ...url.searchParams.values()]) {
+          addSecret(part);
+          try { addSecret(decodeURIComponent(part)); } catch { /* malformed percent encoding */ }
+        }
+        for (const part of url.pathname.split('/').filter(part => part.length >= 3)) {
+          const pathWord = /^[a-z0-9]{3,7}$/i.test(part);
+          addSecret(part, pathWord);
+          try { addSecret(decodeURIComponent(part), pathWord); } catch { /* malformed percent encoding */ }
         }
       } catch { /* invalid URLs are already covered by the exact replacement */ }
     }
   }
-  for (const secret of [...secrets].sort((a, b) => b.length - a.length)) text = text.replaceAll(secret, '[redacted]');
+  const matches = [...secrets.keys()].filter(secret => text.includes(secret)).sort((a, b) => b.length - a.length);
+  if (matches.length) {
+    const pattern = matches.map(secret => {
+      const literal = RegExp.escape(secret);
+      return secrets.get(secret) ? '(?<![a-zA-Z0-9])' + literal + '(?![a-zA-Z0-9])' : literal;
+    }).join('|');
+    text = text.replace(new RegExp(pattern, 'g'), '[redacted]');
+  }
   return text
     .replace(/\b(?:authorization|proxy-authorization|cookie|set-cookie)["']?\s*[:=]\s*[^\r\n]*/gi, '[redacted]')
-    .replace(/\b(?:password|passphrase|secret|(?:(?:access|bot|api)[-_ ]?)?token|api[-_ ]?key)["']?\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi, '[redacted]')
+    .replace(/\b(?:password|passphrase|(?:client[-_ ]?)?secret|(?:(?:access|bot|api)[-_ ]?)?token|(?:x[-_ ]?)?api[-_ ]?key)["']?\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi, '[redacted]')
     .replace(/\b(?:bearer|basic)\s+[^\s,;]+/gi, '[redacted]')
     .replace(/\b[a-z][a-z0-9+.-]*:\/\/[^\s<>"']+/gi, '[redacted]')
     .replace(/\b[^\s<>"',;@]+@[^\s<>"',;@]+/g, '[redacted]')
@@ -74,4 +108,4 @@ function safeProviderText(value, sensitive = []) {
     .trim().slice(0, 500) || undefined;
 }
 
-module.exports = { networkDiagnostic, safeProviderText };
+module.exports = { httpDiagnostic, networkDiagnostic, safeProviderText };

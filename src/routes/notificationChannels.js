@@ -1,6 +1,7 @@
 'use strict';
 
 const { Router } = require('express');
+const { performance } = require('node:perf_hooks');
 const channelService = require('../services/notificationChannels');
 const auditService = require('../services/audit');
 const notificationSmtp = require('../services/notification-smtp');
@@ -81,15 +82,18 @@ router.delete('/:id', requireAuth, requireRole('admin'), writeable, (req, res) =
 
 router.post('/:id/test', requireAuth, requireRole('admin'), async (req, res) => {
   res.set('Cache-Control', 'no-store');
+  const started = performance.now();
+  const completed = () => ({ testedAt: new Date().toISOString(), durationMs: Math.round(performance.now() - started) });
   try {
-    await channelService.test(parseInt(req.params.id));
-    res.json({ ok: true });
+    await channelService.test(Number(req.params.id));
+    res.json({ ok: true, ...completed() });
   } catch (err) {
     const known = err.details || err.status === 400 || err.status === 404;
     res.json({
       ok: false,
       error: known ? err.message : 'Notification test could not be completed',
       details: err.details,
+      ...completed(),
     });
   }
 });

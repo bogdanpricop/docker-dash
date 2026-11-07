@@ -9,6 +9,9 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.96.24', date: '2026-11-07', title: 'Notification test follow-up', changes: [
+      { type: 'improvement', text: 'Reopen the last test from its channel, see timing and partial SMTP results, and retry or edit the configuration from the details dialog.' },
+    ] },
     { version: '8.96.23', date: '2026-11-06', title: 'Notification test details', changes: [
       { type: 'improvement', text: 'See and copy SMTP, HTTP, and connection diagnostics when a notification channel test fails.' },
     ] },

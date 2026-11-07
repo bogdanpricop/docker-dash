@@ -125,6 +125,7 @@ async function main() {
     await page.evaluate(() => {
       Api.testNotificationChannel = async () => ({
         ok: false, error: 'Email delivery failed',
+        testedAt: '2026-11-07T10:00:00Z', durationMs: 124,
         details: { code: 'EENVELOPE', command: 'RCPT TO', smtpStatus: 550, smtpEnhancedStatus: '5.7.1',
           response: 'Relay access denied <img src=x onerror=alert(1)>' },
       });
@@ -136,9 +137,27 @@ async function main() {
     assert.match(diagnostics, /SMTP status: 550 5\.7\.1/);
     assert.match(diagnostics, /SMTP command: RCPT TO/);
     assert.match(diagnostics, /Relay access denied/);
+    assert.match(diagnostics, /Duration: 124 ms/);
     assert.equal(await page.$('#nc-test-details img'), null);
     await page.click('#nc-test-copy');
     assert.equal(await page.evaluate(() => window.copiedDetails), diagnostics);
+    await page.click('.modal-footer [data-nc-test-close]');
+    await page.waitForSelector('#modal-overlay.hidden');
+    await page.click('[data-action="result-nc"]');
+    assert.match(await page.$eval('#nc-test-details', el => el.textContent), /Relay access denied/);
+    await page.click('#nc-test-smtp');
+    await page.waitForSelector('#modal-sub-content #nc-smtp-mode');
+    await page.click('#modal-sub-content [data-nc-smtp-cancel]');
+    await page.waitForSelector('#modal-sub-overlay.hidden');
+    await page.evaluate(() => {
+      Api.testNotificationChannel = async () => new Promise(resolve => { window.finishTest = resolve; });
+    });
+    await page.click('#nc-test-retry');
+    assert.equal(await page.$eval('[data-action="test-nc"]', el => el.getAttribute('aria-busy')), 'true');
+    assert.equal(await page.$eval('#nc-test-retry', el => el.disabled), true);
+    await page.evaluate(() => window.finishTest({ ok: true, durationMs: 42 }));
+    await page.waitForFunction(() => document.querySelector('#nc-test-details')?.textContent.includes('Duration: 42 ms'));
+    assert.match(await page.$eval('#nc-test-details', el => el.textContent), /Check the destination for delivery/);
     await page.click('.modal-footer [data-nc-test-close]');
     console.log('Notification channel create/edit, validation, and external SMTP settings passed.');
     await checkSettingsForms(page);

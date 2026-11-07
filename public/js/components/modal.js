@@ -87,9 +87,16 @@ const Modal = {
     this._overlay.removeAttribute('inert');         // v8.7.16 — re-enable interaction + AT tree
     this._overlay.removeAttribute('aria-hidden');   // legacy fallback
     requestAnimationFrame(() => this._overlay.classList.add('modal-visible'));
-    // Focus first interactive element
-    const firstInput = this._content.querySelector('input, textarea, select, button');
-    if (firstInput) setTimeout(() => firstInput.focus(), 100);
+    this._focusInitial(this._overlay, this._content);
+  },
+
+  _focusInitial(overlay, content) {
+    const target = content.querySelector('input, textarea, select, button');
+    if (!target) return;
+    setTimeout(() => {
+      const subOpen = overlay === this._overlay && this._subOverlay && !this._subOverlay.hasAttribute('inert');
+      if (target.isConnected && !subOpen && !overlay.hasAttribute('inert') && !content.contains(document.activeElement)) target.focus();
+    }, 100);
   },
 
   close() {
@@ -236,8 +243,7 @@ const Modal = {
     this._subOverlay.removeAttribute('inert');           // v8.7.16
     this._subOverlay.removeAttribute('aria-hidden');
     requestAnimationFrame(() => this._subOverlay.classList.add('modal-visible'));
-    const firstInput = this._subContent.querySelector('input, textarea, select, button');
-    if (firstInput) setTimeout(() => firstInput.focus(), 100);
+    this._focusInitial(this._subOverlay, this._subContent);
     return this._subContent;
   },
 

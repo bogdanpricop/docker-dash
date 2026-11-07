@@ -61,30 +61,40 @@ class EmailService {
 
   async send({ to, subject, html, smtp = config.smtp, diagnostics = false }) {
     const from = smtp.fromName ? { name: smtp.fromName, address: smtp.fromEmail } : smtp.fromEmail;
+    let recipientCounts;
 
     try {
       const transporter = this._getTransporter(smtp);
       const info = await transporter.sendMail({ from, to, subject, html });
+      if (diagnostics && info.rejected?.length) {
+        recipientCounts = { acceptedRecipients: info.accepted?.length || 0, rejectedRecipients: info.rejected.length };
+        throw info.rejectedErrors?.[0] || Object.assign(new Error('Recipients were rejected'), { code: 'EENVELOPE', command: 'RCPT TO' });
+      }
       log.info('Email sent', { to, subject, messageId: info.messageId });
       return { ok: true, messageId: info.messageId };
     } catch (err) {
       // Transport errors can echo the message body, including reset/invite tokens.
       const code = Object.hasOwn(smtpReasons, err.code) ? err.code : 'SEND_FAILED';
       log.error('Email send failed', { to, subject, code });
-      const failure = Object.assign(new Error('Email delivery failed'), { code });
+      const failure = Object.assign(new Error(recipientCounts?.acceptedRecipients
+        ? 'The SMTP server accepted only some recipients' : 'Email delivery failed'), { code });
       if (diagnostics) {
         const network = networkDiagnostic(err);
         const command = /^AUTH(?: |$)/.test(err.command) ? 'AUTH' : err.command;
         const reply = typeof err.response === 'string' ? err.response : '';
         const responseCode = Number.isInteger(err.responseCode) && err.responseCode >= 400 && err.responseCode <= 599 ? err.responseCode : undefined;
+        const authentication = command === 'AUTH' || code === 'EAUTH';
+        const response = responseCode && !authentication
+          ? safeProviderText(reply, [smtp.user, smtp.password, smtp.fromEmail, subject, html, ...[to].flat()]) : undefined;
         failure.details = {
           code: network.code || code,
           reason: network.reason || smtpReasons[code] || 'SMTP delivery failed.',
           command: ['AUTH', 'CONN', 'EHLO', 'HELO', 'STARTTLS', 'MAIL FROM', 'RCPT TO', 'DATA', 'RSET'].includes(command) ? command : undefined,
           smtpStatus: responseCode,
           smtpEnhancedStatus: responseCode ? reply.match(/^\d{3}[ -]([45]\.\d{1,3}\.\d{1,3})(?:\s|$)/)?.[1] : undefined,
-          response: responseCode && command !== 'AUTH' && code !== 'EAUTH'
-            ? safeProviderText(reply, [smtp.user, smtp.password, smtp.fromEmail, subject, html, ...[to].flat()]) : undefined,
+          response,
+          responseOmitted: Boolean(reply && !response),
+          ...recipientCounts,
         };
       }
       throw failure;

@@ -3,8 +3,9 @@
 const { getDb } = require('../db');
 const { encrypt, decrypt } = require('../utils/crypto');
 const { now } = require('../utils/helpers');
-const { networkDiagnostic, safeProviderText } = require('../utils/notification-diagnostics');
+const { httpDiagnostic, networkDiagnostic, safeProviderText } = require('../utils/notification-diagnostics');
 const log = require('../utils/logger')('notify');
+const activeTests = new Set();
 
 /**
  * Notification channel providers.
@@ -132,9 +133,11 @@ async function request(url, options, diagnostic) {
       if (!res.ok) {
         const failure = new Error(`HTTP ${res.status}`);
         if (diagnostic) {
+          const response = safeProviderText(await readFailureResponse(res), [...diagnostic, url]);
           failure.details = {
-            httpStatus: res.status,
-            response: safeProviderText(await readFailureResponse(res), [...diagnostic, url]),
+            ...httpDiagnostic(res.status, res.headers?.get('retry-after')),
+            response,
+            responseOmitted: Boolean(res.body && !response),
           };
         }
         throw failure;
@@ -288,12 +291,19 @@ class NotificationChannelService {
   }
 
   async test(id) {
-    return this.send(id, {
-      title: 'Docker Dash — Test Notification',
-      text: 'If you see this, your notification channel is configured correctly!',
-      severity: 'info',
-      event: 'test',
-    }, { diagnostics: true });
+    if (!Number.isSafeInteger(id) || id < 1) throw Object.assign(new Error('Invalid channel ID'), { status: 400 });
+    if (activeTests.has(id)) {
+      throw Object.assign(new Error('A test is already running for this channel'), { details: { code: 'TEST_IN_PROGRESS' } });
+    }
+    activeTests.add(id);
+    try {
+      return await this.send(id, {
+        title: 'Docker Dash — Test Notification',
+        text: 'If you see this, your notification channel is configured correctly!',
+        severity: 'info',
+        event: 'test',
+      }, { diagnostics: true });
+    } finally { activeTests.delete(id); }
   }
 
   // ─── Helpers ─────────────────────────────────────

@@ -6,9 +6,11 @@
 const SettingsPage = {
   _tab: 'profile',
   _user: null,
+  _notificationTests: new Map(),
 
   async render(container) {
     this._user = App.user;
+    this._notificationTests = new Map();
     const isAdmin = this._user?.role === 'admin';
 
     container.innerHTML = `
@@ -221,6 +223,12 @@ const SettingsPage = {
         Api.getNotificationChannels(),
         Api.getNotificationProviders(),
       ]);
+      const tests = this._notificationTests;
+      const t = key => i18n.t('pages.settings.' + key);
+      const esc = Utils.escapeHtml;
+      const channelById = new Map(channels.map(channel => [channel.id, channel]));
+      const providerById = new Map(providers.map(provider => [provider.id, provider]));
+      for (const id of tests.keys()) if (!channelById.has(id)) tests.delete(id);
 
       const providerIcons = { discord: 'fab fa-discord', slack: 'fab fa-slack', telegram: 'fab fa-telegram', ntfy: 'fas fa-bell', gotify: 'fas fa-bell', email: 'fas fa-envelope', webhook: 'fas fa-globe' };
 
@@ -235,19 +243,22 @@ const SettingsPage = {
             <table class="data-table">
               <thead><tr><th style="text-align:left">Name</th><th>Provider</th><th>Status</th><th></th></tr></thead>
               <tbody>${channels.map(c => `
-                <tr>
+                <tr data-nc-row="${c.id}">
                   <td style="text-align:left"><i class="${providerIcons[c.provider] || 'fas fa-bell'}" style="margin-right:8px;color:var(--accent)"></i><strong>${Utils.escapeHtml(c.name)}</strong></td>
                   <td>
-                    <span class="badge badge-info">${Utils.escapeHtml(providers.find(p => p.id === c.provider)?.name || c.provider)}</span>
-                    ${providers.find(p => p.id === c.provider)?.settings === 'smtp'
+                    <span class="badge badge-info">${esc(providerById.get(c.provider)?.name || c.provider)}</span>
+                    ${providerById.get(c.provider)?.settings === 'smtp'
                       ? `<button type="button" class="btn btn-sm btn-secondary" data-action="smtp-nc">${i18n.t('pages.settings.notificationSmtpSettings')}</button>`
                       : ''}
                   </td>
-                  <td>${c.is_active ? '<span class="text-green">Active</span>' : '<span class="text-muted">Inactive</span>'}</td>
+                  <td>${c.is_active ? '<span class="text-green">Active</span>' : '<span class="text-muted">Inactive</span>'}
+                    <div class="text-sm text-muted" data-nc-test-status role="status"></div>
+                    <span data-nc-result hidden><button type="button" class="btn btn-sm btn-secondary" data-action="result-nc" data-id="${c.id}">${esc(t('notificationTestDetails'))}</button></span>
+                  </td>
                   <td>
                     <div class="action-btns">
                       <button type="button" class="action-btn" data-action="edit-nc" data-id="${c.id}" title="${i18n.t('common.edit')}" aria-label="${i18n.t('common.edit')}"><i class="fas fa-edit" aria-hidden="true"></i></button>
-                      <button class="action-btn" data-action="test-nc" data-id="${c.id}" title="Test"><i class="fas fa-paper-plane"></i></button>
+                      <button type="button" class="action-btn" data-action="test-nc" data-id="${c.id}" title="${esc(t(c.is_active ? 'notificationTestRun' : 'notificationTestInactive'))}" aria-label="${esc(t(c.is_active ? 'notificationTestRun' : 'notificationTestInactive'))}" ${c.is_active ? '' : 'disabled'}><i class="fas fa-paper-plane" aria-hidden="true"></i></button>
                       <button class="action-btn danger" data-action="delete-nc" data-id="${c.id}" title="Delete"><i class="fas fa-trash"></i></button>
                     </div>
                   </td>
@@ -260,30 +271,68 @@ const SettingsPage = {
 
       el.querySelector('#nc-create')?.addEventListener('click', () => this._openNotificationChannel(providers));
 
+      const paintTest = channel => {
+        const row = el.querySelector(`[data-nc-row="${channel.id}"]`);
+        if (!row) return;
+        const state = tests.get(channel.id);
+        const button = row.querySelector('[data-action="test-nc"]');
+        button.disabled = !channel.is_active || Boolean(state?.pending);
+        button.setAttribute('aria-busy', String(Boolean(state?.pending)));
+        button.querySelector('i').className = state?.pending ? 'fas fa-spinner fa-spin' : 'fas fa-paper-plane';
+        const result = state?.result;
+        row.querySelector('[data-nc-result]').hidden = !result || state.pending;
+        const status = row.querySelector('[data-nc-test-status]');
+        status.textContent = state?.pending ? t('sendingTest') : result
+          ? [t(result.ok ? 'notificationTestAccepted' : 'notificationTestFailedTitle'), this._notificationTestDate(result.testedAt)].filter(Boolean).join(' · ')
+          : '';
+      };
+      channels.forEach(paintTest);
+
+      const showResult = (channel, result) => {
+        this._showNotificationTestResult(channel, providerById.get(channel.provider), result, {
+          retry: button => runTest(channel, button),
+          edit: () => this._openNotificationChannel(providers, channel),
+          smtp: () => this._openNotificationSmtpSettings(true),
+        });
+      };
+      const runTest = async (channel, trigger) => {
+        if (!channel.is_active || tests.get(channel.id)?.pending) return;
+        tests.set(channel.id, { pending: true });
+        trigger.disabled = true;
+        paintTest(channel);
+        let result;
+        try {
+          result = await Api.testNotificationChannel(channel.id);
+          if (typeof result?.ok !== 'boolean') throw new Error(t('notificationTestUnavailable'));
+        }
+        catch (err) { result = { ok: false, error: err.message }; }
+        result.testedAt ||= new Date().toISOString();
+        tests.set(channel.id, { result });
+        paintTest(channel);
+        if (!trigger.isConnected || trigger.closest('[inert]') || this._tab !== 'notifications') return;
+        trigger.disabled = false;
+        const retry = trigger.id === 'nc-test-retry';
+        if (retry || (!result.ok && document.getElementById('modal-overlay')?.classList.contains('hidden'))) showResult(channel, result);
+      };
+
       el.querySelectorAll('[data-action]').forEach(btn => btn.addEventListener('click', async () => {
         const id = parseInt(btn.dataset.id);
+        const channel = channelById.get(id);
         if (btn.dataset.action === 'smtp-nc') {
           await this._openNotificationSmtpSettings();
         } else if (btn.dataset.action === 'edit-nc') {
-          const channel = channels.find(c => c.id === id);
           if (channel) await this._openNotificationChannel(providers, channel);
         } else if (btn.dataset.action === 'test-nc') {
-          const channel = channels.find(c => c.id === id);
-          const provider = providers.find(p => p.id === channel?.provider)?.name || channel?.provider;
-          btn.disabled = true;
-          Toast.info(i18n.t('pages.settings.sendingTest'));
-          try {
-            const res = await Api.testNotificationChannel(id);
-            if (res.ok) Toast.success(i18n.t('pages.settings.testSentSuccess'));
-            else this._showNotificationTestFailure(channel?.name, provider, res);
-          } catch (err) {
-            this._showNotificationTestFailure(channel?.name, provider, { error: err.message });
-          } finally { btn.disabled = false; }
+          if (channel) await runTest(channel, btn);
+        } else if (btn.dataset.action === 'result-nc') {
+          const result = tests.get(id)?.result;
+          if (channel && result) showResult(channel, result);
         } else if (btn.dataset.action === 'delete-nc') {
           const ok = await Modal.confirm(i18n.t('pages.settings.deleteChannelConfirm'), { danger: true });
           if (!ok) return;
           try {
             await Api.deleteNotificationChannel(id);
+            tests.delete(id);
             Toast.success(i18n.t('pages.settings.channelDeleted'));
             this._renderTab();
           } catch (err) { Toast.error(err.message); }
@@ -294,24 +343,35 @@ const SettingsPage = {
     }
   },
 
-  _showNotificationTestFailure(name, provider, result) {
+  _notificationTestDate(timestamp) {
+    const date = new Date(timestamp || '');
+    return Number.isFinite(date.getTime()) ? date.toLocaleString() : '';
+  },
+
+  _showNotificationTestResult(channel, provider, result, { retry, edit, smtp }) {
     const t = key => i18n.t('pages.settings.' + key);
     const esc = Utils.escapeHtml;
     const close = esc(i18n.t('common.close'));
     const details = result.details || {};
-    const summary = [name, provider].filter(Boolean).join(' · ');
+    const summary = [channel.name, provider?.name || channel.provider].filter(Boolean).join(' · ');
     const entries = [
+      ['notificationTestTime', this._notificationTestDate(result.testedAt)],
+      ['notificationTestDuration', Number.isFinite(result.durationMs) ? `${result.durationMs} ms` : ''],
       ['notificationTestReason', details.reason],
       ['notificationTestCode', details.code],
       ['notificationTestCommand', details.command],
       ['notificationTestSmtpStatus', [details.smtpStatus, details.smtpEnhancedStatus].filter(Boolean).join(' ')],
       ['notificationTestHttpStatus', details.httpStatus],
-      ['notificationTestResponse', details.response],
-    ].filter(([, value]) => value);
-    const text = [summary, result.error, ...entries.map(([label, value]) => `${t(label)}: ${value}`)].filter(Boolean).join('\n');
+      ['notificationTestRetryAfter', Number.isFinite(details.retryAfterSeconds) ? `${details.retryAfterSeconds} s` : ''],
+      ['notificationTestRecipients', Number.isFinite(details.rejectedRecipients)
+        ? i18n.t('pages.settings.notificationTestRecipientCounts', { accepted: details.acceptedRecipients, rejected: details.rejectedRecipients }) : ''],
+      ['notificationTestResponse', details.response || (details.responseOmitted ? t('notificationTestResponseOmitted') : '')],
+    ].filter(([, value]) => value !== undefined && value !== '');
+    const text = [summary, result.ok ? t('notificationTestAcceptedNote') : result.error,
+      ...entries.map(([label, value]) => `${t(label)}: ${value}`)].filter(Boolean).join('\n');
     Modal.open(`
       <div class="modal-header">
-        <h3>${esc(t('notificationTestFailedTitle'))}</h3>
+        <h3>${esc(t(result.ok ? 'notificationTestAccepted' : 'notificationTestFailedTitle'))}</h3>
         <button type="button" class="modal-close-btn" data-nc-test-close aria-label="${close}"><i class="fas fa-times"></i></button>
       </div>
       <div class="modal-body">
@@ -319,9 +379,18 @@ const SettingsPage = {
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" id="nc-test-copy">${esc(i18n.t('common.copy'))}</button>
+        ${!result.ok ? `<button type="button" class="btn btn-secondary" id="nc-test-edit">${esc(i18n.t('common.edit'))}</button>` : ''}
+        ${!result.ok && provider?.settings === 'smtp' ? `<button type="button" class="btn btn-secondary" id="nc-test-smtp">${esc(t('notificationSmtpSettings'))}</button>` : ''}
+        ${!result.ok && channel.is_active ? `<button type="button" class="btn btn-secondary" id="nc-test-retry">${esc(t('notificationTestRetry'))}</button>` : ''}
         <button type="button" class="btn btn-primary" data-nc-test-close>${close}</button>
       </div>`, { width: '560px' });
     Modal._content.querySelectorAll('[data-nc-test-close]').forEach(button => button.addEventListener('click', () => Modal.close()));
+    Modal._content.querySelector('#nc-test-edit')?.addEventListener('click', edit);
+    Modal._content.querySelector('#nc-test-smtp')?.addEventListener('click', smtp);
+    Modal._content.querySelector('#nc-test-retry')?.addEventListener('click', event => {
+      event.currentTarget.textContent = t('sendingTest');
+      retry(event.currentTarget);
+    });
     Modal._content.querySelector('#nc-test-copy').addEventListener('click', async () => {
       try { await Utils.copyToClipboard(text); Toast.success(i18n.t('common.copied')); }
       catch (err) { Toast.error(err.message); }

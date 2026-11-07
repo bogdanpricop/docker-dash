@@ -97,7 +97,33 @@ test.each([
 ])('keeps the status of unreadable or oversized %s failures', async (type, body) => {
   const { id } = channels.create({ name: 'Ntfy', provider: 'ntfy', config: { topic: 'alerts' }, created_by: 1 });
   jest.spyOn(global, 'fetch').mockResolvedValue(new global.Response(body, { status: 429, headers: { 'content-type': type } }));
-  await expect(channels.test(id)).rejects.toMatchObject({ details: { httpStatus: 429, response: undefined } });
+  await expect(channels.test(id)).rejects.toMatchObject({ details: { httpStatus: 429, response: undefined, responseOmitted: true } });
+});
+
+test('reports Retry-After and masks short webhook tokens and encoded credentials', async () => {
+  const url = 'https://hooks.example.test/abc?token=other-secret';
+  const { id } = channels.create({ name: 'Hook', provider: 'webhook', config: { url }, created_by: 1 });
+  jest.spyOn(global, 'fetch').mockResolvedValue(new global.Response(
+    'Quota exhausted for abc ' + Buffer.from('other-secret').toString('base64url'), {
+      status: 429, headers: { 'content-type': 'text/plain', 'retry-after': '42' },
+    },
+  ));
+  await expect(channels.test(id)).rejects.toMatchObject({
+    details: { httpStatus: 429, retryAfterSeconds: 42, response: 'Quota exhausted for [redacted] [redacted]' },
+  });
+});
+
+test('rejects duplicate tests until the current attempt completes', async () => {
+  const { id } = channels.create({ name: 'Email', provider: 'email', config: { to: 'ops@example.test' }, created_by: 1 });
+  let finish;
+  email.send.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  const pending = channels.test(id);
+  await expect(channels.test(id)).rejects.toMatchObject({ details: { code: 'TEST_IN_PROGRESS' } });
+  expect(email.send).toHaveBeenCalledTimes(1);
+  finish({ ok: true });
+  await pending;
+  await channels.test(id);
+  expect(email.send).toHaveBeenCalledTimes(2);
 });
 
 test('reports connection refusal and distinguishes inactive channels from successful sends', async () => {

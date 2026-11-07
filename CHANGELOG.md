@@ -4,6 +4,9 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Keep the last notification test result on each channel while Settings is
+  open. Show timing, retry and editing actions, HTTP rate-limit guidance, and
+  partial SMTP recipient acceptance.
 - Show copyable notification test diagnostics with SMTP reply and command,
   HTTP status, or a connection error. Sensitive values are redacted from
   provider replies.
