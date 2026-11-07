@@ -9,60 +9,86 @@ const { decrypt } = require('../utils/crypto');
 const log = require('../utils/logger')('log-forwarder');
 const httpUrl = require('../utils/http-url');
 const { httpDiagnostic } = require('../utils/notification-diagnostics');
+const config = require('../config');
 
 // ─── Batch buffer per forwarder ─────────────────────────
 const _buffers = new Map(); // forwarderId -> { lines: [], timer }
 const BATCH_SIZE = 100;
 const FLUSH_INTERVAL_MS = 5000;
+const MAX_BUFFERED_LINES = 1000;
+const MAX_RETRIES = 2;
 
 /**
- * Add a log line to the forwarder buffer.
- * Called from Docker event stream integration.
+ * Add records from a container log stream to each enabled destination.
  */
-function ingestLine(containerName, containerId, line, timestamp) {
-  const db = getDb();
+function ingestLines(lines) {
+  if (!lines.length || config.features.readOnly) return;
   let forwarders;
   try {
-    forwarders = db.prepare('SELECT * FROM log_forwarders WHERE enabled = 1').all();
+    forwarders = getDb().prepare('SELECT id FROM log_forwarders WHERE enabled = 1').all();
   } catch { return; }
 
-  for (const fw of forwarders) {
-    const fwId = fw.id;
-    if (!_buffers.has(fwId)) {
-      _buffers.set(fwId, { lines: [], timer: null });
-    }
-    const buf = _buffers.get(fwId);
-    buf.lines.push({ containerName, containerId, line, timestamp: timestamp || new Date().toISOString() });
-
-    if (buf.lines.length >= BATCH_SIZE) {
-      _flush(fw);
-    } else if (!buf.timer) {
-      buf.timer = setTimeout(() => _flush(fw), FLUSH_INTERVAL_MS);
-    }
+  for (const { id } of forwarders) {
+    if (!_buffers.has(id)) _buffers.set(id, { lines: [], retries: 0, dropped: 0 });
+    const buffer = _buffers.get(id);
+    const room = MAX_BUFFERED_LINES - buffer.lines.length;
+    buffer.lines.push(...lines.slice(0, room));
+    buffer.dropped += Math.max(0, lines.length - room);
+    schedule(id, buffer);
   }
 }
 
-async function _flush(forwarder) {
-  const buf = _buffers.get(forwarder.id);
-  if (!buf || buf.lines.length === 0) return;
+function schedule(id, buffer, retryDelay) {
+  if (buffer.sending || !buffer.lines.length) return;
+  const delay = retryDelay ?? (buffer.lines.length >= BATCH_SIZE ? 0 : FLUSH_INTERVAL_MS);
+  if (buffer.timer && (buffer.retries || buffer.immediate || delay > 0)) return;
+  clearTimeout(buffer.timer);
+  buffer.immediate = delay === 0;
+  buffer.timer = setTimeout(() => {
+    buffer.timer = undefined;
+    void flush(id, buffer);
+  }, delay).unref();
+}
 
-  const lines = buf.lines.splice(0);
-  if (buf.timer) { clearTimeout(buf.timer); buf.timer = null; }
+function retryable(error) {
+  const status = error.details?.httpStatus;
+  return status === 408 || status === 429 || status >= 500 ||
+    ['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN', 'EHOSTUNREACH', 'ENETUNREACH'].includes(error.code);
+}
 
-  let config;
-  try { config = JSON.parse(decrypt(forwarder.config_json_encrypted)); }
-  catch (e) { log.error(`Forwarder ${forwarder.id}: config decrypt failed`, e.message); return; }
-
+async function flush(id, buffer) {
+  if (_buffers.get(id) !== buffer || buffer.sending || !buffer.lines.length) return;
+  buffer.sending = true;
+  let retryDelay, lines;
   try {
-    switch (forwarder.type) {
-      case 'loki': await _sendLoki(config, lines); break;
-      case 'elasticsearch': await _sendElasticsearch(config, lines); break;
-      case 'http': await _sendHttp(config, lines); break;
-      case 'syslog': await _sendSyslog(config, lines); break;
-      default: log.warn(`Unknown forwarder type: ${forwarder.type}`);
+    const destination = !config.features.readOnly &&
+      getDb().prepare('SELECT * FROM log_forwarders WHERE id = ? AND enabled = 1').get(id);
+    if (!destination) { discardBuffer(id); return; }
+    lines = buffer.lines.splice(0, BATCH_SIZE);
+    if (buffer.dropped) {
+      log.warn('Log forwarding queue reached its limit', { forwarderId: id, dropped: buffer.dropped });
+      buffer.dropped = 0;
     }
-  } catch (err) {
-    log.error(`Forwarder ${forwarder.name} (${forwarder.type}) send failed`, err.message);
+    await deliver(destination, lines);
+    buffer.retries = 0;
+  } catch (error) {
+    if (_buffers.get(id) !== buffer) return;
+    if (lines && retryable(error) && buffer.retries < MAX_RETRIES) {
+      buffer.retries++;
+      buffer.lines.unshift(...lines);
+      if (buffer.lines.length > MAX_BUFFERED_LINES) {
+        buffer.dropped += buffer.lines.length - MAX_BUFFERED_LINES;
+        buffer.lines.length = MAX_BUFFERED_LINES;
+      }
+      retryDelay = Math.min(60000, Math.max(5000 * buffer.retries, (error.details?.retryAfterSeconds || 0) * 1000));
+    } else {
+      if (!lines) buffer.lines.splice(0, BATCH_SIZE);
+      buffer.retries = 0;
+      log.warn('Log batch could not be delivered', { forwarderId: id, lines: lines?.length, status: error.details?.httpStatus });
+    }
+  } finally {
+    buffer.sending = false;
+    if (_buffers.get(id) === buffer) schedule(id, buffer, retryDelay);
   }
 }
 
@@ -81,20 +107,21 @@ function collectorPath(value, suffix) {
 
 // ─── Loki Push API ──────────────────────────────────────────
 async function _sendLoki(config, lines) {
-  // Group by container
-  const streams = {};
+  const streams = new Map();
   for (const l of lines) {
-    const key = l.containerName || 'unknown';
-    if (!streams[key]) streams[key] = [];
-    const ts = new Date(l.timestamp).getTime() * 1000000; // nanoseconds
-    streams[key].push([String(ts), l.line]);
+    const labels = { container: l.containerName || 'unknown', job: 'docker-dash' };
+    if (l.hostId != null) labels.host_id = String(l.hostId);
+    if (l.stream) labels.stream = l.stream;
+    const key = JSON.stringify(labels);
+    if (!streams.has(key)) streams.set(key, { stream: labels, values: [] });
+    const fraction = (/\.(\d{1,9})Z$/.exec(l.timestamp)?.[1] || '').padEnd(9, '0');
+    const seconds = BigInt(Math.floor(Date.parse(l.timestamp) / 1000));
+    const timestamp = (seconds * 1000000000n + BigInt(fraction)).toString();
+    streams.get(key).values.push([timestamp, l.line]);
   }
 
   const payload = {
-    streams: Object.entries(streams).map(([name, values]) => ({
-      stream: { container: name, job: 'docker-dash' },
-      values,
-    })),
+    streams: [...streams.values()],
   };
 
   await _httpPost(collectorPath(config.url, '/loki/api/v1/push'), payload, config.headers || {});
@@ -110,6 +137,9 @@ async function _sendElasticsearch(config, lines) {
       '@timestamp': l.timestamp,
       container_name: l.containerName,
       container_id: l.containerId,
+      host_id: l.hostId,
+      host_name: l.hostName,
+      stream: l.stream,
       message: l.line,
     }) + '\n';
   }
@@ -136,6 +166,9 @@ async function _sendHttp(config, lines) {
       timestamp: l.timestamp,
       container: l.containerName,
       containerId: l.containerId,
+      hostId: l.hostId,
+      hostName: l.hostName,
+      stream: l.stream,
       message: l.line,
     })),
   };
@@ -236,10 +269,6 @@ function _httpPost(url, body, extraHeaders = {}, rawBody = false) {
  * Test a forwarder by sending a test log line.
  */
 async function testForwarder(forwarder) {
-  let config;
-  try { config = JSON.parse(decrypt(forwarder.config_json_encrypted)); }
-  catch { throw new Error('Failed to decrypt forwarder config'); }
-
   const testLines = [{
     containerName: 'docker-dash-test',
     containerId: 'test-0000',
@@ -247,16 +276,21 @@ async function testForwarder(forwarder) {
     timestamp: new Date().toISOString(),
   }];
 
-  switch (forwarder.type) {
-    case 'loki': await _sendLoki(config, testLines); break;
-    case 'elasticsearch': await _sendElasticsearch(config, testLines); break;
-    case 'http': await _sendHttp(config, testLines); break;
-    case 'syslog': await _sendSyslog(config, testLines); break;
-    default: throw new Error('Unknown forwarder type: ' + forwarder.type);
-  }
-
-  const udp = forwarder.type === 'syslog' && (config.protocol || 'udp').toLowerCase() === 'udp';
+  const destination = await deliver(forwarder, testLines);
+  const udp = forwarder.type === 'syslog' && (destination.protocol || 'udp').toLowerCase() === 'udp';
   return { ok: true, message: udp ? 'Test datagram sent. Check the Syslog collector for receipt.' : 'Test message sent successfully' };
+}
+
+async function deliver(forwarder, lines) {
+  const destination = JSON.parse(decrypt(forwarder.config_json_encrypted));
+  switch (forwarder.type) {
+    case 'loki': await _sendLoki(destination, lines); break;
+    case 'elasticsearch': await _sendElasticsearch(destination, lines); break;
+    case 'http': await _sendHttp(destination, lines); break;
+    case 'syslog': await _sendSyslog(destination, lines); break;
+    default: throw new Error('Unknown forwarder type');
+  }
+  return destination;
 }
 
 /**
@@ -269,4 +303,4 @@ function stopAll() {
   _buffers.clear();
 }
 
-module.exports = { ingestLine, testForwarder, discardBuffer, stopAll };
+module.exports = { ingestLines, testForwarder, discardBuffer, stopAll };

@@ -589,6 +589,10 @@ class WsServer {
             hostName,
           };
 
+          if (data.type === 'container' && ['start', 'die', 'destroy'].includes(data.action)) {
+            require('../services/log-forwarder-source').onContainerEvent(data);
+          }
+
           // Store in DB — but skip the high-frequency `exec_*` noise
           // (exec_create / exec_start / exec_die). Container healthchecks emit
           // 3 of these every few seconds per container; persisting them bloats

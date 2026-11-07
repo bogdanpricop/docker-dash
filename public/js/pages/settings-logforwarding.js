@@ -15,7 +15,7 @@ const SettingsPageLogforwarding = {
             <button class="btn btn-sm btn-primary" id="lf-create"><i class="fas fa-plus"></i> Add Forwarder</button>
           </div>
           <div class="card-body">
-            <p class="text-muted mb-md">Configure destinations and send a test log to Grafana Loki, Elasticsearch, HTTP webhooks, or Syslog.</p>
+            <p class="text-muted mb-md">Enabled forwarders stream new container logs to Grafana Loki, Elasticsearch, HTTP webhooks, or Syslog. Use Test to check the destination with a sample message.</p>
             ${forwarders.length === 0
               ? '<div class="empty-msg">No log forwarders configured.</div>'
               : `<table class="data-table">

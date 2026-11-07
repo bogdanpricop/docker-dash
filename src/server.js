@@ -640,9 +640,9 @@ async function shutdown(signal) {
   const dockerService2 = require('./services/docker');
   dockerService2.stopHealthChecks();
 
+  try { require('./services/log-forwarder-source').stop(); } catch {}
   try { require('./services/ssh-tunnel').closeAll(); } catch {}
   try { await require('./services/egress-authorization').stop(); } catch {}
-  try { require('./services/log-forwarder').stopAll(); } catch {}
   // v8.7.38 — stop the remediation scheduler. start() is called above at
   // line 384; the symmetric stop was missing, so the setInterval kept
   // firing through the rest of shutdown. With the .unref() added in

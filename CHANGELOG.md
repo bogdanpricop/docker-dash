@@ -4,6 +4,11 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Stream new container logs to enabled Loki, Elasticsearch, HTTP webhook and
+  Syslog destinations while Docker Dash is running. Collection starts when
+  forwarding is enabled and resumes after connection interruptions. Delivery
+  uses bounded in-memory queues and retries transient failures. Set the
+  container label `com.docker-dash.log-forwarding=disabled` to exclude a container.
 - Improve notification activation, address validation, retry pacing and stale
   test feedback. Harden Secrets, log destination settings and AI model checks.
 - Require Alpine zlib 1.4-r0 or later in the runtime image (CVE-2026-4738).

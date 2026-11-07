@@ -575,6 +575,10 @@ function startAll() {
     catch (e) { log.error('Git polling stop failed', e.message); }
   });
 
+  const logSource = require('../services/log-forwarder-source');
+  cluster.onBecomeLeader(logSource.start);
+  cluster.onBecomeReader(logSource.stop);
+
   // v8.1.0 — Retention sweep (registry hygiene). Daily at 03:17 (off-:00).
   // Leader-only via _m() default. Iterates all enabled retention policies,
   // evaluates each rule against current registry state, executes deletes
@@ -856,6 +860,7 @@ function stopAll() {
   if (_sandboxInterval) { clearInterval(_sandboxInterval); _sandboxInterval = null; }
   if (_backupPruneTimer) { clearTimeout(_backupPruneTimer); _backupPruneTimer = null; }
   try { require('../services/gitPolling').stopAll(); } catch { /* git polling may not be initialized */ }
+  require('../services/log-forwarder-source').stop();
 }
 
 module.exports = { startAll, stopAll, pruneBackupSnapshots };

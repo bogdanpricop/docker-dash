@@ -9,6 +9,9 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.96.27', date: '2026-11-07', title: 'Live container log forwarding', changes: [
+      { type: 'fix', text: 'Enabled log forwarders continuously send new container logs to Loki, Elasticsearch, HTTP webhooks or Syslog, even when Settings is closed.' },
+    ] },
     { version: '8.96.26', date: '2026-11-07', title: 'Settings and delivery checks', changes: [
       { type: 'improvement', text: 'Pause notification channels, search Secrets, validate log collectors and verify the exact AI model.' },
     ] },

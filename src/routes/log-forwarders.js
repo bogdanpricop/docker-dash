@@ -6,6 +6,7 @@ const { getClientIp } = require('../utils/helpers');
 const { encrypt, decrypt } = require('../utils/crypto');
 const auditService = require('../services/audit');
 const logForwarder = require('../services/log-forwarder');
+const logSource = require('../services/log-forwarder-source');
 const { getDb } = require('../db');
 const asyncHandler = require('../utils/asyncHandler');
 const { isIP } = require('node:net');
@@ -86,6 +87,7 @@ router.post('/', requireAuth, requireRole('admin'), writeable, asyncHandler((req
     INSERT INTO log_forwarders (name, type, config_json_encrypted, enabled, created_by)
     VALUES (?, ?, ?, ?, ?)
   `).run(name.trim(), type, encrypted, enabled !== false ? 1 : 0, req.user.id);
+  logSource.refresh();
 
   auditService.log({
     userId: req.user.id, username: req.user.username,
@@ -134,6 +136,7 @@ router.put('/:id', requireAuth, requireRole('admin'), writeable, asyncHandler((r
   params.push(id);
   db.prepare(`UPDATE log_forwarders SET ${updates.join(', ')} WHERE id = ?`).run(...params);
   if (enabled !== undefined || type !== undefined || fwConfig !== undefined) logForwarder.discardBuffer(id);
+  logSource.refresh();
 
   auditService.log({
     userId: req.user.id, username: req.user.username,
@@ -153,6 +156,7 @@ router.delete('/:id', requireAuth, requireRole('admin'), writeable, asyncHandler
 
   db.prepare('DELETE FROM log_forwarders WHERE id = ?').run(id);
   logForwarder.discardBuffer(id);
+  logSource.refresh();
 
   auditService.log({
     userId: req.user.id, username: req.user.username,

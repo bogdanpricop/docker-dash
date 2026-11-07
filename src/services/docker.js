@@ -1005,6 +1005,11 @@ class DockerService {
     return await docker.getEvents();
   }
 
+  getContainerLogStream(hostId, containerId, options) {
+    const docker = this._createConnection(this._getHostConfig(hostId), 0);
+    return docker.getContainer(containerId).logs({ ...options, follow: true, stdout: true, stderr: true, timestamps: true });
+  }
+
   // ─── Exec ─────────────────────────────────────────────────
 
   async createExec(containerId, shell = '/bin/sh', hostId = 0) {
