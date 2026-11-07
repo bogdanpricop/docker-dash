@@ -8,7 +8,7 @@ const { getDb } = require('../db');
 const { decrypt } = require('../utils/crypto');
 const log = require('../utils/logger')('log-forwarder');
 const httpUrl = require('../utils/http-url');
-const { httpDiagnostic } = require('../utils/notification-diagnostics');
+const { httpDiagnostic, networkDiagnostic } = require('../utils/notification-diagnostics');
 const config = require('../config');
 
 // ─── Batch buffer per forwarder ─────────────────────────
@@ -56,12 +56,36 @@ function retryable(error) {
     ['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN', 'EHOSTUNREACH', 'ENETUNREACH'].includes(error.code);
 }
 
+function deliveryDiagnostic(error) {
+  const details = error.details || networkDiagnostic(error);
+  return { ...details, reason: details.reason || 'Docker Dash could not send the log batch.' };
+}
+
+function recordDelivery(destination, buffer, details, now) {
+  if (!destination || _buffers.get(destination.id) !== buffer) return;
+  try {
+    const db = getDb();
+    const where = 'WHERE id = ? AND enabled = 1 AND type = ? AND config_json_encrypted = ?';
+    const identity = [destination.id, destination.type, destination.config_json_encrypted];
+    const timestamp = new Date(now).toISOString();
+    if (details) {
+      db.prepare(`UPDATE log_forwarders SET last_delivery_error_at = ?, last_delivery_error_json = ? ${where}`)
+        .run(timestamp, JSON.stringify(details), ...identity);
+    } else {
+      db.prepare(`UPDATE log_forwarders SET last_delivery_at = ? ${where}`).run(timestamp, ...identity);
+    }
+  } catch {
+    // Recording the outcome must never cause an already delivered batch to be sent again.
+    log.warn('Could not save log delivery status', { forwarderId: destination.id });
+  }
+}
+
 async function flush(id, buffer) {
   if (_buffers.get(id) !== buffer || buffer.sending || !buffer.lines.length) return;
   buffer.sending = true;
-  let retryDelay, lines;
+  let retryDelay, lines, destination;
   try {
-    const destination = !config.features.readOnly &&
+    destination = !config.features.readOnly &&
       getDb().prepare('SELECT * FROM log_forwarders WHERE id = ? AND enabled = 1').get(id);
     if (!destination) { discardBuffer(id); return; }
     lines = buffer.lines.splice(0, BATCH_SIZE);
@@ -70,9 +94,11 @@ async function flush(id, buffer) {
       buffer.dropped = 0;
     }
     await deliver(destination, lines);
+    recordDelivery(destination, buffer, null, Date.now());
     buffer.retries = 0;
   } catch (error) {
     if (_buffers.get(id) !== buffer) return;
+    const attempt = buffer.retries + 1;
     if (lines && retryable(error) && buffer.retries < MAX_RETRIES) {
       buffer.retries++;
       buffer.lines.unshift(...lines);
@@ -86,6 +112,13 @@ async function flush(id, buffer) {
       buffer.retries = 0;
       log.warn('Log batch could not be delivered', { forwarderId: id, lines: lines?.length, status: error.details?.httpStatus });
     }
+    const now = Date.now();
+    recordDelivery(destination, buffer, {
+      ...deliveryDiagnostic(error),
+      attempt,
+      batchSize: lines?.length,
+      ...(retryDelay && { retryAt: new Date(now + retryDelay).toISOString() }),
+    }, now);
   } finally {
     buffer.sending = false;
     if (_buffers.get(id) === buffer) schedule(id, buffer, retryDelay);
@@ -100,7 +133,7 @@ function discardBuffer(id) {
 
 function collectorPath(value, suffix) {
   const url = httpUrl(value);
-  if (!url) throw new Error('Invalid collector URL');
+  if (!url) throw Object.assign(new Error('Invalid collector URL'), { code: 'ERR_INVALID_URL' });
   url.pathname = url.pathname.replace(/\/+$/, '') + suffix;
   return url.href;
 }
@@ -151,9 +184,13 @@ async function _sendElasticsearch(config, lines) {
   let response;
   try { response = JSON.parse(data); } catch { /* Report malformed acknowledgements below. */ }
   if (response?.errors !== false) {
-    const rejected = Array.isArray(response?.items) ? response.items.filter(item => item?.index?.status >= 300).length : 0;
+    const statuses = Array.isArray(response?.items) ? response.items.map(item => item?.index?.status)
+      .filter(status => Number.isInteger(status) && status >= 300 && status <= 599) : [];
+    const rejected = statuses.length;
     const reason = rejected ? 'Elasticsearch rejected one or more log entries.' : 'Elasticsearch did not return a successful bulk acknowledgement.';
-    throw Object.assign(new Error(reason), { details: { reason, ...(rejected ? { rejected } : {}) } });
+    throw Object.assign(new Error(reason), {
+      details: { reason, ...(rejected && { rejected, itemStatuses: [...new Set(statuses)].sort() }) },
+    });
   }
 }
 
@@ -216,7 +253,7 @@ async function _sendSyslog(config, lines) {
 function _httpPost(url, body, extraHeaders = {}, rawBody = false) {
   return new Promise((resolve, reject) => {
     const parsedUrl = httpUrl(url);
-    if (!parsedUrl) return reject(new Error('Invalid collector URL'));
+    if (!parsedUrl) return reject(Object.assign(new Error('Invalid collector URL'), { code: 'ERR_INVALID_URL' }));
 
     const isHttps = parsedUrl.protocol === 'https:';
     const transport = isHttps ? https : http;
@@ -240,6 +277,16 @@ function _httpPost(url, body, extraHeaders = {}, rawBody = false) {
       res.on('error', reject);
       if (res.statusCode < 200 || res.statusCode >= 300) {
         const details = httpDiagnostic(res.statusCode, res.headers['retry-after']);
+        details.reason = {
+          400: 'The destination rejected the request. Check the expected payload and collector settings.',
+          401: 'The destination rejected the credentials. Check the authentication headers.',
+          403: 'The destination denied access. Check the permissions for this collector.',
+          404: 'The destination endpoint was not found. Check the configured URL.',
+          408: 'The destination timed out while handling the request.',
+          410: 'The configured destination endpoint is gone.',
+          413: 'The destination rejected the batch because the request was too large.',
+          429: 'The destination is rate limiting requests.',
+        }[res.statusCode] || details.reason || 'The destination returned an unsuccessful HTTP response.';
         reject(Object.assign(new Error(`HTTP ${res.statusCode}`), { details }));
         res.destroy();
         return;
@@ -249,7 +296,8 @@ function _httpPost(url, body, extraHeaders = {}, rawBody = false) {
       if (rawBody) res.on('data', chunk => {
         size += chunk.length;
         if (size > 1024 * 1024) {
-          reject(new Error('Bulk acknowledgement exceeded the size limit'));
+          const reason = 'The Elasticsearch bulk acknowledgement exceeded the 1 MiB response limit.';
+          reject(Object.assign(new Error(reason), { details: { reason } }));
           res.destroy();
         } else chunks.push(chunk);
       });
@@ -282,7 +330,12 @@ async function testForwarder(forwarder) {
 }
 
 async function deliver(forwarder, lines) {
-  const destination = JSON.parse(decrypt(forwarder.config_json_encrypted));
+  let destination;
+  try { destination = JSON.parse(decrypt(forwarder.config_json_encrypted)); }
+  catch {
+    const reason = 'The saved destination settings could not be decrypted or read. Re-enter the destination settings.';
+    throw Object.assign(new Error(reason), { details: { reason } });
+  }
   switch (forwarder.type) {
     case 'loki': await _sendLoki(destination, lines); break;
     case 'elasticsearch': await _sendElasticsearch(destination, lines); break;
@@ -303,4 +356,4 @@ function stopAll() {
   _buffers.clear();
 }
 
-module.exports = { ingestLines, testForwarder, discardBuffer, stopAll };
+module.exports = { ingestLines, testForwarder, deliveryDiagnostic, discardBuffer, stopAll };

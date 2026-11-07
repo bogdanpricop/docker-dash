@@ -4,6 +4,8 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Show each log forwarder's last successful live delivery and latest failure,
+  with transport diagnostics and retry information in Settings.
 - Stream new container logs to enabled Loki, Elasticsearch, HTTP webhook and
   Syslog destinations while Docker Dash is running. Collection starts when
   forwarding is enabled and resumes after connection interruptions. Delivery

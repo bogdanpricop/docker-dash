@@ -222,6 +222,37 @@ async function checkSettingsForms(page) {
     name: 'Example logs', type: 'syslog', config: { host: 'syslog.example.test', port: 1514, protocol: 'tcp' }, enabled: false,
   }]);
   await page.evaluate(async () => {
+    const schedule = window.setTimeout;
+    window.setTimeout = (fn, delay, ...args) => schedule(fn, delay === 10000 ? 100 : delay, ...args);
+    window.logDelivery = { lastSuccessAt: null, lastErrorAt: null, lastError: null };
+    Api.get = async () => [{
+      id: 1, name: 'Webhook fixture', type: 'http', enabled: 1, created_at: '2026-11-07T00:00:00Z',
+      delivery: window.logDelivery,
+    }];
+    await SettingsPage._renderTab();
+  });
+  assert.match(await page.$eval('[data-lf-delivery="1"]', cell => cell.textContent), /No successful delivery yet/);
+  await page.evaluate(() => {
+    window.logDelivery = {
+      lastSuccessAt: '2026-11-07T00:00:01Z',
+      lastErrorAt: '2026-11-07T00:00:02Z',
+      lastError: { reason: 'Collector rejected <script>the batch</script>', httpStatus: 429, retryAfterSeconds: 15, attempt: 1 },
+    };
+  });
+  await page.waitForSelector('[data-action="delivery-error-lf"]');
+  assert.equal(await page.$eval('[data-lf-delivery="1"] time', el => el.dateTime), '2026-11-07T00:00:01Z');
+  await page.click('[data-action="delivery-error-lf"]');
+  const details = await page.$eval('#modal-content', el => el.textContent);
+  assert.match(details, /Collector rejected <script>the batch<\/script>/);
+  assert.match(details, /HTTP status429/);
+  assert.match(details, /15 s/);
+  assert.equal(await page.$('#modal-content script'), null);
+  await page.click('#lf-error-close');
+  await page.waitForSelector('#modal-overlay.hidden');
+  await page.evaluate(() => { window.logDelivery = { ...window.logDelivery, lastSuccessAt: '2026-11-07T00:00:03Z' }; });
+  await page.waitForFunction(() => document.querySelector('[data-action="delivery-error-lf"]').textContent.includes('Previous failure'));
+  await page.evaluate(async () => {
+    Api.get = async () => [];
     SettingsPage._tab = 'secrets';
     await SettingsPage._renderTab();
   });

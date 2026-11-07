@@ -11,8 +11,8 @@ const { getDb } = require('../db');
 const asyncHandler = require('../utils/asyncHandler');
 const { isIP } = require('node:net');
 const { validateHeaderName, validateHeaderValue } = require('node:http');
+const { isDeepStrictEqual } = require('node:util');
 const httpUrl = require('../utils/http-url');
-const { networkDiagnostic } = require('../utils/notification-diagnostics');
 
 const router = Router();
 const types = ['loki', 'elasticsearch', 'http', 'syslog'];
@@ -45,9 +45,20 @@ function configError(type, config) {
 
 // ─── List forwarders (config values hidden) ─────────────────
 router.get('/', requireAuth, requireRole('admin'), asyncHandler((req, res) => {
-  const db = getDb();
-  const rows = db.prepare('SELECT id, name, type, enabled, created_by, created_at FROM log_forwarders ORDER BY name ASC').all();
-  res.json(rows);
+  res.set('Cache-Control', 'no-store');
+  const rows = getDb().prepare(`
+    SELECT id, name, type, enabled, created_by, created_at,
+      last_delivery_at, last_delivery_error_at, last_delivery_error_json
+    FROM log_forwarders ORDER BY name ASC
+  `).all();
+  res.json(rows.map(({ last_delivery_at, last_delivery_error_at, last_delivery_error_json, ...forwarder }) => ({
+    ...forwarder,
+    delivery: {
+      lastSuccessAt: last_delivery_at,
+      lastErrorAt: last_delivery_error_at,
+      lastError: last_delivery_error_json ? JSON.parse(last_delivery_error_json) : null,
+    },
+  })));
 }));
 
 // ─── Get single forwarder (with decrypted config) ───────────
@@ -102,7 +113,7 @@ router.post('/', requireAuth, requireRole('admin'), writeable, asyncHandler((req
 router.put('/:id', requireAuth, requireRole('admin'), writeable, asyncHandler((req, res) => {
   const db = getDb();
   const id = parseInt(req.params.id);
-  const existing = db.prepare('SELECT type FROM log_forwarders WHERE id = ?').get(id);
+  const existing = db.prepare('SELECT type, config_json_encrypted FROM log_forwarders WHERE id = ?').get(id);
   if (!existing) return res.status(404).json({ error: 'Forwarder not found' });
 
   const { name, type, config: fwConfig, enabled } = req.body || {};
@@ -123,7 +134,13 @@ router.put('/:id', requireAuth, requireRole('admin'), writeable, asyncHandler((r
     const error = configError(type ?? existing.type, fwConfig);
     if (error) return res.status(400).json({ error });
   }
+  let configChanged = false;
   if (fwConfig !== undefined) {
+    let previous;
+    try { previous = JSON.parse(decrypt(existing.config_json_encrypted)); } catch { /* Allow replacing unreadable settings. */ }
+    configChanged = !isDeepStrictEqual(fwConfig, previous);
+  }
+  if (configChanged) {
     updates.push('config_json_encrypted = ?');
     params.push(encrypt(JSON.stringify(fwConfig)));
   }
@@ -131,11 +148,18 @@ router.put('/:id', requireAuth, requireRole('admin'), writeable, asyncHandler((r
     updates.push('enabled = ?'); params.push(enabled ? 1 : 0);
   }
 
-  if (updates.length === 0) return res.status(400).json({ error: 'No fields to update' });
+  if (updates.length === 0) {
+    if (fwConfig !== undefined) return res.json({ ok: true });
+    return res.status(400).json({ error: 'No fields to update' });
+  }
 
+  const destinationChanged = configChanged || (type !== undefined && type !== existing.type);
+  if (destinationChanged) {
+    updates.push('last_delivery_at = NULL', 'last_delivery_error_at = NULL', 'last_delivery_error_json = NULL');
+  }
   params.push(id);
   db.prepare(`UPDATE log_forwarders SET ${updates.join(', ')} WHERE id = ?`).run(...params);
-  if (enabled !== undefined || type !== undefined || fwConfig !== undefined) logForwarder.discardBuffer(id);
+  if (enabled !== undefined || destinationChanged) logForwarder.discardBuffer(id);
   logSource.refresh();
 
   auditService.log({
@@ -176,8 +200,8 @@ router.post('/:id/test', requireAuth, requireRole('admin'), writeable, asyncHand
 
   try { res.json(await logForwarder.testForwarder(row)); }
   catch (err) {
-    const details = err.details || networkDiagnostic(err);
-    res.status(502).json({ error: details.reason || 'Forwarder test failed', details });
+    const details = logForwarder.deliveryDiagnostic(err);
+    res.status(502).json({ error: details.reason, details });
   }
 }));
 

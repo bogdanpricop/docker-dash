@@ -8,6 +8,8 @@ const SettingsPageLogforwarding = {
   async _renderLogForwarding(el) {
     try {
       const forwarders = await Api.get('/log-forwarders');
+      if (!el.isConnected || this._tab !== 'log-forwarding') return;
+      const deliveries = new Map(forwarders.map(f => [f.id, f.delivery]));
       el.innerHTML = `
         <div class="card">
           <div class="card-header">
@@ -15,16 +17,17 @@ const SettingsPageLogforwarding = {
             <button class="btn btn-sm btn-primary" id="lf-create"><i class="fas fa-plus"></i> Add Forwarder</button>
           </div>
           <div class="card-body">
-            <p class="text-muted mb-md">Enabled forwarders stream new container logs to Grafana Loki, Elasticsearch, HTTP webhooks, or Syslog. Use Test to check the destination with a sample message.</p>
+            <p class="text-muted mb-md">Enabled forwarders stream new container logs to Grafana Loki, Elasticsearch, HTTP webhooks, or Syslog. Delivery status updates automatically and reflects container logs. Use Test to send a sample message separately.</p>
             ${forwarders.length === 0
               ? '<div class="empty-msg">No log forwarders configured.</div>'
               : `<table class="data-table">
-                <thead><tr><th>Name</th><th>Type</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+                <thead><tr><th>Name</th><th>Type</th><th>Status</th><th>Last delivery</th><th>Created</th><th>Actions</th></tr></thead>
                 <tbody>${forwarders.map(f => `
                   <tr>
                     <td class="mono">${Utils.escapeHtml(f.name)}</td>
                     <td><span class="badge badge-info">${Utils.escapeHtml(f.type)}</span></td>
                     <td>${f.enabled ? '<span class="text-green">Enabled</span>' : '<span class="text-muted">Disabled</span>'}</td>
+                    <td class="text-sm" data-lf-delivery="${f.id}">${this._logDeliveryCell(f)}</td>
                     <td class="text-sm">${Utils.timeAgo(f.created_at)}</td>
                     <td>
                       <div class="action-btns">
@@ -43,12 +46,38 @@ const SettingsPageLogforwarding = {
 
       el.querySelector('#lf-create').addEventListener('click', () => this._openLogForwarder());
 
-      el.querySelector('.card').addEventListener('click', async (e) => {
+      const card = el.querySelector('.card');
+      const cells = [...card.querySelectorAll('[data-lf-delivery]')];
+      const current = () => card.isConnected && this._tab === 'log-forwarding';
+      const refresh = async () => {
+        if (!current()) return;
+        try {
+          if (!document.hidden) {
+            const rows = new Map((await Api.get('/log-forwarders')).map(f => [f.id, f]));
+            if (!current()) return;
+            for (const cell of cells) {
+              const id = Number(cell.dataset.lfDelivery);
+              const row = rows.get(id);
+              if (!row || JSON.stringify(deliveries.get(id)) === JSON.stringify(row.delivery)) continue;
+              deliveries.set(id, row.delivery);
+              const focused = cell.contains(document.activeElement);
+              cell.innerHTML = this._logDeliveryCell(row);
+              if (focused) cell.querySelector('button')?.focus();
+            }
+          }
+        } catch { /* Keep the last known result until the next refresh. */ }
+        if (current()) setTimeout(refresh, 10000);
+      };
+      if (cells.length) setTimeout(refresh, 10000);
+
+      card.addEventListener('click', async (e) => {
         const btn = e.target.closest('[data-action]');
         if (!btn) return;
         const id = parseInt(btn.dataset.id);
 
-        if (btn.dataset.action === 'toggle-lf') {
+        if (btn.dataset.action === 'delivery-error-lf') {
+          this._showLogDeliveryError(forwarders.find(f => f.id === id)?.name, deliveries.get(id));
+        } else if (btn.dataset.action === 'toggle-lf') {
           btn.disabled = true;
           try {
             await Api.put('/log-forwarders/' + id, { enabled: !forwarders.find(f => f.id === id)?.enabled });
@@ -83,8 +112,52 @@ const SettingsPageLogforwarding = {
         }
       });
     } catch (err) {
-      el.innerHTML = '<div class="empty-msg">Error: ' + Utils.escapeHtml(err.message) + '</div>';
+      if (el.isConnected && this._tab === 'log-forwarding') {
+        el.innerHTML = '<div class="empty-msg">Error: ' + Utils.escapeHtml(err.message) + '</div>';
+      }
     }
+  },
+
+  _logDeliveryCell({ id, type, delivery = {} }) {
+    const { lastSuccessAt, lastErrorAt, lastError } = delivery;
+    const esc = Utils.escapeHtml;
+    const success = lastSuccessAt
+      ? `<time datetime="${esc(lastSuccessAt)}">${esc(Utils.formatDate(lastSuccessAt))}</time>
+         ${type === 'syslog' ? '<div class="text-muted">Sent without collector confirmation</div>' : ''}`
+      : '<span class="text-muted">No successful delivery yet</span>';
+    const error = lastError
+      ? `<div><button type="button" class="btn btn-sm btn-secondary" data-action="delivery-error-lf" data-id="${id}">
+          ${lastSuccessAt && lastSuccessAt > lastErrorAt ? 'Previous failure' : 'View delivery error'}
+        </button></div>`
+      : '';
+    return success + error;
+  },
+
+  _showLogDeliveryError(name, delivery) {
+    if (!delivery?.lastError) return;
+    const esc = Utils.escapeHtml;
+    const { lastError: details, lastErrorAt } = delivery;
+    const entries = [
+      ['Destination', name],
+      ['Failed at', Utils.formatDate(lastErrorAt)],
+      ['Reason', details.reason],
+      ['Error code', details.code],
+      ['HTTP status', details.httpStatus],
+      ['Batch size', details.batchSize],
+      ['Attempt', details.attempt],
+      ['Rejected entries', details.rejected],
+      ['Elasticsearch item statuses', details.itemStatuses?.join(', ')],
+      ['Collector retry delay', details.retryAfterSeconds != null ? `${details.retryAfterSeconds} s` : null],
+      ['Retry was scheduled for', details.retryAt ? Utils.formatDate(details.retryAt) : null],
+    ].filter(([, value]) => value != null);
+    Modal.open(`
+      <div class="modal-header"><h3>Log delivery error</h3></div>
+      <div class="modal-body"><dl>
+        ${entries.map(([label, value]) => `<dt><strong>${esc(label)}</strong></dt><dd>${esc(String(value))}</dd>`).join('')}
+      </dl></div>
+      <div class="modal-footer"><button type="button" class="btn btn-primary" id="lf-error-close">Close</button></div>
+    `, { width: '520px' });
+    Modal._content.querySelector('#lf-error-close').addEventListener('click', () => Modal.close());
   },
 
   async _openLogForwarder(forwarder = null) {
