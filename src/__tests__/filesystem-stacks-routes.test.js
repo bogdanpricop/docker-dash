@@ -82,6 +82,22 @@ describe('filesystem-backed stack routes', () => {
     expect(detail.body.config).toContain('nginx:alpine');
   });
 
+  test('does not attach local Compose files to a remote host inventory', async () => {
+    const { getDb } = require('../db');
+    getDb().prepare("INSERT INTO docker_hosts (id, name, connection_type) VALUES (91, 'Remote', 'ssh')").run();
+    dockerService.listContainers.mockResolvedValue([{
+      id: 'remote-container', name: 'remote-web', state: 'running', image: 'nginx:alpine',
+      labels: { 'com.docker.compose.project': 'offline', 'com.docker.compose.service': 'web' },
+    }]);
+    const response = await request(app).get('/api/system/stacks?context=1&hostId=91').expect(200);
+    expect(response.body.host).toEqual({ id: 91, name: 'Remote' });
+    expect(response.body.stacks).toEqual([expect.objectContaining({
+      name: 'offline', source: 'runtime', discovered: false, services: [],
+      running: 1, total: 1,
+    })]);
+    expect(dockerService.listContainers).toHaveBeenCalledWith(91);
+  });
+
   test('opens a running stack with deduplicated image and container sizes', async () => {
     const imageId = 'sha256:shared-image';
     const workingDir = path.join(stacksRoot, 'measured');

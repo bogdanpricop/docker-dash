@@ -47,7 +47,7 @@ const ContainersPage = {
     const filter = /^filter\/(running|degraded|stopped)$/.exec(params.id || '')?.[1];
     if (params.id && !filter) {
       this._view = 'detail';
-      const deepLink = /^([a-f0-9]{12,64})\/(terminal|logs)$/.exec(params.id);
+      const deepLink = /^([a-f0-9]{12,64})\/(terminal|logs|stats)$/.exec(params.id);
       this._detailId = deepLink ? deepLink[1] : params.id;
       try { await this._loadDetailModule(); }
       catch (err) {

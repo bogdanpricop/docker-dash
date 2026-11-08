@@ -55,6 +55,60 @@ async function main() {
     assert.match(graph, /Secret references\s*token/);
     assert.doesNotMatch(graph, /test-secret-value/);
 
+    const serviceId = 'a'.repeat(64);
+    await page.evaluate(async id => {
+      const compose = [
+        { name: 'billing', running: 1, total: 2, services: ['db', 'worker', 'cron'], containers: [
+          { id, name: 'billing-db', service: 'db', image: 'postgres:17', state: 'running', ports: [{ public: 5432, private: 5432, type: 'tcp' }] },
+          { id: 'b'.repeat(64), name: 'billing-worker', service: 'worker', image: 'worker:1', state: 'exited' },
+        ] },
+        { name: 'offline', running: 0, total: 0, discovered: true, diskOnly: true, services: ['frontend'], containers: [] },
+      ];
+      window.stacksHostId = 17;
+      window.App = { _hostSelectorHosts: [{ id: 17, name: 'Docker2' }, { id: 18, name: 'VPS' }] };
+      window.i18n = { t: key => key.split('.').at(-1) };
+      window.Api = {
+        getHostId: () => window.stacksHostId,
+        detectUptimeKuma: async () => ({ detected: false }),
+        get: async url => {
+          const host = App._hostSelectorHosts.find(item => item.id === window.stacksHostId);
+          if (url === '/git/stacks?hostId=' + host.id) return [];
+          if (url !== '/system/stacks?context=1&hostId=' + host.id) throw new Error('Stacks request was not pinned to the selected host');
+          return { host, stacks: compose };
+        },
+      };
+      await StacksPage.render(document.querySelector('#test'));
+    }, serviceId);
+    await page.click('#stack-view [data-view="table"]');
+    assert.equal(await page.$$eval('[data-stack-row]', rows => rows.length), 2);
+    assert.match(await page.$eval('#stacks-host', el => el.textContent), /Docker2/);
+    await page.select('#stacks-state', 'partial');
+    await page.type('#stack-search', 'postgres');
+    await page.waitForFunction(() => document.querySelectorAll('[data-stack-row]').length === 1);
+    await page.click('[data-stack-expand]');
+    assert.equal(await page.$eval('[data-stack-expand]', el => el.getAttribute('aria-expanded')), 'true');
+    assert.match(await page.$eval('.stack-table-service-grid', el => el.textContent), /5432→5432\/tcp/);
+    assert.match(await page.$eval('.stack-table-service-grid', el => el.textContent), /cron/);
+    for (const tab of ['logs', 'stats']) assert.ok(await page.$(`[href="#/containers/${serviceId}/${tab}"]`));
+    assert.ok(await page.$('[data-stack-review="check"]'));
+    assert.ok(await page.$('[data-stack-review="plan"]'));
+    await page.click('#stack-view [data-view="cards"]');
+    assert.equal(await page.$eval('[data-stack-services]', el => el.open), true);
+    await page.click('#stack-view [data-view="table"]');
+    await page.evaluate(() => StacksPage._loadList());
+    assert.equal(await page.$eval('[data-stack-expand]', el => el.getAttribute('aria-expanded')), 'true');
+    await page.evaluate(async () => {
+      StacksPage.destroy();
+      window.stacksHostId = 18;
+      await StacksPage.render(document.querySelector('#test'));
+    });
+    assert.match(await page.$eval('#stacks-host', el => el.textContent), /VPS/);
+    assert.equal(await page.$eval('#stack-search', el => el.value), 'postgres');
+    assert.equal(await page.$eval('#stacks-state', el => el.value), 'partial');
+    assert.equal(await page.$eval('[data-stack-expand]', el => el.getAttribute('aria-expanded')), 'false');
+    assert.deepEqual(await page.evaluate(() => ['view', 'search', 'state'].map(key => localStorage.getItem('dd-stacks-' + key))),
+      ['table', 'postgres', 'partial']);
+
     await page.evaluate(async () => {
       const host = { id: 17, name: 'Docker2', daemonType: 'docker', isActive: true, isDefault: true };
       const image = 'sha256:' + 'a'.repeat(64);
@@ -92,7 +146,7 @@ async function main() {
     assert.equal(report.runs[0].results.length, 1);
     assert.equal(report.runs[0].results[0].properties.hostId, 17);
     assert.deepEqual(errors, []);
-    console.log('Operator browser checks passed for grouped logs, safe search, Compose graph, triage filters and SARIF');
+    console.log('Operator browser checks passed for grouped logs, Compose graph, Stacks views and filters, triage and SARIF');
   } finally {
     await browser?.close();
     await new Promise(resolve => server.close(resolve));

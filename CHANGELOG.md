@@ -4,6 +4,8 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Add a compact Stacks table with expandable services and quick links to logs
+  and stats. Keep the selected host visible and remember list filters.
 - Download individual local database backups, including encrypted copies, in
   their original format.
 - Select and delete multiple local database backup copies in one confirmed

@@ -647,7 +647,8 @@ router.get('/stacks', requireAuth, hostAccess, async (req, res) => {
     // Merge stack definitions found on disk. Runtime state wins when both
     // sources describe the same project; disk-only entries remain actionable.
     const gitReposRoot = path.resolve(process.env.DATA_DIR || '/data', 'repos');
-    for (const diskStack of stacksFs.discover()) {
+    const diskStacks = !req.hostConnectionType || req.hostConnectionType === 'socket' ? stacksFs.discover() : [];
+    for (const diskStack of diskStacks) {
       const diskPath = path.resolve(diskStack.path);
       if (diskPath === gitReposRoot || diskPath.startsWith(gitReposRoot + path.sep)) continue;
       const existing = stacks.get(diskStack.name);

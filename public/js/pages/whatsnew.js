@@ -9,6 +9,9 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.96.37', date: '2026-11-08', title: 'Stacks table and host context', changes: [
+      { type: 'feature', text: 'Switch between stack cards and a compact table, expand services and open logs or stats. Keep list filters and the selected host visible.' },
+    ] },
     { version: '8.96.36', date: '2026-11-08', title: 'Local database backup downloads', changes: [
       { type: 'improvement', text: 'Download local database copies directly from System → Backup, including encrypted files.' },
     ] },

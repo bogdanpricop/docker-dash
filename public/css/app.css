@@ -398,6 +398,31 @@ textarea { resize: vertical; min-height: 80px; }
 .stack-services-preview summary { cursor: pointer; color: var(--text-bright); }
 .stack-services-preview ul { list-style: none; display: grid; gap: 6px; margin: 8px 0; }
 .stack-services-preview li { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 8px; font-size: 12px; overflow-wrap: anywhere; }
+.stack-list-host {
+  position: sticky; top: 0; z-index: 3; display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  margin-bottom: 12px; padding: 9px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+}
+.stacks-state-filter { width: auto; }
+.stack-table-scroll { overflow-x: auto; }
+.stack-table-scroll .stack-table { display: table; min-width: 600px; }
+.stack-table th:first-child { width: 36px; }
+.stack-table td:nth-child(5) { white-space: nowrap; }
+.stack-table .stack-table-services[hidden] { display: none; }
+.stack-table-services td { background: var(--surface); }
+.stack-list-actions { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; align-items: center; }
+.stack-card .stack-list-actions { margin-top: 8px; }
+.stack-expand[aria-expanded="true"] i { transform: rotate(90deg); }
+.stack-table-service-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px;
+  list-style: none; margin: 4px 0; padding: 0;
+}
+.stack-service-card {
+  display: grid; align-content: start; gap: 6px; padding: 10px; background: var(--bg-card);
+  border: 1px solid var(--border); border-radius: var(--radius); overflow-wrap: anywhere;
+}
+.stack-service-heading, .stack-service-links { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.stack-service-heading { justify-content: space-between; }
+@media (max-width: 768px) { .stack-list-host { top: 48px; } }
 .compose-graph { list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 10px; margin: 10px 0; }
 .compose-graph > li { min-width: 0; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; overflow-wrap: anywhere; }
 .compose-graph h4 { color: var(--text-bright); margin-bottom: 8px; }

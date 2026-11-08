@@ -5,8 +5,11 @@
 'use strict';
 
 const StacksPage = {
-  _tab: 'all', // all | compose | git
-  _filter: '',
+  _tab: ['compose', 'git'].includes(localStorage.getItem('dd-stacks-source')) ? localStorage.getItem('dd-stacks-source') : 'all',
+  _filter: localStorage.getItem('dd-stacks-search') || '',
+  _stateFilter: localStorage.getItem('dd-stacks-state') || '',
+  _listView: localStorage.getItem('dd-stacks-view') === 'table' ? 'table' : 'cards',
+  _stackHost: null,
   _listStacks: [],
   _expandedServices: new Set(),
   _detailStack: null,
@@ -40,7 +43,12 @@ const StacksPage = {
       return this._renderComposeDetail(container, composeMatch[2] || 'services');
     }
 
-    this._filter = '';
+    const states = ['running', 'partial', 'stopped'];
+    if (!states.includes(this._stateFilter)) this._stateFilter = '';
+    const selectedId = Api.getHostId();
+    this._stackHost = App._hostSelectorHosts?.find(host => host.id === selectedId || (!selectedId && host.isDefault)) || { id: selectedId };
+    this._listStacks = [];
+    this._uptimeKuma = null;
 
     container.innerHTML = `
       <div class="page-header">
@@ -51,8 +59,12 @@ const StacksPage = {
         <div class="page-actions">
           <div class="search-box">
             <i class="fas fa-search"></i>
-            <input type="text" id="stack-search" aria-label="${i18n.t('pages.stacks.filterPlaceholder')}" placeholder="${i18n.t('pages.stacks.filterPlaceholder')}">
+            <input type="search" id="stack-search" value="${Utils.escapeHtml(this._filter)}" aria-label="${i18n.t('pages.stacks.filterPlaceholder')}" placeholder="${i18n.t('pages.stacks.filterPlaceholder')}">
           </div>
+          <select class="form-control input-sm stacks-state-filter" id="stacks-state" aria-label="${i18n.t('common.status')}">
+            <option value="">${i18n.t('pages.stacks.allStates')}</option>
+            ${states.map(state => `<option value="${state}" ${state === this._stateFilter ? 'selected' : ''}>${i18n.t('pages.stacks.state.' + state)}</option>`).join('')}
+          </select>
           <label class="toggle-label" title="Include stopped Compose projects discovered under DD_STACKS_DIR">
             <input type="checkbox" id="stacks-show-disk" ${this._showDiskStacks ? 'checked' : ''}> From disk
           </label>
@@ -61,31 +73,57 @@ const StacksPage = {
             <button class="tab ${this._tab === 'compose' ? 'active' : ''}" data-tab="compose">${i18n.t('pages.stacks.tabCompose')}</button>
             <button class="tab ${this._tab === 'git' ? 'active' : ''}" data-tab="git">${i18n.t('pages.stacks.tabGit')}</button>
           </div>
+          <div class="tabs" id="stack-view" role="group" aria-label="${i18n.t('pages.stacks.listView')}" style="margin:0">
+            ${['cards', 'table'].map(view => `<button type="button" class="tab ${this._listView === view ? 'active' : ''}" data-view="${view}"
+              aria-pressed="${this._listView === view}">${i18n.t('pages.stacks.views.' + view)}</button>`).join('')}
+          </div>
           <button class="btn btn-sm btn-primary" id="stacks-create"><i class="fas fa-plus"></i> Create Stack</button>
           <button class="btn btn-sm btn-secondary" id="stacks-convert" title="Convert docker run to compose"><i class="fas fa-exchange-alt"></i> Convert docker run</button>
-          <button class="btn btn-sm btn-secondary" id="stacks-refresh"><i class="fas fa-sync-alt"></i></button>
+          <button class="btn btn-sm btn-secondary" id="stacks-refresh" aria-label="${i18n.t('common.refresh')}" title="${i18n.t('common.refresh')}"><i class="fas fa-sync-alt" aria-hidden="true"></i></button>
         </div>
       </div>
+      <div class="stack-list-host" id="stacks-host" role="status"></div>
       <div id="stacks-content"><div class="text-muted"><i class="fas fa-spinner fa-spin"></i> ${i18n.t('common.loading')}</div></div>
     `;
 
-    container.querySelector('#stack-search').addEventListener('input',
-      Utils.debounce(event => {
-        this._filter = event.target.value.trim().toLowerCase();
-        this._renderStackList();
-      }, 200));
+    const renderSearch = Utils.debounce(event => {
+      if (event.target.isConnected) this._renderStackList();
+    }, 200);
+    container.querySelector('#stack-search').addEventListener('input', event => {
+      this._filter = event.target.value;
+      localStorage.setItem('dd-stacks-search', this._filter);
+      renderSearch(event);
+    });
+    container.querySelector('#stacks-state').addEventListener('change', event => {
+      this._stateFilter = event.target.value;
+      localStorage.setItem('dd-stacks-state', this._stateFilter);
+      this._renderStackList();
+    });
     container.querySelectorAll('#stack-tabs .tab').forEach(tab => {
       tab.addEventListener('click', () => {
         this._tab = tab.dataset.tab;
+        localStorage.setItem('dd-stacks-source', this._tab);
         container.querySelectorAll('#stack-tabs .tab').forEach(t => t.classList.toggle('active', t.dataset.tab === this._tab));
-        this._loadList();
+        this._renderStackList();
+      });
+    });
+    container.querySelectorAll('#stack-view [data-view]').forEach(button => {
+      button.addEventListener('click', () => {
+        this._listView = button.dataset.view;
+        localStorage.setItem('dd-stacks-view', this._listView);
+        container.querySelectorAll('#stack-view [data-view]').forEach(view => {
+          const active = view.dataset.view === this._listView;
+          view.classList.toggle('active', active);
+          view.setAttribute('aria-pressed', String(active));
+        });
+        this._renderStackList();
       });
     });
     container.querySelector('#stacks-refresh').addEventListener('click', () => this._loadList());
     container.querySelector('#stacks-show-disk')?.addEventListener('change', event => {
       this._showDiskStacks = event.target.checked;
       localStorage.setItem('dd-stacks-show-disk', String(this._showDiskStacks));
-      this._loadList();
+      this._renderStackList();
     });
     container.querySelector('#stacks-create')?.addEventListener('click', () => this._createStackDialog());
     // v8.9.9-alpha.1 — Dockge G06 closure: docker-run → compose converter UI
@@ -98,50 +136,74 @@ const StacksPage = {
     const el = document.getElementById('stacks-content');
     if (!el) return;
     const request = this._stackListRequest = Symbol('stack list');
+    const requestedHostId = Api.getHostId();
+    const current = () => el.isConnected && request === this._stackListRequest && requestedHostId === Api.getHostId();
+    this._renderStackHost('connecting');
+    this._stackListLoading = true;
+    this._stackListError = '';
 
     try {
+      const composeRequest = Api.get(`/system/stacks?context=1&hostId=${requestedHostId}`);
       const [compose, gitStacks, uptimeKuma] = await Promise.all([
-        Api.get('/system/stacks?context=1').catch(() => ({ stacks: [], host: null })),
-        Api.getGitStacks().catch(() => []),
+        composeRequest,
+        composeRequest.then(({ host }) => Api.get(`/git/stacks?hostId=${host.id}`).catch(() => [])),
         Api.detectUptimeKuma().catch(() => ({ detected: false })),
       ]);
-      if (!el.isConnected || request !== this._stackListRequest) return;
+      if (!current()) return;
       const { stacks: composeStacks, host } = compose;
+      this._stackHost = host;
       this._uptimeKuma = uptimeKuma;
 
-      const unified = [];
-
-      if (this._tab === 'all' || this._tab === 'compose') {
-        for (const s of composeStacks) {
-          if (s.diskOnly && !this._showDiskStacks) continue;
-          unified.push({
+      this._listStacks = [
+        ...composeStacks.map(s => ({
             source: 'compose', name: s.name, running: s.running, total: s.total,
             containers: s.containers, workingDir: s.workingDir,
             discovered: !!s.discovered, diskOnly: !!s.diskOnly, composeSource: s.source,
             services: s.services || [], serviceCount: s.serviceCount || 0,
-          });
-        }
-      }
-
-      if (this._tab === 'all' || this._tab === 'git') {
-        for (const s of gitStacks) {
-          const targetIds = s.target_host_ids?.length ? s.target_host_ids : [s.host_id];
-          const targeted = host && (targetIds.includes(host.id) || (targetIds.includes(0) && Api.getHostId() === 0));
-          const runtime = targeted ? composeStacks.find(stack => stack.name === s.stack_name && !stack.diskOnly) : null;
-          unified.push({
+        })),
+        ...gitStacks.map(s => {
+          const runtime = composeStacks.find(stack => stack.name === s.stack_name && !stack.diskOnly);
+          return {
             source: 'git', name: s.stack_name, id: s.id, status: s.status,
             branch: s.branch, repoUrl: s.repo_url, lastCommit: s.last_commit_hash,
             running: runtime?.running || 0, total: runtime?.total || 0,
             containers: runtime?.containers || [], services: runtime?.services || [],
-          });
-        }
-      }
-
-      this._listStacks = unified;
+          };
+        }),
+      ];
+      this._stackListLoading = false;
+      this._renderStackHost('connected');
       this._renderStackList();
     } catch (err) {
-      if (el.isConnected && request === this._stackListRequest) el.textContent = err.message;
+      if (!current()) return;
+      this._listStacks = [];
+      this._stackListLoading = false;
+      this._stackListError = err.message;
+      this._renderStackHost('unavailable');
+      this._renderStackList();
     }
+  },
+
+  _renderStackHost(state) {
+    const el = document.getElementById('stacks-host');
+    if (!el) return;
+    const badge = { connecting: 'pending', connected: 'success', unavailable: 'danger' }[state];
+    el.innerHTML = `<i class="fas fa-server" aria-hidden="true"></i>
+      <span>${i18n.t('pages.stacks.selectedHost')} <strong>${Utils.escapeHtml(this._hostLabel(this._stackHost))}</strong></span>
+      <span class="badge badge-${badge}">${i18n.t('pages.stacks.connection.' + state)}</span>`;
+  },
+
+  _stackState(stack) {
+    if (!stack.running) return 'stopped';
+    return stack.running === stack.total ? 'running' : 'partial';
+  },
+
+  _stackIdentity(stack) {
+    return JSON.stringify([this._stackHost?.id, stack.source, stack.id ?? stack.name]);
+  },
+
+  _stackDetailPath(stack) {
+    return stack.source === 'git' ? `#/stacks/git/${stack.id}` : `#/stacks/compose/${encodeURIComponent(stack.name)}`;
   },
 
   _matchesStackSearch(stack, query = this._filter) {
@@ -160,14 +222,24 @@ const StacksPage = {
   _renderStackList() {
     const el = document.getElementById('stacks-content');
     if (!el) return;
-    const unified = (this._listStacks || []).filter(stack => this._matchesStackSearch(stack));
+    const unified = this._listStacks.filter(stack => (this._tab === 'all' || stack.source === this._tab)
+      && (this._showDiskStacks || !stack.diskOnly) && (!this._stateFilter || this._stackState(stack) === this._stateFilter)
+      && this._matchesStackSearch(stack));
     const uptimeKuma = this._uptimeKuma || { detected: false };
 
+      if (this._stackListError) {
+        el.innerHTML = `<div class="empty-msg" role="alert">${Utils.escapeHtml(this._stackListError)}</div>`;
+        return;
+      }
       if (unified.length === 0) {
+        if (this._stackListLoading && this._listStacks.length === 0) {
+          el.textContent = i18n.t('common.loading');
+          return;
+        }
         el.innerHTML = `
           <div class="empty-msg" style="padding:48px">
             <i class="fas fa-layer-group" style="font-size:48px;opacity:0.3;margin-bottom:12px"></i>
-            <p>${i18n.t(this._filter ? 'common.noResults' : 'pages.stacks.noStacks')}</p>
+            <p>${i18n.t(this._filter || this._stateFilter || this._tab !== 'all' ? 'common.noResults' : 'pages.stacks.noStacks')}</p>
           </div>`;
         return;
       }
@@ -184,9 +256,9 @@ const StacksPage = {
           <span><i class="fas fa-heartbeat" style="color:var(--green);margin-right:6px"></i><strong>Uptime Kuma detected</strong>${uptimeKuma.container?.name ? ` · ${Utils.escapeHtml(uptimeKuma.container.name)}` : ''}</span>
           ${kumaUrl ? `<a class="btn btn-sm btn-secondary" href="${Utils.escapeHtml(kumaUrl)}" target="_blank" rel="noopener noreferrer"><i class="fas fa-external-link-alt"></i> Open</a>` : '<span class="badge">port not published</span>'}
         </div>` : ''}
-        <div class="info-grid" style="margin-top:0">
+        ${this._listView === 'table' ? this._renderStackTable(unified) : `<div class="info-grid" style="margin-top:0">
           ${unified.map(s => this._renderStackCard(s)).join('')}
-        </div>
+        </div>`}
       `;
 
       // Card click to detail
@@ -201,6 +273,16 @@ const StacksPage = {
         details.addEventListener('toggle', () => {
           if (details.open) this._expandedServices.add(details.dataset.stackServices);
           else this._expandedServices.delete(details.dataset.stackServices);
+        });
+      });
+      el.querySelectorAll('[data-stack-expand]').forEach(button => {
+        button.addEventListener('click', () => {
+          const row = document.getElementById(button.getAttribute('aria-controls'));
+          const open = row.hidden;
+          row.hidden = !open;
+          button.setAttribute('aria-expanded', String(open));
+          if (open) this._expandedServices.add(button.dataset.stackExpand);
+          else this._expandedServices.delete(button.dataset.stackExpand);
         });
       });
       el.querySelectorAll('[data-stack-review]').forEach(button => {
@@ -258,7 +340,7 @@ const StacksPage = {
     finally { button.disabled = false; }
   },
 
-  _hostLabel(host) {
+  _hostLabel(host = {}) {
     return host.name || (host.id ? `Host #${host.id}` : 'Local Docker');
   },
 
@@ -353,7 +435,7 @@ const StacksPage = {
     const statusColor = isGit
       ? (s.status === 'deployed' ? 'var(--green)' : s.status === 'error' ? 'var(--red)' : 'var(--yellow)')
       : (s.running === s.total && s.total > 0 ? 'var(--green)' : s.running > 0 ? 'var(--yellow)' : 'var(--red)');
-    const navPath = isGit ? `#/stacks/git/${s.id}` : `#/stacks/compose/${encodeURIComponent(s.name)}`;
+    const navPath = this._stackDetailPath(s);
 
     return `
       <div class="card stack-card" style="cursor:pointer" data-navigate="${navPath}">
@@ -380,29 +462,88 @@ const StacksPage = {
               : `<div class="text-sm">${i18n.t('pages.stacks.containersRunning', { running: '<strong>' + s.running + '</strong>', total: s.total })}</div>`}
             ${this._renderServicePreview(s, navPath)}
           `}
-          <div style="display:flex;gap:4px;margin-top:8px;justify-content:flex-end">
-            ${isGit ? `
-              <button class="action-btn stack-action-btn" data-source="git" data-stack="${Utils.escapeHtml(s.name)}" data-stack-id="${s.id}" data-action="deploy" title="Deploy"><i class="fas fa-rocket"></i></button>
-            ` : `
-              <button class="action-btn stack-action-btn" data-source="compose" data-stack="${Utils.escapeHtml(s.name)}" data-action="up" title="Deploy" aria-label="Deploy"><i class="fas fa-play"></i></button>
-              <button class="btn btn-xs btn-secondary" data-stack-name="${Utils.escapeHtml(s.name)}" data-stack-review="check">Check</button>
-              <button class="btn btn-xs btn-secondary" data-stack-name="${Utils.escapeHtml(s.name)}" data-stack-review="plan">Plan</button>
-              ${s.total > 0 ? `<button class="action-btn stack-action-btn" data-source="compose" data-stack="${Utils.escapeHtml(s.name)}" data-action="down" title="Down"><i class="fas fa-stop"></i></button>
-              <button class="action-btn stack-action-btn" data-source="compose" data-stack="${Utils.escapeHtml(s.name)}" data-action="restart" title="Restart"><i class="fas fa-sync-alt"></i></button>` : ''}
-              <button class="action-btn stack-action-btn" data-source="compose" data-stack="${Utils.escapeHtml(s.name)}" data-action="pull" title="Pull"><i class="fas fa-download"></i></button>
-              ${s.total > 0 ? `<button class="action-btn stack-remediate-btn" data-stack="${Utils.escapeHtml(s.name)}" title="Remediate stack (security fixes)"><i class="fas fa-tools"></i></button>` : ''}
-            `}
-          </div>
+          ${this._renderStackActions(s)}
         </div>
       </div>
     `;
+  },
+
+  _renderStackActions(stack) {
+    const name = Utils.escapeHtml(stack.name);
+    const composeAction = (action, label, icon) => `<button type="button" class="action-btn stack-action-btn" data-source="compose"
+      data-stack="${name}" data-action="${action}" title="${label}" aria-label="${label}"><i class="fas ${icon}" aria-hidden="true"></i></button>`;
+    return `<div class="stack-list-actions">
+      ${stack.source === 'git' ? `
+        <button type="button" class="action-btn stack-action-btn" data-source="git" data-stack="${name}" data-stack-id="${stack.id}" data-action="deploy"
+          title="Deploy" aria-label="Deploy"><i class="fas fa-rocket" aria-hidden="true"></i></button>` : `
+        ${composeAction('up', 'Deploy', 'fa-play')}
+        <button type="button" class="btn btn-xs btn-secondary" data-stack-name="${name}" data-stack-review="check">Check</button>
+        <button type="button" class="btn btn-xs btn-secondary" data-stack-name="${name}" data-stack-review="plan">Plan</button>
+        ${stack.total > 0 ? composeAction('down', 'Down', 'fa-stop') + composeAction('restart', 'Restart', 'fa-sync-alt') : ''}
+        ${composeAction('pull', 'Pull', 'fa-download')}
+        ${stack.total > 0 ? `<button type="button" class="action-btn stack-remediate-btn" data-stack="${name}"
+          title="Remediate stack (security fixes)" aria-label="Remediate stack"><i class="fas fa-tools" aria-hidden="true"></i></button>` : ''}`}
+    </div>`;
+  },
+
+  _renderStackTable(stacks) {
+    const esc = Utils.escapeHtml;
+    const t = key => i18n.t('pages.stacks.' + key);
+    return `<div class="card stack-table-scroll" data-stacks-table><table class="data-table compact stack-table">
+      <thead><tr><th scope="col" aria-label="${t('services')}"></th><th scope="col">${i18n.t('common.name')}</th>
+        <th scope="col">${i18n.t('common.status')}</th><th scope="col">${t('source')}</th>
+        <th scope="col">${t('containerCount')}</th><th scope="col">${i18n.t('common.actions')}</th></tr></thead>
+      <tbody>${stacks.map((stack, index) => {
+        const path = this._stackDetailPath(stack);
+        const id = `stack-table-services-${index}`;
+        const identity = this._stackIdentity(stack);
+        const opened = this._expandedServices.has(identity);
+        const state = this._stackState(stack);
+        const badge = { running: 'success', partial: 'warning', stopped: 'stopped' }[state];
+        const hasServices = stack.total > 0 || stack.services.length > 0;
+        const source = stack.source === 'git' ? 'Git' : t(stack.discovered ? 'sourceDisk' : 'sourceHost');
+        return `<tr data-stack-row>
+          <td>${hasServices ? `<button type="button" class="action-btn stack-expand" data-stack-expand="${esc(identity)}" aria-controls="${id}"
+            aria-expanded="${opened}" aria-label="${esc(t('services') + ' · ' + stack.name)}"><i class="fas fa-chevron-right" aria-hidden="true"></i></button>` : ''}</td>
+          <td><a href="${path}">${esc(stack.name)}</a></td>
+          <td><span class="badge badge-${badge}">${t('state.' + state)}</span></td>
+          <td><span class="badge">${source}</span></td>
+          <td>${stack.running} / ${stack.total}</td>
+          <td>${this._renderStackActions(stack)}</td>
+        </tr>${hasServices ? `<tr class="stack-table-services" id="${id}" ${opened ? '' : 'hidden'}><td colspan="6">
+          ${this._renderTableServices(stack)}</td></tr>` : ''}`;
+      }).join('')}</tbody></table></div>`;
+  },
+
+  _renderTableServices(stack) {
+    const esc = Utils.escapeHtml;
+    const t = key => i18n.t('pages.stacks.' + key);
+    const containers = stack.containers || [];
+    const configured = stack.services.filter(service => !containers.some(container => container.service === service));
+    return `<ul class="stack-table-service-grid">
+      ${containers.map(container => {
+        const path = '#/containers/' + encodeURIComponent(container.id);
+        const ports = Utils.formatPorts(container.ports);
+        return `<li class="stack-service-card"><div class="stack-service-heading">
+          <a href="${path}">${esc(container.name)}</a>
+          <span class="badge ${Utils.statusBadgeClass(container.state)}">${esc(container.state)}</span></div>
+          <span class="mono">${esc(container.image)}</span>
+          <span class="text-muted">${ports ? esc(ports) : t('noPublishedPorts')}</span>
+          <div class="stack-service-links">
+            <a class="btn btn-xs btn-secondary" href="${path}/logs">${i18n.t('pages.containers.tabs.logs')}</a>
+            <a class="btn btn-xs btn-secondary" href="${path}/stats">${i18n.t('pages.containers.tabs.stats')}</a>
+          </div></li>`;
+      }).join('')}
+      ${configured.map(service => `<li class="stack-service-card"><strong>${esc(service)}</strong>
+        <span class="text-muted">${t('configuredService')}</span></li>`).join('')}
+    </ul>`;
   },
 
   _renderServicePreview(stack, navPath) {
     const escape = Utils.escapeHtml;
     const containers = stack.containers || [];
     const configured = (stack.services || []).filter(service => !containers.some(container => container.service === service));
-    const identity = stack.source + ':' + stack.name;
+    const identity = this._stackIdentity(stack);
     return `<details class="stack-services-preview" data-stack-services="${escape(identity)}" ${this._expandedServices.has(identity) ? 'open' : ''}>
       <summary>Services <span class="badge">${containers.length + configured.length}</span></summary>
       <ul>${containers.map(container => `<li>

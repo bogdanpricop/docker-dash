@@ -2161,6 +2161,18 @@ i18n.register('ro', 'RO', "Română", {
       manage: "Gestionează"
     },
     stacks: {
+      allStates: 'Toate stările',
+      state: { running: 'Pornit', partial: 'Parțial', stopped: 'Oprit' },
+      listView: 'Vizualizare stack-uri',
+      views: { cards: 'Carduri', table: 'Tabel' },
+      selectedHost: 'Host',
+      connection: { connecting: 'Se verifică conexiunea', connected: 'Conectat', unavailable: 'Indisponibil' },
+      source: 'Sursă',
+      sourceDisk: 'Fișier Compose local',
+      sourceHost: 'Detectat pe host',
+      containerCount: 'Containere pornite',
+      noPublishedPorts: 'Fără porturi publicate',
+      configuredService: 'Configurat · fără container',
       title: "Stacks",
       subtitle: "Stack-uri Compose și deployment-uri conectate la Git",
       filterPlaceholder: "Filtrează stack-uri...",
