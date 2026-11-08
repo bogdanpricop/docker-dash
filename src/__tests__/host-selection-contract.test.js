@@ -312,6 +312,51 @@ test('bulk backup deletion checks every selection before deleting and reports pe
   }
 });
 
+test('administrators can download reviewed local and encrypted backup bytes without exposing the active database', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dd-download-copy-'));
+  const originalDataDir = process.env.DATA_DIR;
+  const config = require('../config');
+  const originalDbPath = config.db.path;
+  process.env.DATA_DIR = root;
+  try {
+    const active = 'backup-active.db';
+    const manual = 'backup-manual.db';
+    const encrypted = 'backup-encoded.db.enc';
+    const plain = Buffer.from('SQLite format 3\0fixture');
+    const ciphertext = Buffer.from([0, 123, 255, 9, 200, 0]);
+    config.db.path = path.join(root, active);
+    fs.mkdirSync(path.join(root, 'backups'));
+    fs.writeFileSync(config.db.path, 'active');
+    fs.writeFileSync(path.join(root, manual), plain);
+    fs.writeFileSync(path.join(root, 'backups', encrypted), ciphertext);
+    const inventory = (await request(app).get('/system/backup/list').expect(200)).body.files;
+    const url = ({ location, name, revision }) =>
+      `/system/backup/local/${location}/${encodeURIComponent(name)}/download?hostId=0&revision=${revision}`;
+    for (const [name, bytes] of [[manual, plain], [encrypted, ciphertext]]) {
+      const copy = inventory.find(file => file.name === name);
+      await request(app).head(url(copy)).expect(200).expect('Content-Length', String(bytes.length));
+      const downloaded = await request(app).get(url(copy)).expect(200)
+        .expect('Content-Type', 'application/octet-stream')
+        .expect('Cache-Control', 'no-store');
+      expect(downloaded.headers['content-disposition'].replaceAll('"', '')).toBe(`attachment; filename=${name}`);
+      expect(downloaded.body).toEqual(bytes);
+    }
+    const copy = inventory.find(file => file.name === encrypted);
+    await request(app).get(url(copy)).set('X-Test-Role', 'viewer').expect(403);
+    await request(app).get(url({ ...copy, name: '../' + manual })).expect(400);
+    await request(app).get(url({ ...copy, location: 'local', name: active })).expect(404);
+    fs.appendFileSync(path.join(root, 'backups', encrypted), ' changed');
+    await request(app).get(url(copy)).expect(409);
+    const audit = getDb().prepare("SELECT target_id FROM audit_log WHERE action = 'database_backup_download' ORDER BY id").all();
+    expect(audit.map(entry => entry.target_id)).toEqual([manual, encrypted]);
+  } finally {
+    config.db.path = originalDbPath;
+    if (originalDataDir === undefined) delete process.env.DATA_DIR;
+    else process.env.DATA_DIR = originalDataDir;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('scheduled actions keep their original daemon and enforce access on the saved target', async () => {
   const created = await request(app).post('/system-schedules').send({
     containerId: 'fixture', action: 'stop', cron: '0 3 * * *', enabled: false,

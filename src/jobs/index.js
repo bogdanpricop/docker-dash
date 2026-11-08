@@ -430,6 +430,7 @@ function startAll() {
 
       // Write backup to temp path first, then finalize
       const tempPath = backupPath + '.tmp';
+      const encryptedTempPath = tempPath + '.enc';
 
       db.backup(tempPath).then(() => {
         try {
@@ -444,7 +445,8 @@ function startAll() {
             const tag = cipher.getAuthTag();
             // Header: salt(16) + nonce(12) + tag(16) = 44 bytes
             const out = Buffer.concat([salt, nonce, tag, ciphertext]);
-            fss.writeFileSync(backupPath, out);
+            fss.writeFileSync(encryptedTempPath, out, { mode: 0o600 });
+            fss.renameSync(encryptedTempPath, backupPath);
             fss.unlinkSync(tempPath);
           } else {
             fss.renameSync(tempPath, backupPath);
@@ -475,6 +477,7 @@ function startAll() {
         } catch (e) {
           log.error('Daily backup post-processing failed', e.message);
           try { fss.unlinkSync(tempPath); } catch { /* cleanup */ }
+          try { fss.unlinkSync(encryptedTempPath); } catch { /* cleanup */ }
         }
       }).catch(e => log.error('Daily backup failed', e.message));
   })));

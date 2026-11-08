@@ -11,6 +11,7 @@ const path = require('path');
 const crypto = require('crypto');
 const https = require('https');
 const http = require('http');
+const { pipeline } = require('node:stream/promises');
 
 const auditService = require('../services/audit');
 const { requireAuth, requireRole, writeable } = require('../middleware/auth');
@@ -289,11 +290,11 @@ function reviewLocalCopy({ location, name, revision }, database) {
   return { file, size: stat.size };
 }
 
-function localCopyError(error) {
+function localCopyError(error, operation = 'delete') {
   if (['ENOENT', 'ENOTDIR'].includes(error.code)) return { status: 404, error: 'Local database backup not found' };
-  if (error.code === 'STALE_BACKUP') return { status: 409, error: error.message };
+  if (error.code === 'STALE_BACKUP') return { status: 409, error: `This backup changed. Review the current copy before you ${operation} it.` };
   if (['EACCES', 'EPERM'].includes(error.code)) {
-    return { status: 403, error: 'Docker Dash does not have permission to delete this copy' };
+    return { status: 403, error: `Docker Dash does not have permission to ${operation} this copy` };
   }
   if (['EBUSY', 'EROFS', 'EIO'].includes(error.code)) {
     return { status: 500, error: 'The filesystem could not remove or inspect this copy' };
@@ -331,6 +332,40 @@ router.get('/list', requireAuth, requireRole('admin'), (req, res) => {
     res.json({ files: files.sort((a, b) => b.created.localeCompare(a.created)).slice(0, localBackupLimit), dir: directories.local });
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.get('/local/:location/:name/download', requireAuth, requireRole('admin'), async (req, res) => {
+  const copy = { ...req.params, revision: req.query.revision };
+  res.set('Cache-Control', 'no-store');
+  if (!validLocalCopy(copy)) return res.status(400).json({ error: 'Invalid database backup selection' });
+  let handle;
+  try {
+    const database = activeDatabaseFile();
+    const { file } = reviewLocalCopy(copy, database);
+    const { O_RDONLY, O_NOFOLLOW = 0, O_NONBLOCK = 0 } = fs.constants;
+    handle = await fs.promises.open(file, O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
+    const stat = await handle.stat();
+    if (!isBackupCopy(stat, activeDatabaseFile()) || backupRevision(stat) !== copy.revision) {
+      return res.status(409).json({ error: 'This backup changed. Review the current copy before you download it.' });
+    }
+    if (req.method !== 'HEAD') {
+      auditService.log({
+        userId: req.user.id, username: req.user.username, action: 'database_backup_download',
+        targetType: 'database_backup', targetId: copy.name, details: { location: copy.location, size: stat.size }, ip: getClientIp(req),
+      });
+    }
+    res.attachment(copy.name).type('application/octet-stream').set('Content-Length', String(stat.size));
+    if (req.method === 'HEAD' || stat.size === 0) return res.end();
+    await pipeline(handle.createReadStream({ end: stat.size - 1 }), res);
+  } catch (error) {
+    if (res.destroyed && error.code === 'ERR_STREAM_PREMATURE_CLOSE') return;
+    if (res.headersSent || res.destroyed) throw error;
+    if (error.code === 'ELOOP') return res.status(404).json({ error: 'Local database backup not found' });
+    const failure = localCopyError(error, 'download');
+    res.status(failure.status).json({ error: failure.error });
+  } finally {
+    await handle?.close();
   }
 });
 

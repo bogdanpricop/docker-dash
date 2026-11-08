@@ -501,6 +501,7 @@ const SystemPageBackup = {
     const cloudStatus = result(pcloud);
     const copiesOpen = root.querySelector('[data-local-copies]')?.open;
     const deleteLabel = i18n.t('common.delete');
+    const downloadUrl = file => `/api/system/backup/local/${encodeURIComponent(file.location)}/${encodeURIComponent(file.name)}/download?hostId=0&revision=${encodeURIComponent(file.revision)}`;
     const selectLabel = file => `Select ${file.name} (${file.location})`;
     const hasSelectable = files.some(file => file.revision);
     const when = value => value ? escape(new Date(value).toLocaleString()) : 'No backup recorded';
@@ -531,7 +532,9 @@ const SystemPageBackup = {
             ? `<input type="checkbox" data-select-local-copy="${index}" aria-label="${escape(selectLabel(file))}">` : ''}</td>` : ''}
           <td class="mono">${escape(file.name)}${file.encrypted ? ' <span class="badge">Encrypted</span>' : ''}</td>
           <td>${escape(file.location || 'local')}</td><td>${Utils.formatBytes(file.size)}</td><td>${when(file.created)}</td>
-          <td>${file.revision ? `<button type="button" class="btn btn-sm btn-danger" data-delete-local-copy="${index}"
+          <td>${file.revision ? `<a class="btn btn-sm btn-secondary" data-download-local-copy href="${escape(downloadUrl(file))}" download
+            aria-label="${escape('Download ' + file.name + ' (' + file.location + ')')}">Download</a>
+          <button type="button" class="btn btn-sm btn-danger" data-delete-local-copy="${index}"
             aria-label="${escape(deleteLabel + ' ' + file.name + ' (' + file.location + ')')}">${escape(deleteLabel)}</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`
           : `<p class="text-muted">${local.status === 'fulfilled' ? 'No local copies available.' : 'Local copies could not be loaded.'}</p>`}</details>`;
 

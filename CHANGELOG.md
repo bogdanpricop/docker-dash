@@ -4,6 +4,8 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Download individual local database backups, including encrypted copies, in
+  their original format.
 - Select and delete multiple local database backup copies in one confirmed
   operation. Review any copies that changed or could not be removed.
 - Let administrators delete individual local database backup copies after
