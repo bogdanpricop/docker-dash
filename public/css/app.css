@@ -404,7 +404,7 @@ textarea { resize: vertical; min-height: 80px; }
 }
 .stacks-state-filter { width: auto; }
 .stack-table-scroll { overflow-x: auto; }
-.stack-table-scroll .stack-table { display: table; min-width: 600px; }
+.stack-table-scroll .stack-table { display: table; min-width: 1050px; }
 .stack-table th:first-child { width: 36px; }
 .stack-table td:nth-child(5) { white-space: nowrap; }
 .stack-table .stack-table-services[hidden] { display: none; }
@@ -422,6 +422,15 @@ textarea { resize: vertical; min-height: 80px; }
 }
 .stack-service-heading, .stack-service-links { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .stack-service-heading { justify-content: space-between; }
+.stack-table [data-stack-metric] { font-variant-numeric: tabular-nums; }
+.stack-table [data-stack-metric="cpu"], .stack-table [data-stack-metric="ram"], .stack-table time { white-space: nowrap; }
+.stack-metrics-quality { display: block; }
+.stack-service-charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-bottom: 6px; }
+.stack-service-chart { display: grid; align-content: start; gap: 3px; padding: 4px 6px; background: var(--surface2); border-radius: var(--radius-sm); }
+.stack-service-chart svg { display: block; width: 100%; height: 22px; fill: none; stroke: var(--accent); stroke-width: 1.5px; }
+.stack-service-chart[data-metric-series="ram"] svg { stroke: var(--purple); }
+.stack-service-chart[data-metric-series="network"] svg { stroke: var(--green); }
+.stack-service-chart[data-metric-series="disk"] svg { stroke: var(--yellow); }
 @media (max-width: 768px) { .stack-list-host { top: 48px; } }
 .compose-graph { list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 10px; margin: 10px 0; }
 .compose-graph > li { min-width: 0; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; overflow-wrap: anywhere; }

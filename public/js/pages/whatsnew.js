@@ -9,6 +9,9 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.96.38', date: '2026-11-08', title: 'Stacks resource metrics', changes: [
+      { type: 'feature', text: 'See stack CPU and RAM totals, network and disk rates, sample times and charts for expanded services.' },
+    ] },
     { version: '8.96.37', date: '2026-11-08', title: 'Stacks table and host context', changes: [
       { type: 'feature', text: 'Switch between stack cards and a compact table, expand services and open logs or stats. Keep list filters and the selected host visible.' },
     ] },

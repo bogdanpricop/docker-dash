@@ -219,6 +219,44 @@ test('configuration backup preview lists overwrites, skips API key metadata and 
   expect(db.prepare("SELECT value FROM settings WHERE key = 'test_restore_setting'").get().value).toBe('next');
 });
 
+test('stack metrics are host scoped and report rates only between usable samples', async () => {
+  const db = getDb();
+  const insert = db.prepare(`INSERT INTO container_stats
+    (host_id, container_id, cpu_percent, mem_usage, net_rx, net_tx, blk_read, blk_write, recorded_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  const id = 'd'.repeat(64);
+  const staleId = 'e'.repeat(64);
+  const missingId = 'f'.repeat(64);
+  const now = Date.now();
+  const at = secondsAgo => new Date(now - secondsAgo * 1000).toISOString().slice(0, 19).replace('T', ' ');
+  insert.run(71, id, 20, 10_000, 1_000, 5_000, 800, 2_000, at(21));
+  insert.run(71, id, 70, 20_000, 3_000, 5_000, 1_000, 2_000, at(11));
+  insert.run(71, id, 150, 30_000, 5_500, 6_000, 900, 4_000, at(1));
+  insert.run(1, id, 999, 99_000, 0, 0, 0, 0, at(1));
+  insert.run(71, staleId, 50, 10_000, 0, 0, 0, 0, at(3_700));
+  const url = '/stats/stack-metrics?hostId=71';
+  const payload = { ids: [id, staleId, missingId], historyIds: [id] };
+  hostPermissions.setLegacyDefault(false);
+  try {
+    await request(app).post('/stats/stack-metrics?hostId=0').set('X-Test-Role', 'viewer').send(payload).expect(403);
+    await request(app).post(url).send({ ...payload, historyIds: ['0'.repeat(64)] }).expect(400);
+    const { body } = await request(app).post(url).send(payload).expect(200).expect('Cache-Control', 'no-store');
+    expect(body.hostId).toBe(71);
+    expect(body.containers[id]).toMatchObject({
+      fresh: true, latest: { cpu: 150, ram: 30_000, rx: 250, tx: 100, read: null, write: 200 },
+      history: [{ cpu: 20, rx: null }, { cpu: 70, tx: 0 }, { cpu: 150, read: null }],
+    });
+    expect(body.containers[staleId]).toMatchObject({ fresh: false, latest: { cpu: 50 } });
+    expect(body.containers[staleId]).not.toHaveProperty('history');
+    expect(body.containers[missingId]).toBeUndefined();
+    const defaultHost = await request(app).post('/stats/stack-metrics?hostId=0').send({ ids: [id], historyIds: [] }).expect(200);
+    expect(defaultHost.body.containers[id].latest.cpu).toBe(999);
+  } finally {
+    hostPermissions.setLegacyDefault(true);
+    db.prepare('DELETE FROM container_stats WHERE container_id IN (?, ?)').run(id, staleId);
+  }
+});
+
 test('only the reviewed database copy is deleted, even when another location uses the same name', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dd-delete-copy-'));
   const scheduled = path.join(root, 'backups');

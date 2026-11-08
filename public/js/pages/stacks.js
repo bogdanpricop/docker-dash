@@ -47,6 +47,7 @@ const StacksPage = {
     if (!states.includes(this._stateFilter)) this._stateFilter = '';
     const selectedId = Api.getHostId();
     this._stackHost = App._hostSelectorHosts?.find(host => host.id === selectedId || (!selectedId && host.isDefault)) || { id: selectedId };
+    this._stackHostReady = false;
     this._listStacks = [];
     this._uptimeKuma = null;
 
@@ -152,6 +153,7 @@ const StacksPage = {
       if (!current()) return;
       const { stacks: composeStacks, host } = compose;
       this._stackHost = host;
+      this._stackHostReady = true;
       this._uptimeKuma = uptimeKuma;
 
       this._listStacks = [
@@ -177,6 +179,7 @@ const StacksPage = {
     } catch (err) {
       if (!current()) return;
       this._listStacks = [];
+      this._stackHostReady = false;
       this._stackListLoading = false;
       this._stackListError = err.message;
       this._renderStackHost('unavailable');
@@ -222,6 +225,7 @@ const StacksPage = {
   _renderStackList() {
     const el = document.getElementById('stacks-content');
     if (!el) return;
+    this._stopStackMetrics();
     const unified = this._listStacks.filter(stack => (this._tab === 'all' || stack.source === this._tab)
       && (this._showDiskStacks || !stack.diskOnly) && (!this._stateFilter || this._stackState(stack) === this._stateFilter)
       && this._matchesStackSearch(stack));
@@ -281,10 +285,16 @@ const StacksPage = {
           const open = row.hidden;
           row.hidden = !open;
           button.setAttribute('aria-expanded', String(open));
-          if (open) this._expandedServices.add(button.dataset.stackExpand);
+          if (open) {
+            this._expandedServices.add(button.dataset.stackExpand);
+            void this._stackMetrics?.refresh();
+          }
           else this._expandedServices.delete(button.dataset.stackExpand);
         });
       });
+      if (this._listView === 'table' && this._stackHostReady) {
+        this._stackMetrics = new StackMetrics(el, this._stackHost.id, unified);
+      }
       el.querySelectorAll('[data-stack-review]').forEach(button => {
         button.addEventListener('click', () => this._reviewStack(button.dataset.stackName, button.dataset.stackReview, button));
       });
@@ -492,7 +502,13 @@ const StacksPage = {
     return `<div class="card stack-table-scroll" data-stacks-table><table class="data-table compact stack-table">
       <thead><tr><th scope="col" aria-label="${t('services')}"></th><th scope="col">${i18n.t('common.name')}</th>
         <th scope="col">${i18n.t('common.status')}</th><th scope="col">${t('source')}</th>
-        <th scope="col">${t('containerCount')}</th><th scope="col">${i18n.t('common.actions')}</th></tr></thead>
+        <th scope="col">${t('containerCount')}</th>
+        <th scope="col" title="${esc(t('metrics.cpuHint'))}">${t('metrics.cpu')}</th>
+        <th scope="col">${t('metrics.ram')}</th>
+        <th scope="col" title="${esc(t('metrics.rateHint'))}">${t('metrics.network')}</th>
+        <th scope="col" title="${esc(t('metrics.rateHint'))}">${t('metrics.disk')}</th>
+        <th scope="col" title="${esc(t('metrics.updatedHint'))}">${t('metrics.updated')}</th>
+        <th scope="col">${i18n.t('common.actions')}</th></tr></thead>
       <tbody>${stacks.map((stack, index) => {
         const path = this._stackDetailPath(stack);
         const id = `stack-table-services-${index}`;
@@ -509,8 +525,9 @@ const StacksPage = {
           <td><span class="badge badge-${badge}">${t('state.' + state)}</span></td>
           <td><span class="badge">${source}</span></td>
           <td>${stack.running} / ${stack.total}</td>
+          ${['cpu', 'ram', 'network', 'disk', 'updated'].map(field => `<td data-stack-metric="${field}">—</td>`).join('')}
           <td>${this._renderStackActions(stack)}</td>
-        </tr>${hasServices ? `<tr class="stack-table-services" id="${id}" ${opened ? '' : 'hidden'}><td colspan="6">
+        </tr>${hasServices ? `<tr class="stack-table-services" id="${id}" ${opened ? '' : 'hidden'}><td colspan="11">
           ${this._renderTableServices(stack)}</td></tr>` : ''}`;
       }).join('')}</tbody></table></div>`;
   },
@@ -529,6 +546,7 @@ const StacksPage = {
           <span class="badge ${Utils.statusBadgeClass(container.state)}">${esc(container.state)}</span></div>
           <span class="mono">${esc(container.image)}</span>
           <span class="text-muted">${ports ? esc(ports) : t('noPublishedPorts')}</span>
+          ${container.state === 'running' ? `<div data-stack-service-metrics="${esc(container.id)}"></div>` : ''}
           <div class="stack-service-links">
             <a class="btn btn-xs btn-secondary" href="${path}/logs">${i18n.t('pages.containers.tabs.logs')}</a>
             <a class="btn btn-xs btn-secondary" href="${path}/stats">${i18n.t('pages.containers.tabs.stats')}</a>
@@ -1284,9 +1302,15 @@ const StacksPage = {
     this._stackListRequest = null;
     this._composeDetailRequest = null;
     this._stopStackLogs();
+    this._stopStackMetrics();
     this._destroyYamlEditor();
     this._detailStack = null;
     this._detailType = null;
+  },
+
+  _stopStackMetrics() {
+    this._stackMetrics?.destroy();
+    this._stackMetrics = null;
   },
 
   _destroyYamlEditor() {

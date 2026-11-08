@@ -21,7 +21,8 @@ async function main() {
     page.on('pageerror', error => errors.push(error.message));
     const base = `http://127.0.0.1:${server.address().port}`;
     await page.goto(base + '/smoke');
-    for (const script of ['utils.js', 'components/log-viewer.js', 'components/compose-service-form.js', 'pages/stacks.js', 'pages/security-triage.js']) {
+    for (const script of ['utils.js', 'components/log-viewer.js', 'components/compose-service-form.js',
+      'components/stack-metrics.js', 'pages/stacks.js', 'pages/security-triage.js']) {
       await page.addScriptTag({ url: `${base}/js/${script}` });
     }
     await page.evaluate(() => {
@@ -58,15 +59,17 @@ async function main() {
     const serviceId = 'a'.repeat(64);
     await page.evaluate(async id => {
       const compose = [
-        { name: 'billing', running: 1, total: 2, services: ['db', 'worker', 'cron'], containers: [
+        { name: 'billing', running: 2, total: 3, services: ['db', 'worker', 'api', 'cron'], containers: [
           { id, name: 'billing-db', service: 'db', image: 'postgres:17', state: 'running', ports: [{ public: 5432, private: 5432, type: 'tcp' }] },
           { id: 'b'.repeat(64), name: 'billing-worker', service: 'worker', image: 'worker:1', state: 'exited' },
+          { id: 'c'.repeat(64), name: 'billing-api', service: 'api', image: 'api:1', state: 'running' },
         ] },
         { name: 'offline', running: 0, total: 0, discovered: true, diskOnly: true, services: ['frontend'], containers: [] },
       ];
       window.stacksHostId = 17;
       window.App = { _hostSelectorHosts: [{ id: 17, name: 'Docker2' }, { id: 18, name: 'VPS' }] };
       window.i18n = { t: key => key.split('.').at(-1) };
+      window.metricRequests = [];
       window.Api = {
         getHostId: () => window.stacksHostId,
         detectUptimeKuma: async () => ({ detected: false }),
@@ -76,17 +79,42 @@ async function main() {
           if (url !== '/system/stacks?context=1&hostId=' + host.id) throw new Error('Stacks request was not pinned to the selected host');
           return { host, stacks: compose };
         },
+        request: async (method, url, selection) => {
+          const hostId = window.stacksHostId;
+          if (method !== 'POST' || url !== '/stats/stack-metrics?hostId=' + hostId) throw new Error('Metrics were not pinned to the selected host');
+          window.metricRequests.push(selection);
+          const containers = {};
+          for (const containerId of selection.ids) {
+            if (hostId === 18 && containerId !== id) continue;
+            const at = 1_700_000_010_000;
+            const latest = { at, cpu: containerId === id ? 90 : 35, ram: 1024 ** 2, rx: 1024, tx: 512, read: 128, write: 256 };
+            containers[containerId] = { latest, fresh: true };
+            if (selection.historyIds.includes(containerId)) {
+              containers[containerId].history = [{ ...latest, at: at - 10_000, cpu: 10, ram: 512, read: 64 }, latest];
+            }
+          }
+          return { hostId, staleAfterMs: 30_000, containers };
+        },
       };
       await StacksPage.render(document.querySelector('#test'));
     }, serviceId);
     await page.click('#stack-view [data-view="table"]');
     assert.equal(await page.$$eval('[data-stack-row]', rows => rows.length), 2);
     assert.match(await page.$eval('#stacks-host', el => el.textContent), /Docker2/);
+    await page.waitForFunction(() => document.querySelector('[data-stack-metric="cpu"]').textContent === '125%');
+    assert.equal(await page.$eval('[data-stack-metric="ram"]', el => el.textContent), '2 MiB');
+    assert.match(await page.$eval('[data-stack-metric="network"]', el => el.textContent), /2 KiB\/s/);
+    assert.match(await page.$eval('[data-stack-metric="disk"]', el => el.textContent), /256 B\/s/);
+    assert.ok(await page.$('[data-stack-metric="updated"] time[datetime]'));
+    assert.deepEqual(await page.evaluate(() => window.metricRequests[0].historyIds), []);
     await page.select('#stacks-state', 'partial');
     await page.type('#stack-search', 'postgres');
     await page.waitForFunction(() => document.querySelectorAll('[data-stack-row]').length === 1);
     await page.click('[data-stack-expand]');
     assert.equal(await page.$eval('[data-stack-expand]', el => el.getAttribute('aria-expanded')), 'true');
+    await page.waitForSelector('[data-stack-service-metrics] svg');
+    assert.equal(await page.$$eval('[data-stack-service-metrics] svg', charts => charts.length), 8);
+    assert.equal(await page.evaluate(() => window.metricRequests.at(-1).historyIds.length), 2);
     assert.match(await page.$eval('.stack-table-service-grid', el => el.textContent), /5432→5432\/tcp/);
     assert.match(await page.$eval('.stack-table-service-grid', el => el.textContent), /cron/);
     for (const tab of ['logs', 'stats']) assert.ok(await page.$(`[href="#/containers/${serviceId}/${tab}"]`));
@@ -94,6 +122,7 @@ async function main() {
     assert.ok(await page.$('[data-stack-review="plan"]'));
     await page.click('#stack-view [data-view="cards"]');
     assert.equal(await page.$eval('[data-stack-services]', el => el.open), true);
+    assert.equal(await page.evaluate(() => StacksPage._stackMetrics), null);
     await page.click('#stack-view [data-view="table"]');
     await page.evaluate(() => StacksPage._loadList());
     assert.equal(await page.$eval('[data-stack-expand]', el => el.getAttribute('aria-expanded')), 'true');
@@ -103,6 +132,8 @@ async function main() {
       await StacksPage.render(document.querySelector('#test'));
     });
     assert.match(await page.$eval('#stacks-host', el => el.textContent), /VPS/);
+    await page.waitForSelector('[data-stack-metric="updated"] .stack-metrics-quality');
+    assert.equal(await page.$eval('[data-stack-metric="cpu"]', el => el.textContent), '—');
     assert.equal(await page.$eval('#stack-search', el => el.value), 'postgres');
     assert.equal(await page.$eval('#stacks-state', el => el.value), 'partial');
     assert.equal(await page.$eval('[data-stack-expand]', el => el.getAttribute('aria-expanded')), 'false');

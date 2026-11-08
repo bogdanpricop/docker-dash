@@ -8,6 +8,15 @@ const log = require('../utils/logger')('stats');
 const { now } = require('../utils/helpers');
 const { isDockerCompatible } = require('../utils/host-id');
 
+function metricValue(value) {
+  return Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+function counterRate(current, previous, seconds) {
+  if (metricValue(current) === null || metricValue(previous) === null || current < previous || !seconds) return null;
+  return (current - previous) / seconds;
+}
+
 class StatsService extends EventEmitter {
   constructor() {
     super();
@@ -220,6 +229,47 @@ class StatsService extends EventEmitter {
         memoryLimit: latest.reduce((s, c) => s + (c.mem_limit || 0), 0),
       },
     };
+  }
+
+  getStackMetrics(hostId, ids, historyIds) {
+    const db = getDb();
+    const asOf = Date.now();
+    const staleAfterMs = Math.max(30_000, config.stats.collectIntervalMs * 3);
+    const history = new Set(historyIds);
+    const query = db.prepare(`
+      SELECT cpu_percent, mem_usage, net_rx, net_tx, blk_read, blk_write, recorded_at
+      FROM container_stats
+      WHERE container_id = ? AND host_id = ?
+      ORDER BY recorded_at DESC, id DESC
+      LIMIT ?
+    `);
+    const containers = {};
+    for (const id of ids) {
+      const includeHistory = history.has(id);
+      const rows = query.all(id, hostId, includeHistory ? 21 : 2);
+      if (!rows.length) continue;
+      const samples = rows.map(row => Date.parse(row.recorded_at.replace(' ', 'T') + 'Z'));
+      if (!Number.isFinite(samples[0])) continue;
+      const age = asOf - samples[0];
+      const fresh = age >= 0 && age <= staleAfterMs;
+      const points = rows.slice(0, includeHistory ? 20 : 1).map((row, index) => {
+        const previous = rows[index + 1];
+        const gap = samples[index] - samples[index + 1];
+        const seconds = gap > 0 && gap <= staleAfterMs ? gap / 1000 : 0;
+        return {
+          at: samples[index], cpu: metricValue(row.cpu_percent), ram: metricValue(row.mem_usage),
+          rx: counterRate(row.net_rx, previous?.net_rx, seconds),
+          tx: counterRate(row.net_tx, previous?.net_tx, seconds),
+          read: counterRate(row.blk_read, previous?.blk_read, seconds),
+          write: counterRate(row.blk_write, previous?.blk_write, seconds),
+        };
+      }).filter(point => Number.isFinite(point.at));
+      containers[id] = {
+        latest: points[0], fresh,
+        ...(includeHistory ? { history: points.filter(point => asOf - point.at <= 3_600_000).reverse() } : {}),
+      };
+    }
+    return { hostId, asOf, staleAfterMs, containers };
   }
 }
 

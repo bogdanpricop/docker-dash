@@ -4,7 +4,7 @@ const { Router } = require('express');
 const statsService = require('../services/stats');
 const { requireAuth } = require('../middleware/auth');
 const { extractHostId } = require('../middleware/hostId');
-const { requireHostAccessForMethod } = require('../middleware/hostAccess');
+const { requireHostAccess, requireHostAccessForMethod } = require('../middleware/hostAccess');
 const asyncHandler = require('../utils/asyncHandler');
 
 const router = Router();
@@ -12,6 +12,18 @@ router.use(extractHostId);
 
 router.get('/overview', requireAuth, requireHostAccessForMethod(), asyncHandler((req, res) => {
   res.json(statsService.getOverview(req.hostId));
+}));
+
+router.post('/stack-metrics', requireAuth, requireHostAccess('view'), asyncHandler((req, res) => {
+  const { ids, historyIds } = req.body || {};
+  if (!Array.isArray(ids) || !ids.length || ids.length > 200
+    || !ids.every(id => typeof id === 'string' && /^[a-f0-9]{12,64}$/.test(id))
+    || !Array.isArray(historyIds) || historyIds.length > ids.length) {
+    return res.status(400).json({ error: 'Invalid container metrics selection' });
+  }
+  const selected = new Set(ids);
+  if (!historyIds.every(id => selected.has(id))) return res.status(400).json({ error: 'Invalid container history selection' });
+  res.set('Cache-Control', 'no-store').json(statsService.getStackMetrics(req.resolvedHostId ?? req.hostId, [...selected], historyIds));
 }));
 
 router.get('/container/:id', requireAuth, requireHostAccessForMethod(), asyncHandler((req, res) => {
