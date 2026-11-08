@@ -4,6 +4,13 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Pin left navigation entries to a Pinned group at the top of the sidebar.
+  Right-click an entry or use the manage button to pin and unpin pages, and the
+  selection follows the signed-in user across sessions. Drag the pinned entries
+  in the manager to set their order, or focus an entry and press Alt with the
+  arrow keys.
+- Give back-to-back provider compliance exports distinct bundle hashes, so a
+  second export of the same scope no longer fails on a duplicate hash.
 - Let administrators delete individual local database backup copies after
   reviewing the filename and location. Refresh the inventory after deletion.
 - Fix Check and Plan for Compose projects whose original files live on the

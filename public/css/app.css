@@ -1918,6 +1918,64 @@ tr:hover .port-open-btn { opacity: 1; }
 .sidebar.collapsed .nav-section-label { display: none; }
 @media (max-width: 768px) { .nav-section-label { display: none; } .sidebar.mobile-open .nav-section-label { display: block; } }
 
+/* ── Sidebar Pinned Entries ──────────────────────── */
+.nav-pinned { border-bottom: 1px solid var(--border); margin-bottom: 6px; padding-bottom: 4px; }
+.nav-pinned-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 16px 4px; font-size: 10px; text-transform: uppercase;
+  letter-spacing: 1.2px; color: var(--text-dim); font-weight: 600; user-select: none;
+}
+.nav-pinned-manage {
+  background: none; border: 0; color: var(--text-dim); cursor: pointer;
+  padding: 2px 4px; border-radius: var(--radius-xs); font-size: 10px; line-height: 1;
+}
+.nav-pinned-manage:hover { color: var(--accent); background: var(--surface2); }
+.nav-pinned-empty { padding: 0 16px 6px; font-size: 11px; color: var(--text-dim); }
+/* Collapsed and narrow sidebars show icons only — the caption and the hint
+   would not fit, but the manage button stays reachable. */
+.sidebar.collapsed .nav-pinned-label,
+.sidebar.collapsed .nav-pinned-empty { display: none; }
+.sidebar.collapsed .nav-pinned-head { justify-content: center; padding: 8px 0 4px; }
+@media (max-width: 768px) {
+  .nav-pinned-label, .nav-pinned-empty { display: none; }
+  .sidebar.mobile-open .nav-pinned-label { display: inline; }
+  .sidebar.mobile-open .nav-pinned-empty { display: block; }
+}
+
+/* ── Pinned Manager Modal ────────────────────────── */
+.nav-pin-section { margin-bottom: 18px; }
+.nav-pin-section:last-of-type { margin-bottom: 0; }
+.nav-pin-section-label {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 1.2px;
+  color: var(--text-dim); font-weight: 600; margin-bottom: 4px;
+}
+.nav-pin-order-hint { margin-bottom: 8px; }
+/* The modal body scrolls as one. The pinned list is short and never scrolls;
+   the list of all pages is capped so it does not push the pinned section
+   out of view. */
+.nav-pin-list { display: flex; flex-direction: column; gap: 4px; }
+.nav-pin-list-scroll { max-height: 34vh; overflow-y: auto; }
+.nav-pin-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface2);
+}
+.nav-pin-row > i { width: 16px; text-align: center; flex-shrink: 0; color: var(--text-dim); }
+.nav-pin-grip { cursor: grab; color: var(--text-dim); }
+/* Only the pinned rows are draggable — the grip is a spacer elsewhere. */
+.nav-pin-grip-empty { visibility: hidden; }
+.nav-pin-row-pinned { cursor: grab; }
+.nav-pin-row-pinned .nav-pin-grip { opacity: .7; }
+.nav-pin-row-pinned:hover .nav-pin-grip { opacity: 1; }
+.nav-pin-row-pinned.dragging { opacity: .4; }
+.nav-pin-row-pinned.drag-over { border-color: var(--accent); background: var(--accent-dim); }
+.nav-pin-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.nav-pin-name { flex: 1; min-width: 0; font-size: 13px; color: var(--text); }
+.nav-pin-empty {
+  padding: 12px 10px; font-size: 12px; color: var(--text-dim);
+  border: 1px dashed var(--border); border-radius: var(--radius-sm); text-align: center;
+}
+
 /* ── Accessibility: Focus Styles (v3.10) ─────────── */
 .btn:focus-visible, .action-btn:focus-visible, .nav-item:focus-visible,
 .tab:focus-visible, .form-control:focus-visible, select:focus-visible,

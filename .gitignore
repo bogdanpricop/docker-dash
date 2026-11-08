@@ -29,6 +29,7 @@ CAPTURE_GUIDE.md
 # IDE
 .vscode/
 .idea/
+*.iml
 *.swp
 *.swo
 

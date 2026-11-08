@@ -9,6 +9,10 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.96.36', date: '2026-11-08', title: 'Pinned navigation entries', changes: [
+      { type: 'feature', text: 'Pin left navigation entries to a Pinned group at the top of the sidebar. Right-click an entry or use the manage button, and the selection follows the signed-in user. Drag the pinned entries to set their order.' },
+      { type: 'fix', text: 'Give back-to-back provider compliance exports distinct bundle hashes, so a second export of the same scope no longer fails on a duplicate hash.' },
+    ] },
     { version: '8.96.34', date: '2026-11-08', title: 'Local database backup cleanup', changes: [
       { type: 'improvement', text: 'Delete individual local database backup copies in System → Backup after reviewing the exact copy.' },
     ] },
