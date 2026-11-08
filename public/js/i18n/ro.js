@@ -2171,6 +2171,8 @@ i18n.register('ro', 'RO', "Română", {
       sourceDisk: 'Fișier Compose local',
       sourceHost: 'Detectat pe host',
       containerCount: 'Containere pornite',
+      usedNetworks: 'Rețele',
+      usedVolumes: 'Volume',
       noPublishedPorts: 'Fără porturi publicate',
       configuredService: 'Configurat · fără container',
       metrics: {

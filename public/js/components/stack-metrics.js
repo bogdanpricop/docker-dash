@@ -5,9 +5,10 @@ class StackMetrics {
   static batchSize = 200;
   static intervalMs = 15_000;
 
-  constructor(root, hostId, stacks) {
+  constructor(root, hostId, stacks, sort) {
     this.root = root;
     this.hostId = hostId;
+    this.sort = sort;
     this.rows = [...root.querySelectorAll('[data-stack-row]')].map((row, index) => {
       const services = row.nextElementSibling;
       return {
@@ -62,7 +63,8 @@ class StackMetrics {
   }
 
   paint() {
-    for (const { row, services, ids } of this.rows) {
+    for (const entry of this.rows) {
+      const { row, services, ids } = entry;
       const readings = ids.map(id => this.readings[id]).filter(Boolean);
       const fresh = this.unavailable ? [] : readings.filter(reading => reading.fresh);
       const totals = {};
@@ -71,6 +73,7 @@ class StackMetrics {
         totals[field] = values.length && values.length === ids.length && values.every(Number.isFinite)
           ? values.reduce((sum, value) => sum + value, 0) : null;
       }
+      entry.totals = totals;
       const cells = row.querySelectorAll('[data-stack-metric]');
       const updated = readings.length ? Math.min(...readings.map(reading => reading.latest.at)) : null;
       const quality = this.unavailable && ids.length ? 'unavailable'
@@ -81,6 +84,34 @@ class StackMetrics {
         this.renderService(el, this.readings[el.dataset.stackServiceMetrics]);
       });
     }
+    this.sortRows();
+  }
+
+  setSort(sort) {
+    this.sort = sort;
+    this.sortRows();
+  }
+
+  sortRows() {
+    if (!this.rows.length) return;
+    const { field, direction } = this.sort || {};
+    const order = field ? [...this.rows].sort((a, b) => {
+      const first = a.totals?.[field];
+      const second = b.totals?.[field];
+      if (!Number.isFinite(first)) return Number.isFinite(second) ? 1 : 0;
+      if (!Number.isFinite(second)) return -1;
+      return direction === 'ascending' ? first - second : second - first;
+    }) : this.rows;
+    const body = this.rows[0].row.parentNode;
+    const focused = document.activeElement;
+    let cursor = body.firstElementChild;
+    for (const { row, services } of order) {
+      for (const node of services ? [row, services] : [row]) {
+        if (node === cursor) cursor = cursor.nextElementSibling;
+        else body.insertBefore(node, cursor);
+      }
+    }
+    if (focused !== document.activeElement && this.root.contains(focused)) focused.focus({ preventScroll: true });
   }
 
   renderValues(cells, values, updated, quality) {

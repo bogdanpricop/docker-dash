@@ -4,6 +4,8 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Sort the Stacks table by CPU or RAM and open linked Docker networks and
+  volumes. Compact the toolbar and mark expanded stacks with a side accent.
 - Show host-scoped CPU and RAM totals, network and disk rates, sample times,
   and per-container charts for expanded Stacks table rows.
 - Add a compact Stacks table with expandable services and quick links to logs

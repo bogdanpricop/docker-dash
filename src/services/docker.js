@@ -393,7 +393,7 @@ class DockerService {
 
   // ─── Containers ──────────────────────────────────────────
 
-  async listContainers(hostId = 0, { includeSize = false } = {}) {
+  async listContainers(hostId = 0, { includeSize = false, includeNetworkIds = false } = {}) {
     const docker = this.getDocker(hostId);
     const options = { all: true };
     if (includeSize) options.size = true;
@@ -412,6 +412,8 @@ class DockerService {
         private: p.PrivatePort, public: p.PublicPort, type: p.Type, ip: p.IP
       })),
       networks: Object.keys(c.NetworkSettings?.Networks || {}),
+      ...(includeNetworkIds ? { networkRefs: Object.entries(c.NetworkSettings?.Networks || {})
+        .map(([name, network]) => ({ name, id: network?.NetworkID || null })) } : {}),
       mounts: (c.Mounts || []).map(m => ({
         type: m.Type, name: m.Name || null, source: m.Source,
         destination: m.Destination, rw: m.RW, driver: m.Driver || null

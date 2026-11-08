@@ -17,6 +17,7 @@ async function main() {
   try {
     browser = await puppeteer.launch(launchOptions());
     const page = await browser.newPage();
+    await page.setViewport({ width: 1440, height: 900 });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     const base = `http://127.0.0.1:${server.address().port}`;
@@ -59,12 +60,17 @@ async function main() {
     const serviceId = 'a'.repeat(64);
     await page.evaluate(async id => {
       const compose = [
-        { name: 'billing', running: 2, total: 3, services: ['db', 'worker', 'api', 'cron'], containers: [
+        { name: 'billing', running: 2, total: 3, services: ['db', 'worker', 'api', 'cron'],
+          networks: [{ name: 'billing-net', id: 'network-billing' }, { name: 'edge', id: 'network-edge' }, { name: 'topology', id: null }],
+          volumes: ['billing-data'], containers: [
           { id, name: 'billing-db', service: 'db', image: 'postgres:17', state: 'running', ports: [{ public: 5432, private: 5432, type: 'tcp' }] },
           { id: 'b'.repeat(64), name: 'billing-worker', service: 'worker', image: 'worker:1', state: 'exited' },
           { id: 'c'.repeat(64), name: 'billing-api', service: 'api', image: 'api:1', state: 'running' },
         ] },
         { name: 'offline', running: 0, total: 0, discovered: true, diskOnly: true, services: ['frontend'], containers: [] },
+        { name: 'analytics', running: 1, total: 1, services: ['worker'], containers: [
+          { id: 'd'.repeat(64), name: 'analytics-worker', service: 'worker', image: 'analytics:1', state: 'running' },
+        ] },
       ];
       window.stacksHostId = 17;
       window.App = { _hostSelectorHosts: [{ id: 17, name: 'Docker2' }, { id: 18, name: 'VPS' }] };
@@ -87,7 +93,9 @@ async function main() {
           for (const containerId of selection.ids) {
             if (hostId === 18 && containerId !== id) continue;
             const at = 1_700_000_010_000;
-            const latest = { at, cpu: containerId === id ? 90 : 35, ram: 1024 ** 2, rx: 1024, tx: 512, read: 128, write: 256 };
+            const analytics = containerId.startsWith('d');
+            const latest = { at, cpu: containerId === id ? 90 : 35, ram: (analytics ? 4 : 1) * 1024 ** 2,
+              rx: 1024, tx: 512, read: 128, write: 256 };
             containers[containerId] = { latest, fresh: true };
             if (selection.historyIds.includes(containerId)) {
               containers[containerId].history = [{ ...latest, at: at - 10_000, cpu: 10, ram: 512, read: 64 }, latest];
@@ -99,7 +107,14 @@ async function main() {
       await StacksPage.render(document.querySelector('#test'));
     }, serviceId);
     await page.click('#stack-view [data-view="table"]');
-    assert.equal(await page.$$eval('[data-stack-row]', rows => rows.length), 2);
+    assert.equal(await page.$$eval('[data-stack-row]', rows => rows.length), 3);
+    assert.ok(await page.evaluate(() => {
+      const center = id => {
+        const bounds = document.getElementById(id).getBoundingClientRect();
+        return bounds.top + bounds.height / 2;
+      };
+      return Math.abs(center('stack-search') - center('stacks-state')) < 2;
+    }));
     assert.match(await page.$eval('#stacks-host', el => el.textContent), /Docker2/);
     await page.waitForFunction(() => document.querySelector('[data-stack-metric="cpu"]').textContent === '125%');
     assert.equal(await page.$eval('[data-stack-metric="ram"]', el => el.textContent), '2 MiB');
@@ -107,6 +122,29 @@ async function main() {
     assert.match(await page.$eval('[data-stack-metric="disk"]', el => el.textContent), /256 B\/s/);
     assert.ok(await page.$('[data-stack-metric="updated"] time[datetime]'));
     assert.deepEqual(await page.evaluate(() => window.metricRequests[0].historyIds), []);
+    assert.ok(await page.$('[href="#/networks/network-billing"]'));
+    assert.ok(await page.$('[href="#/volumes/billing-data"]'));
+    await page.click('.stack-resource-links summary');
+    await page.waitForSelector('[href="#/networks/details/topology"]', { visible: true });
+    await page.click('[data-stack-expand]');
+    await page.waitForSelector('[data-stack-service-metrics] svg');
+    const serviceBackground = () => page.$eval('.stack-table-services:not([hidden]) td', el => getComputedStyle(el).backgroundColor);
+    const beforeHover = await serviceBackground();
+    await page.hover('.stack-table-services:not([hidden]) .stack-service-card');
+    assert.equal(await serviceBackground(), beforeHover);
+    const names = () => page.$$eval('[data-stack-row]', rows => rows.map(row => row.cells[1].textContent.trim()));
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.click('[data-stack-sort="ram"]');
+    assert.equal(await page.$eval('[data-stack-sort="ram"]', el => el.closest('th').getAttribute('aria-sort')), 'descending');
+    assert.deepEqual(await names(), ['analytics', 'billing', 'offline']);
+    assert.equal(await page.$eval('.stack-row-expanded', row => row.nextElementSibling.hidden), false);
+    await page.click('[data-stack-sort="cpu"]');
+    assert.deepEqual(await names(), ['billing', 'analytics', 'offline']);
+    await page.click('[data-stack-sort="cpu"]');
+    assert.deepEqual(await names(), ['analytics', 'billing', 'offline']);
+    await page.click('[data-stack-sort="cpu"]');
+    assert.deepEqual(await names(), ['billing', 'offline', 'analytics']);
+    await page.click('.stack-row-expanded [data-stack-expand]');
     await page.select('#stacks-state', 'partial');
     await page.type('#stack-search', 'postgres');
     await page.waitForFunction(() => document.querySelectorAll('[data-stack-row]').length === 1);

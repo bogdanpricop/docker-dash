@@ -95,7 +95,7 @@ describe('DockerService (src/services/docker.js)', () => {
         Status: 'Up 10 minutes',
         Created: 1700000000,
         Ports: [{ PrivatePort: 80, PublicPort: 8080, Type: 'tcp', IP: '0.0.0.0' }],
-        NetworkSettings: { Networks: { bridge: {} } },
+        NetworkSettings: { Networks: { bridge: { NetworkID: 'network-id' } } },
         Mounts: [{ Type: 'volume', Name: 'mystack_data', Source: '/data', Destination: '/var/lib/data', RW: true, Driver: 'local' }],
         Labels: { 'com.docker.compose.project': 'mystack', foo: 'bar' },
       },
@@ -113,6 +113,9 @@ describe('DockerService (src/services/docker.js)', () => {
     expect(result[0].shortId).toHaveLength(12);
     expect(result[0].ports[0]).toEqual({ private: 80, public: 8080, type: 'tcp', ip: '0.0.0.0' });
     expect(result[0].networks).toEqual(['bridge']);
+    expect(result[0].networkRefs).toBeUndefined();
+    const withNetworkIds = await dockerService.listContainers(0, { includeNetworkIds: true });
+    expect(withNetworkIds[0].networkRefs).toEqual([{ name: 'bridge', id: 'network-id' }]);
     expect(result[0].labels.foo).toBe('bar');
     expect(result[0].imageIdFull).toBe('sha256:1234567890abcdef');
     expect(result[0].mounts).toEqual([{

@@ -95,7 +95,24 @@ describe('filesystem-backed stack routes', () => {
       name: 'offline', source: 'runtime', discovered: false, services: [],
       running: 1, total: 1,
     })]);
-    expect(dockerService.listContainers).toHaveBeenCalledWith(91);
+    expect(dockerService.listContainers).toHaveBeenCalledWith(91, { includeNetworkIds: true });
+  });
+
+  test('deduplicates actual stack networks and Docker volumes without counting bind mounts', async () => {
+    const common = { state: 'running', image: 'nginx:alpine', labels: { 'com.docker.compose.project': 'resources' } };
+    dockerService.listContainers.mockResolvedValue([
+      { ...common, id: 'a', name: 'web',
+        networkRefs: [{ name: 'shared', id: null }, { name: 'other', id: 'net-2' }],
+        mounts: [{ type: 'volume', name: 'app-data' }, { type: 'bind', name: 'host-path' }] },
+      { ...common, id: 'b', name: 'api',
+        networkRefs: [{ name: 'shared', id: 'net-1' }],
+        mounts: [{ type: 'volume', name: 'app-data' }, { type: 'volume', name: 'db-data' }] },
+    ]);
+    const { body } = await request(app).get('/api/system/stacks').expect(200);
+    expect(body.find(stack => stack.name === 'resources')).toMatchObject({
+      networks: [{ name: 'other', id: 'net-2' }, { name: 'shared', id: 'net-1' }],
+      volumes: ['app-data', 'db-data'],
+    });
   });
 
   test('opens a running stack with deduplicated image and container sizes', async () => {

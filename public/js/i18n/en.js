@@ -1397,6 +1397,8 @@ i18n.register('en', 'EN', 'English', {
       sourceDisk: 'Local Compose file',
       sourceHost: 'Discovered on host',
       containerCount: 'Containers running',
+      usedNetworks: 'Networks',
+      usedVolumes: 'Volumes',
       noPublishedPorts: 'No published ports',
       configuredService: 'Configured · no container',
       metrics: {

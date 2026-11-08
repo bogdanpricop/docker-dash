@@ -620,7 +620,7 @@ router.post('/stacks/:name/validate', requireAuth, hostAccess, requireRole('admi
 });
 router.get('/stacks', requireAuth, hostAccess, async (req, res) => {
   try {
-    const containers = await dockerService.listContainers(req.resolvedHostId ?? req.hostId);
+    const containers = await dockerService.listContainers(req.resolvedHostId ?? req.hostId, { includeNetworkIds: true });
     const stacks = new Map();
 
     for (const c of containers) {
@@ -632,6 +632,7 @@ router.get('/stacks', requireAuth, hostAccess, async (req, res) => {
           workingDir: c.labels?.['com.docker.compose.project.working_dir'] || '',
           configFile: c.labels?.['com.docker.compose.project.config_files'] || '',
           containers: [], running: 0, total: 0, serviceCount: 0,
+          networks: new Map(), volumes: new Set(),
           services: [], source: 'runtime', discovered: false, diskOnly: false,
         });
       }
@@ -642,6 +643,19 @@ router.get('/stacks', requireAuth, hostAccess, async (req, res) => {
       });
       stack.total++;
       if (c.state === 'running') stack.running++;
+      for (const network of c.networkRefs || []) {
+        if (!network.name) continue;
+        const fallback = 'name:' + network.name;
+        if (network.id) {
+          stack.networks.delete(fallback);
+          stack.networks.set('id:' + network.id, network);
+        } else if (![...stack.networks.values()].some(known => known.name === network.name)) {
+          stack.networks.set(fallback, network);
+        }
+      }
+      for (const mount of c.mounts || []) {
+        if (mount.type === 'volume' && mount.name) stack.volumes.add(mount.name);
+      }
     }
 
     // Merge stack definitions found on disk. Runtime state wins when both
@@ -666,13 +680,18 @@ router.get('/stacks', requireAuth, hostAccess, async (req, res) => {
         configFile: diskStack.composeFile,
         composeFile: diskStack.composeFile,
         containers: [], running: 0, total: 0,
+        networks: new Map(), volumes: new Set(),
         serviceCount: diskStack.serviceCount,
         services: diskStack.services,
         source: 'filesystem', discovered: true, diskOnly: true, status: 'stopped',
       });
     }
 
-    const list = [...stacks.values()].sort((a, b) => a.name.localeCompare(b.name));
+    const list = [...stacks.values()].sort((a, b) => a.name.localeCompare(b.name)).map(stack => ({
+      ...stack,
+      networks: [...stack.networks.values()].sort((a, b) => a.name.localeCompare(b.name)),
+      volumes: [...stack.volumes].sort((a, b) => a.localeCompare(b)),
+    }));
     res.json(req.query.context === '1'
       ? { stacks: list, host: { id: req.resolvedHostId ?? req.hostId, name: req.hostName } } : list);
   } catch (err) {

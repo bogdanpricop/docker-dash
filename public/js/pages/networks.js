@@ -10,7 +10,7 @@ const NetworksPage = {
 
   async render(container, params = {}) {
     if (params.id && params.id !== 'topology') {
-      await this._renderNetworkDetail(container, params.id);
+      await this._renderNetworkDetail(container, params.id.startsWith('details/') ? params.id.slice('details/'.length) : params.id);
       return;
     }
 

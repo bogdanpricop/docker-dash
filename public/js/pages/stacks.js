@@ -9,6 +9,7 @@ const StacksPage = {
   _filter: localStorage.getItem('dd-stacks-search') || '',
   _stateFilter: localStorage.getItem('dd-stacks-state') || '',
   _listView: localStorage.getItem('dd-stacks-view') === 'table' ? 'table' : 'cards',
+  _metricSort: localStorage.getItem('dd-stacks-sort') || '',
   _stackHost: null,
   _listStacks: [],
   _expandedServices: new Set(),
@@ -52,20 +53,22 @@ const StacksPage = {
     this._uptimeKuma = null;
 
     container.innerHTML = `
-      <div class="page-header">
+      <div class="page-header stacks-page-header">
         <div>
           <h2><i class="fas fa-layer-group" style="color:var(--accent)"></i> ${i18n.t('pages.stacks.title')}</h2>
           <div class="page-subtitle">${i18n.t('pages.stacks.subtitle')}</div>
         </div>
         <div class="page-actions">
-          <div class="search-box">
-            <i class="fas fa-search"></i>
-            <input type="search" id="stack-search" value="${Utils.escapeHtml(this._filter)}" aria-label="${i18n.t('pages.stacks.filterPlaceholder')}" placeholder="${i18n.t('pages.stacks.filterPlaceholder')}">
+          <div class="stacks-filters">
+            <div class="search-box">
+              <i class="fas fa-search" aria-hidden="true"></i>
+              <input type="search" id="stack-search" value="${Utils.escapeHtml(this._filter)}" aria-label="${i18n.t('pages.stacks.filterPlaceholder')}" placeholder="${i18n.t('pages.stacks.filterPlaceholder')}">
+            </div>
+            <select class="form-control input-sm stacks-state-filter" id="stacks-state" aria-label="${i18n.t('common.status')}">
+              <option value="">${i18n.t('pages.stacks.allStates')}</option>
+              ${states.map(state => `<option value="${state}" ${state === this._stateFilter ? 'selected' : ''}>${i18n.t('pages.stacks.state.' + state)}</option>`).join('')}
+            </select>
           </div>
-          <select class="form-control input-sm stacks-state-filter" id="stacks-state" aria-label="${i18n.t('common.status')}">
-            <option value="">${i18n.t('pages.stacks.allStates')}</option>
-            ${states.map(state => `<option value="${state}" ${state === this._stateFilter ? 'selected' : ''}>${i18n.t('pages.stacks.state.' + state)}</option>`).join('')}
-          </select>
           <label class="toggle-label" title="Include stopped Compose projects discovered under DD_STACKS_DIR">
             <input type="checkbox" id="stacks-show-disk" ${this._showDiskStacks ? 'checked' : ''}> From disk
           </label>
@@ -162,6 +165,7 @@ const StacksPage = {
             containers: s.containers, workingDir: s.workingDir,
             discovered: !!s.discovered, diskOnly: !!s.diskOnly, composeSource: s.source,
             services: s.services || [], serviceCount: s.serviceCount || 0,
+            networks: s.networks || [], volumes: s.volumes || [],
         })),
         ...gitStacks.map(s => {
           const runtime = composeStacks.find(stack => stack.name === s.stack_name && !stack.diskOnly);
@@ -170,6 +174,7 @@ const StacksPage = {
             branch: s.branch, repoUrl: s.repo_url, lastCommit: s.last_commit_hash,
             running: runtime?.running || 0, total: runtime?.total || 0,
             containers: runtime?.containers || [], services: runtime?.services || [],
+            networks: runtime?.networks || [], volumes: runtime?.volumes || [],
           };
         }),
       ];
@@ -215,6 +220,8 @@ const StacksPage = {
       stack.name, stack.source, stack.status, stack.branch, stack.repoUrl,
       stack.lastCommit, stack.workingDir, stack.composeSource,
       ...(stack.services || []),
+      ...(stack.networks || []).map(network => network.name),
+      ...(stack.volumes || []),
       ...(stack.containers || []).flatMap(container => [
         container.name, container.image, container.state, container.status,
       ]),
@@ -285,6 +292,7 @@ const StacksPage = {
           const open = row.hidden;
           row.hidden = !open;
           button.setAttribute('aria-expanded', String(open));
+          button.closest('tr').classList.toggle('stack-row-expanded', open);
           if (open) {
             this._expandedServices.add(button.dataset.stackExpand);
             void this._stackMetrics?.refresh();
@@ -293,8 +301,12 @@ const StacksPage = {
         });
       });
       if (this._listView === 'table' && this._stackHostReady) {
-        this._stackMetrics = new StackMetrics(el, this._stackHost.id, unified);
+        this._stackMetrics = new StackMetrics(el, this._stackHost.id, unified, this._stackSort());
       }
+      el.querySelectorAll('[data-stack-sort]').forEach(button => {
+        button.addEventListener('click', () => this._toggleStackSort(el, button.dataset.stackSort));
+      });
+      this._syncStackSort(el);
       el.querySelectorAll('[data-stack-review]').forEach(button => {
         button.addEventListener('click', () => this._reviewStack(button.dataset.stackName, button.dataset.stackReview, button));
       });
@@ -503,10 +515,13 @@ const StacksPage = {
       <thead><tr><th scope="col" aria-label="${t('services')}"></th><th scope="col">${i18n.t('common.name')}</th>
         <th scope="col">${i18n.t('common.status')}</th><th scope="col">${t('source')}</th>
         <th scope="col">${t('containerCount')}</th>
-        <th scope="col" title="${esc(t('metrics.cpuHint'))}">${t('metrics.cpu')}</th>
-        <th scope="col">${t('metrics.ram')}</th>
+        ${['cpu', 'ram'].map(field => `<th scope="col"${field === 'cpu' ? ` title="${esc(t('metrics.cpuHint'))}"` : ''}>
+          <button type="button" class="stack-sort-button" data-stack-sort="${field}">${t('metrics.' + field)} <span aria-hidden="true">↕</span></button>
+        </th>`).join('')}
         <th scope="col" title="${esc(t('metrics.rateHint'))}">${t('metrics.network')}</th>
         <th scope="col" title="${esc(t('metrics.rateHint'))}">${t('metrics.disk')}</th>
+        <th scope="col">${t('usedNetworks')}</th>
+        <th scope="col">${t('usedVolumes')}</th>
         <th scope="col" title="${esc(t('metrics.updatedHint'))}">${t('metrics.updated')}</th>
         <th scope="col">${i18n.t('common.actions')}</th></tr></thead>
       <tbody>${stacks.map((stack, index) => {
@@ -518,18 +533,61 @@ const StacksPage = {
         const badge = { running: 'success', partial: 'warning', stopped: 'stopped' }[state];
         const hasServices = stack.total > 0 || stack.services.length > 0;
         const source = stack.source === 'git' ? 'Git' : t(stack.discovered ? 'sourceDisk' : 'sourceHost');
-        return `<tr data-stack-row>
+        const resources = ['networks', 'volumes'].map(kind => `<td class="stack-resource-cell">${this._renderStackResources(stack, kind)}</td>`).join('');
+        return `<tr data-stack-row${opened && hasServices ? ' class="stack-row-expanded"' : ''}>
           <td>${hasServices ? `<button type="button" class="action-btn stack-expand" data-stack-expand="${esc(identity)}" aria-controls="${id}"
             aria-expanded="${opened}" aria-label="${esc(t('services') + ' · ' + stack.name)}"><i class="fas fa-chevron-right" aria-hidden="true"></i></button>` : ''}</td>
           <td><a href="${path}">${esc(stack.name)}</a></td>
           <td><span class="badge badge-${badge}">${t('state.' + state)}</span></td>
           <td><span class="badge">${source}</span></td>
           <td>${stack.running} / ${stack.total}</td>
-          ${['cpu', 'ram', 'network', 'disk', 'updated'].map(field => `<td data-stack-metric="${field}">—</td>`).join('')}
+          ${['cpu', 'ram', 'network', 'disk'].map(field => `<td data-stack-metric="${field}">—</td>`).join('')}
+          ${resources}
+          <td data-stack-metric="updated">—</td>
           <td>${this._renderStackActions(stack)}</td>
-        </tr>${hasServices ? `<tr class="stack-table-services" id="${id}" ${opened ? '' : 'hidden'}><td colspan="11">
+        </tr>${hasServices ? `<tr class="stack-table-services" id="${id}" ${opened ? '' : 'hidden'}><td colspan="13">
           ${this._renderTableServices(stack)}</td></tr>` : ''}`;
       }).join('')}</tbody></table></div>`;
+  },
+
+  _stackSort() {
+    const [field, direction] = this._metricSort.split(':');
+    return ['cpu', 'ram'].includes(field) && ['ascending', 'descending'].includes(direction) ? { field, direction } : null;
+  },
+
+  _toggleStackSort(root, field) {
+    const previous = this._stackSort();
+    this._metricSort = previous?.field !== field ? field + ':descending'
+      : previous.direction === 'descending' ? field + ':ascending' : '';
+    localStorage.setItem('dd-stacks-sort', this._metricSort);
+    this._syncStackSort(root);
+    this._stackMetrics?.setSort(this._stackSort());
+  },
+
+  _syncStackSort(root) {
+    const sort = this._stackSort();
+    root.querySelectorAll('[data-stack-sort]').forEach(button => {
+      const header = button.closest('th');
+      const active = sort?.field === button.dataset.stackSort;
+      if (active) header.setAttribute('aria-sort', sort.direction);
+      else header.removeAttribute('aria-sort');
+      button.querySelector('span').textContent = active ? (sort.direction === 'ascending' ? '↑' : '↓') : '↕';
+    });
+  },
+
+  _renderStackResources(stack, kind) {
+    const esc = Utils.escapeHtml;
+    const resources = stack[kind] || [];
+    const link = resource => {
+      const name = kind === 'networks' ? resource.name : resource;
+      const id = kind === 'networks' ? resource.id : null;
+      const route = kind === 'networks' && !id ? 'networks/details' : kind;
+      return `<a href="#/${route}/${encodeURIComponent(id || name)}">${esc(name)}</a>`;
+    };
+    if (!resources.length) return '—';
+    return `<div class="stack-resource-links">${resources.slice(0, 2).map(link).join('')}
+      ${resources.length > 2 ? `<details><summary>+${resources.length - 2}</summary>
+        <div class="stack-resource-links">${resources.slice(2).map(link).join('')}</div></details>` : ''}</div>`;
   },
 
   _renderTableServices(stack) {
