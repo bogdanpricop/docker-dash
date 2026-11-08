@@ -4,6 +4,8 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Select and delete multiple local database backup copies in one confirmed
+  operation. Review any copies that changed or could not be removed.
 - Pin left navigation entries to a Pinned group at the top of the sidebar.
   Right-click an entry or use the manage button to pin and unpin pages, and the
   selection follows the signed-in user across sessions. Drag the pinned entries

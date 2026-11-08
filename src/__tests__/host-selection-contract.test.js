@@ -263,6 +263,55 @@ test('only the reviewed database copy is deleted, even when another location use
   }
 });
 
+test('bulk backup deletion checks every selection before deleting and reports per-copy failures', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dd-delete-copies-'));
+  const originalDataDir = process.env.DATA_DIR;
+  process.env.DATA_DIR = root;
+  try {
+    const manual = path.join(root, 'backup-same.db.enc');
+    const scheduled = path.join(root, 'backups', 'backup-same.db.enc');
+    const untouched = path.join(root, 'backup-keep.db');
+    fs.mkdirSync(path.dirname(scheduled));
+    for (const file of [manual, scheduled, untouched]) fs.writeFileSync(file, 'fixture');
+    const list = async () => (await request(app).get('/system/backup/list').expect(200)).body.files
+      .filter(file => file.name === 'backup-same.db.enc').map(({ name, location, revision }) => ({ name, location, revision }));
+    const remove = copies => request(app).delete('/system/backup/local/bulk').send({ copies });
+    const copies = await list();
+    await remove(copies).set('X-Test-Role', 'viewer').expect(403);
+    await remove([copies[0], copies[0]]).expect(400);
+    await remove([copies[0], { ...copies[1], name: '../backup-keep.db' }]).expect(400);
+    fs.appendFileSync(scheduled, ' updated');
+    const stale = await remove(copies).expect(409);
+    expect(stale.body.conflicts).toMatchObject([{ location: 'scheduled', status: 409 }]);
+    expect(fs.existsSync(manual)).toBe(true);
+
+    const fresh = await list();
+    const unlink = fs.unlinkSync;
+    const failingUnlink = jest.spyOn(fs, 'unlinkSync').mockImplementation(file => {
+      if (file === scheduled) throw Object.assign(new Error('fixture failure'), { code: 'EACCES' });
+      return unlink(file);
+    });
+    try {
+      const partial = await remove(fresh).expect(200);
+      expect(partial.body.deleted).toEqual([{ location: 'local', name: 'backup-same.db.enc' }]);
+      expect(partial.body.failed).toMatchObject([{ location: 'scheduled', status: 403 }]);
+    } finally { failingUnlink.mockRestore(); }
+    expect(fs.existsSync(manual)).toBe(false);
+    expect(fs.existsSync(scheduled)).toBe(true);
+
+    fs.writeFileSync(manual, 'fresh manual copy');
+    const all = await remove(await list()).expect(200);
+    expect(all.body.deleted.map(copy => copy.location).sort()).toEqual(['local', 'scheduled']);
+    expect(all.body.failed).toEqual([]);
+    expect(fs.existsSync(manual) || fs.existsSync(scheduled)).toBe(false);
+    expect(fs.existsSync(untouched)).toBe(true);
+  } finally {
+    if (originalDataDir === undefined) delete process.env.DATA_DIR;
+    else process.env.DATA_DIR = originalDataDir;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('scheduled actions keep their original daemon and enforce access on the saved target', async () => {
   const created = await request(app).post('/system-schedules').send({
     containerId: 'fixture', action: 'stop', cron: '0 3 * * *', enabled: false,

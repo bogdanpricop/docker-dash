@@ -13,6 +13,9 @@ const WhatsNewPage = {
       { type: 'feature', text: 'Pin left navigation entries to a Pinned group at the top of the sidebar. Right-click an entry or use the manage button, and the selection follows the signed-in user. Drag the pinned entries to set their order.' },
       { type: 'fix', text: 'Give back-to-back provider compliance exports distinct bundle hashes, so a second export of the same scope no longer fails on a duplicate hash.' },
     ] },
+    { version: '8.96.35', date: '2026-11-08', title: 'Bulk cleanup for local database backups', changes: [
+      { type: 'improvement', text: 'Select multiple local database copies and review them together before deleting.' },
+    ] },
     { version: '8.96.34', date: '2026-11-08', title: 'Local database backup cleanup', changes: [
       { type: 'improvement', text: 'Delete individual local database backup copies in System → Backup after reviewing the exact copy.' },
     ] },
