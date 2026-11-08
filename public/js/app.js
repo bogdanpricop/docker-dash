@@ -604,7 +604,7 @@ const App = {
     // Apply sidebar layout for saved UI mode (router sets _currentPageName first)
     this._renderSidebarForMode(this._uiMode);
 
-    // v8.96.35 — pinned navigation entries. Initialised AFTER the sidebar
+    // v8.96.36 — pinned navigation entries. Initialised AFTER the sidebar
     // layout so the pristine markup snapshot taken by _renderSidebarForMode
     // stays free of the pinned block.
     if (window.NavPins) NavPins.init(this.user?.username);
@@ -1090,7 +1090,7 @@ const App = {
       }
     });
 
-    // v8.96.35 — re-apply pinned entries. Every layout rebuild replaces the
+    // v8.96.36 — re-apply pinned entries. Every layout rebuild replaces the
     // navigation markup, so the pinned block has to be restored afterwards.
     if (window.NavPins) NavPins.apply();
   },
@@ -1289,7 +1289,7 @@ const App = {
       }
     });
 
-    // v8.96.35 — pinned navigation block. Its caption uses its own class, so
+    // v8.96.36 — pinned navigation block. Its caption uses its own class, so
     // the index-based section label mapping above is left untouched.
     if (window.NavPins) NavPins.setHeaderLabel();
 
@@ -1645,7 +1645,7 @@ const App = {
       if (nav) nav.innerHTML = this._standardNavHTML;
     }
     this._standardNavHTML = null;
-    // v8.96.35 — drop the pinned entries of the session that just ended. The
+    // v8.96.36 — drop the pinned entries of the session that just ended. The
     // stored pins are per user and survive; only the applied state is reset.
     if (window.NavPins) NavPins.reset();
     WS.disconnect();
