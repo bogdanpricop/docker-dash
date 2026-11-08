@@ -247,25 +247,81 @@ router.post('/s3', requireAuth, requireRole('admin'), writeable, async (req, res
   }
 });
 
+const localBackupName = /^backup-[^/\\:\x00-\x1f]*\.db(?:\.enc)?$/;
+
+function backupRevision(stat) {
+  return crypto.createHash('sha256')
+    .update(JSON.stringify([stat.dev, stat.ino, stat.size, stat.mtimeMs, stat.ctimeMs])).digest('hex');
+}
+
+function backupDirectories() {
+  const local = process.env.DATA_DIR || '/data';
+  return { local, scheduled: path.join(local, 'backups') };
+}
+
+function isBackupCopy(stat, database) {
+  return stat?.isFile() && (!database || stat.dev !== database.dev || stat.ino !== database.ino);
+}
+
+function activeDatabaseFile() {
+  if (config.db.path !== ':memory:') return fs.statSync(config.db.path, { throwIfNoEntry: false });
+}
+
 router.get('/list', requireAuth, requireRole('admin'), (req, res) => {
   try {
-    const backupDir = process.env.DATA_DIR || '/data';
-
+    const directories = backupDirectories();
+    const database = activeDatabaseFile();
     const files = [];
-    for (const [location, directory] of [['local', backupDir], ['scheduled', path.join(backupDir, 'backups')]]) {
-      if (!fs.existsSync(directory)) continue;
-      const entries = fs.readdirSync(directory).filter(f => /^backup-.*\.db(?:\.enc)?$/.test(f));
-      for (const f of entries) {
+    for (const [location, directory] of Object.entries(directories)) {
+      const inspect = location === 'scheduled' ? fs.lstatSync : fs.statSync;
+      if (!inspect(directory, { throwIfNoEntry: false })?.isDirectory()) continue;
+      for (const name of fs.readdirSync(directory).filter(name => localBackupName.test(name))) {
         try {
-          const stat = fs.lstatSync(path.join(directory, f));
-          if (stat.isFile()) files.push({ name: f, size: stat.size, created: stat.mtime.toISOString(), location, encrypted: f.endsWith('.enc') });
+          const stat = fs.lstatSync(path.join(directory, name));
+          if (isBackupCopy(stat, database)) files.push({ name, size: stat.size, created: stat.mtime.toISOString(),
+            location, encrypted: name.endsWith('.enc'), revision: backupRevision(stat) });
         } catch { /* skip unreadable */ }
       }
     }
 
-    res.json({ files: files.sort((a, b) => b.created.localeCompare(a.created)).slice(0, 250), dir: backupDir });
+    res.json({ files: files.sort((a, b) => b.created.localeCompare(a.created)).slice(0, 250), dir: directories.local });
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.delete('/local/:location/:name', requireAuth, requireRole('admin'), writeable, (req, res) => {
+  const { location, name } = req.params;
+  const revision = req.body?.revision;
+  if (!['local', 'scheduled'].includes(location) || !localBackupName.test(name)
+    || typeof revision !== 'string' || !/^[a-f0-9]{64}$/.test(revision)) {
+    return res.status(400).json({ error: 'Invalid database backup selection' });
+  }
+  const directory = backupDirectories()[location];
+  try {
+    const inspect = location === 'scheduled' ? fs.lstatSync : fs.statSync;
+    const file = path.join(directory, name);
+    if (!inspect(directory, { throwIfNoEntry: false })?.isDirectory()) {
+      return res.status(404).json({ error: 'Local database backup not found' });
+    }
+    const stat = fs.lstatSync(file, { throwIfNoEntry: false });
+    const database = activeDatabaseFile();
+    if (!isBackupCopy(stat, database)) return res.status(404).json({ error: 'Local database backup not found' });
+    if (backupRevision(stat) !== revision) {
+      return res.status(409).json({ error: 'This backup changed. Review the current copy before deleting it.' });
+    }
+    fs.unlinkSync(file);
+    auditService.log({
+      userId: req.user.id, username: req.user.username, action: 'database_backup_deleted',
+      targetType: 'database_backup', targetId: name, details: { location, size: stat.size }, ip: getClientIp(req),
+    });
+    res.json({ ok: true });
+  } catch (error) {
+    if (error.code === 'ENOENT') return res.status(404).json({ error: 'Local database backup not found' });
+    if (['EACCES', 'EPERM'].includes(error.code)) {
+      return res.status(403).json({ error: 'Docker Dash does not have permission to delete this copy' });
+    }
+    throw error;
   }
 });
 

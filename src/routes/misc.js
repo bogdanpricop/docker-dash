@@ -137,9 +137,11 @@ router.post('/backup/database', requireAuth, requireRole('admin'), (req, res) =>
     const backupDir = process.env.DATA_DIR || '/data';
     const ts = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
     const backupPath = path.join(backupDir, `backup-${ts}.db`);
+    const temporaryPath = backupPath + '.' + require('node:crypto').randomUUID() + '.tmp';
 
     // Use better-sqlite3's backup API (safe, non-blocking for WAL mode)
-    db.backup(backupPath).then(() => {
+    db.backup(temporaryPath).then(() => {
+      fs.renameSync(temporaryPath, backupPath);
       const stat = fs.statSync(backupPath);
       auditService.log({
         userId: req.user.id, username: req.user.username,
@@ -148,6 +150,7 @@ router.post('/backup/database', requireAuth, requireRole('admin'), (req, res) =>
       });
       res.json({ ok: true, path: backupPath, size: stat.size, timestamp: ts });
     }).catch(err => {
+      try { fs.rmSync(temporaryPath, { force: true }); } catch { /* report the backup error */ }
       log.error('database backup', err);
       res.status(500).json({ error: 'Backup failed' });
     });

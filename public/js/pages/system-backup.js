@@ -384,8 +384,10 @@ const SystemPageBackup = {
       try {
         Toast.info('Creating backup...');
         const result = await Api.post('/backup/database');
-        if (result.ok) Toast.success('Backup created: ' + Utils.formatBytes(result.size));
-        else Toast.error('Backup failed');
+        if (result.ok) {
+          Toast.success('Backup created: ' + Utils.formatBytes(result.size));
+          await this._loadBackupOverview(el.querySelector('[data-backup-overview]'));
+        } else Toast.error('Backup failed');
       } catch (err) { Toast.error(err.message); }
     });
 
@@ -497,6 +499,8 @@ const SystemPageBackup = {
     const files = result(local)?.files || [];
     const s3Status = result(s3);
     const cloudStatus = result(pcloud);
+    const copiesOpen = root.querySelector('[data-local-copies]')?.open;
+    const deleteLabel = i18n.t('common.delete');
     const when = value => value ? escape(new Date(value).toLocaleString()) : 'No backup recorded';
     const status = (name, enabled, schedule, last) => `<tr><td>${name}</td>
       <td>${enabled === undefined ? 'Unavailable' : enabled ? 'Enabled' : 'Disabled'}</td>
@@ -511,11 +515,38 @@ const SystemPageBackup = {
         ${status('pCloud stacks', cloudStatus?.enabled, cloudStatus?.schedules?.stack, cloudStatus?.lastBackup?.stack)}
         ${status('pCloud audit', cloudStatus?.enabled, cloudStatus?.schedules?.audit, cloudStatus?.lastBackup?.audit)}
       </tbody></table></div>
-      <details style="margin-top:10px"><summary>Local database copies · ${files.length}</summary>
-        ${files.length ? `<div class="file-list-scroll"><table class="data-table compact"><thead><tr><th>Copy</th><th>Location</th><th>Size</th><th>Modified</th></tr></thead>
-          <tbody>${files.map(file => `<tr><td class="mono">${escape(file.name)}${file.encrypted ? ' <span class="badge">Encrypted</span>' : ''}</td>
-          <td>${escape(file.location || 'local')}</td><td>${Utils.formatBytes(file.size)}</td><td>${when(file.created)}</td></tr>`).join('')}</tbody></table></div>`
-          : '<p class="text-muted">No local copies available.</p>'}</details>`;
+      <details data-local-copies style="margin-top:10px" ${copiesOpen ? 'open' : ''}><summary>Local database copies · ${files.length}</summary>
+        ${files.length ? `<div class="file-list-scroll"><table class="data-table compact"><thead><tr><th>Copy</th><th>Location</th><th>Size</th><th>Modified</th><th>${escape(i18n.t('common.actions'))}</th></tr></thead>
+          <tbody>${files.map((file, index) => `<tr><td class="mono">${escape(file.name)}${file.encrypted ? ' <span class="badge">Encrypted</span>' : ''}</td>
+          <td>${escape(file.location || 'local')}</td><td>${Utils.formatBytes(file.size)}</td><td>${when(file.created)}</td>
+          <td>${file.revision ? `<button type="button" class="btn btn-sm btn-danger" data-delete-local-copy="${index}"
+            aria-label="${escape(deleteLabel + ' ' + file.name + ' (' + file.location + ')')}">${escape(deleteLabel)}</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`
+          : `<p class="text-muted">${local.status === 'fulfilled' ? 'No local copies available.' : 'Local copies could not be loaded.'}</p>`}</details>`;
+
+    const buttons = [...root.querySelectorAll('[data-delete-local-copy]')];
+    buttons.forEach((button, index) => button.addEventListener('click', async () => {
+      const file = files[Number(button.dataset.deleteLocalCopy)];
+      buttons.forEach(item => { item.disabled = true; });
+      try {
+        const confirmed = await Modal.confirm(`Permanently delete ${file.name} (${file.location})?`, {
+          danger: true, confirmText: deleteLabel,
+        });
+        if (!confirmed) return;
+        const selection = [file.location, file.name].map(encodeURIComponent).join('/');
+        await Api.delete(`/system/backup/local/${selection}?hostId=0`, { revision: file.revision });
+        Toast.success('Local database copy deleted');
+        await this._loadBackupOverview(root);
+      } catch (error) {
+        Toast.error(error.message);
+        if (error.status === 404 || error.status === 409) await this._loadBackupOverview(root);
+      } finally {
+        buttons.forEach(item => { item.disabled = false; });
+        if (root.isConnected) {
+          const remaining = root.querySelectorAll('[data-delete-local-copy]');
+          (remaining[Math.min(index, remaining.length - 1)] || root.querySelector('[data-local-copies] summary'))?.focus();
+        }
+      }
+    }));
   },
 
 };

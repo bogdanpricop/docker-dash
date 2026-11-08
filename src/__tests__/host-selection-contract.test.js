@@ -7,6 +7,7 @@ const express = require('express');
 const request = require('supertest');
 const vm = require('node:vm');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { PassThrough } = require('node:stream');
 
@@ -216,6 +217,50 @@ test('configuration backup preview lists overwrites, skips API key metadata and 
   const fresh = (await request(app).post('/system/backup/restore/plan').send(backup).expect(200)).body;
   await request(app).post('/system/backup/restore').send({ ...backup, planId: fresh.planId }).expect(200);
   expect(db.prepare("SELECT value FROM settings WHERE key = 'test_restore_setting'").get().value).toBe('next');
+});
+
+test('only the reviewed database copy is deleted, even when another location uses the same name', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dd-delete-copy-'));
+  const scheduled = path.join(root, 'backups');
+  const originalDataDir = process.env.DATA_DIR;
+  const config = require('../config');
+  const originalDbPath = config.db.path;
+  process.env.DATA_DIR = root;
+  fs.mkdirSync(scheduled);
+  try {
+    const name = 'backup-copy.db.enc';
+    const active = 'backup-active.db';
+    config.db.path = path.join(root, active);
+    fs.writeFileSync(config.db.path, 'database');
+    fs.writeFileSync(path.join(root, name), 'manual copy');
+    fs.writeFileSync(path.join(scheduled, name), 'scheduled copy');
+    const inventory = () => request(app).get('/system/backup/list').expect(200);
+    const remove = (location, file, revision) => request(app)
+      .delete(`/system/backup/local/${location}/${encodeURIComponent(file)}`).send({ revision });
+
+    const { body: { files } } = await inventory();
+    expect(files.map(file => [file.location, file.name]).sort()).toEqual([['local', name], ['scheduled', name]]);
+    const selected = files.find(file => file.location === 'scheduled');
+    await remove('scheduled', name, selected.revision).set('X-Test-Role', 'viewer').expect(403);
+    await remove('scheduled', '../' + name, selected.revision).expect(400);
+    await remove('local', active, selected.revision).expect(404);
+    fs.appendFileSync(path.join(scheduled, name), ' replaced');
+    await remove('scheduled', name, selected.revision).expect(409);
+    const fresh = (await inventory()).body.files.find(file => file.location === 'scheduled');
+    await remove('scheduled', name, fresh.revision).expect(200, { ok: true });
+    await remove('scheduled', name, fresh.revision).expect(404);
+    expect(fs.readFileSync(path.join(root, name), 'utf8')).toBe('manual copy');
+    expect(fs.readFileSync(config.db.path, 'utf8')).toBe('database');
+    const audit = getDb().prepare('SELECT target_id, details FROM audit_log WHERE action = ? ORDER BY id DESC LIMIT 1')
+      .get('database_backup_deleted');
+    expect(audit.target_id).toBe(name);
+    expect(JSON.parse(audit.details).location).toBe('scheduled');
+  } finally {
+    config.db.path = originalDbPath;
+    if (originalDataDir === undefined) delete process.env.DATA_DIR;
+    else process.env.DATA_DIR = originalDataDir;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('scheduled actions keep their original daemon and enforce access on the saved target', async () => {

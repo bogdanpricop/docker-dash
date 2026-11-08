@@ -4,6 +4,8 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Let administrators delete individual local database backup copies after
+  reviewing the filename and location. Refresh the inventory after deletion.
 - Fix Check and Plan for Compose projects whose original files live on the
   Docker host. Report unavailable project files separately from a missing CLI.
 - Archive Docker volumes and eligible bind mounts with encryption at rest.

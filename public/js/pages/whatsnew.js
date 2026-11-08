@@ -9,6 +9,9 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.96.34', date: '2026-11-08', title: 'Local database backup cleanup', changes: [
+      { type: 'improvement', text: 'Delete individual local database backup copies in System → Backup after reviewing the exact copy.' },
+    ] },
     { version: '8.96.33', date: '2026-11-08', title: 'Compose checks, storage recovery and passkeys', changes: [
       { type: 'fix', text: 'Check and Plan can use the original Compose files on the Docker host and explain when the project is unavailable.' },
       { type: 'feature', text: 'Create encrypted volume and bind mount backups, review the destination and restore to a new volume on another managed host.' },
