@@ -9,6 +9,9 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.96.35', date: '2026-11-08', title: 'Bulk cleanup for local database backups', changes: [
+      { type: 'improvement', text: 'Select multiple local database copies and review them together before deleting.' },
+    ] },
     { version: '8.96.34', date: '2026-11-08', title: 'Local database backup cleanup', changes: [
       { type: 'improvement', text: 'Delete individual local database backup copies in System → Backup after reviewing the exact copy.' },
     ] },

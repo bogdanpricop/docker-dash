@@ -4,6 +4,8 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Select and delete multiple local database backup copies in one confirmed
+  operation. Review any copies that changed or could not be removed.
 - Let administrators delete individual local database backup copies after
   reviewing the filename and location. Refresh the inventory after deletion.
 - Fix Check and Plan for Compose projects whose original files live on the

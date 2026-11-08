@@ -248,6 +248,7 @@ router.post('/s3', requireAuth, requireRole('admin'), writeable, async (req, res
 });
 
 const localBackupName = /^backup-[^/\\:\x00-\x1f]*\.db(?:\.enc)?$/;
+const localBackupLimit = 250;
 
 function backupRevision(stat) {
   return crypto.createHash('sha256')
@@ -267,6 +268,49 @@ function activeDatabaseFile() {
   if (config.db.path !== ':memory:') return fs.statSync(config.db.path, { throwIfNoEntry: false });
 }
 
+function validLocalCopy(selection) {
+  const { location, name, revision } = selection || {};
+  return ['local', 'scheduled'].includes(location) && typeof name === 'string' && localBackupName.test(name)
+    && typeof revision === 'string' && /^[a-f0-9]{64}$/.test(revision);
+}
+
+function reviewLocalCopy({ location, name, revision }, database) {
+  const directory = backupDirectories()[location];
+  const inspect = location === 'scheduled' ? fs.lstatSync : fs.statSync;
+  const file = path.join(directory, name);
+  const stat = inspect(directory, { throwIfNoEntry: false })?.isDirectory()
+    ? fs.lstatSync(file, { throwIfNoEntry: false }) : undefined;
+  if (!isBackupCopy(stat, database)) {
+    throw Object.assign(new Error('Local database backup not found'), { code: 'ENOENT' });
+  }
+  if (backupRevision(stat) !== revision) {
+    throw Object.assign(new Error('This backup changed. Review the current copy before deleting it.'), { code: 'STALE_BACKUP' });
+  }
+  return { file, size: stat.size };
+}
+
+function localCopyError(error) {
+  if (['ENOENT', 'ENOTDIR'].includes(error.code)) return { status: 404, error: 'Local database backup not found' };
+  if (error.code === 'STALE_BACKUP') return { status: 409, error: error.message };
+  if (['EACCES', 'EPERM'].includes(error.code)) {
+    return { status: 403, error: 'Docker Dash does not have permission to delete this copy' };
+  }
+  if (['EBUSY', 'EROFS', 'EIO'].includes(error.code)) {
+    return { status: 500, error: 'The filesystem could not remove or inspect this copy' };
+  }
+  throw error;
+}
+
+function removeLocalCopy(req, selection, database) {
+  const { location, name } = selection;
+  const { file, size } = reviewLocalCopy(selection, database);
+  fs.unlinkSync(file);
+  auditService.log({
+    userId: req.user.id, username: req.user.username, action: 'database_backup_deleted',
+    targetType: 'database_backup', targetId: name, details: { location, size }, ip: getClientIp(req),
+  });
+}
+
 router.get('/list', requireAuth, requireRole('admin'), (req, res) => {
   try {
     const directories = backupDirectories();
@@ -284,44 +328,56 @@ router.get('/list', requireAuth, requireRole('admin'), (req, res) => {
       }
     }
 
-    res.json({ files: files.sort((a, b) => b.created.localeCompare(a.created)).slice(0, 250), dir: directories.local });
+    res.json({ files: files.sort((a, b) => b.created.localeCompare(a.created)).slice(0, localBackupLimit), dir: directories.local });
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
+router.delete('/local/bulk', requireAuth, requireRole('admin'), writeable, (req, res) => {
+  const copies = req.body?.copies;
+  if (!Array.isArray(copies) || copies.length < 1 || copies.length > localBackupLimit || !copies.every(validLocalCopy)
+    || new Set(copies.map(({ location, name }) => location + '/' + name)).size !== copies.length) {
+    return res.status(400).json({ error: 'Select a valid set of distinct database backups' });
+  }
+
+  const database = activeDatabaseFile();
+  const conflicts = [];
+  for (const copy of copies) {
+    try { reviewLocalCopy(copy, database); }
+    catch (error) {
+      conflicts.push({ location: copy.location, name: copy.name, ...localCopyError(error) });
+    }
+  }
+  if (conflicts.length) {
+    return res.status(409).json({ error: 'Some selected backups are unavailable or have changed. Review the current list before deleting.', conflicts });
+  }
+
+  const deleted = [];
+  const failed = [];
+  for (const copy of copies) {
+    const { location, name } = copy;
+    try {
+      removeLocalCopy(req, copy, database);
+      deleted.push({ location, name });
+    } catch (error) {
+      failed.push({ location, name, ...localCopyError(error) });
+    }
+  }
+  res.json({ deleted, failed });
+});
+
 router.delete('/local/:location/:name', requireAuth, requireRole('admin'), writeable, (req, res) => {
-  const { location, name } = req.params;
-  const revision = req.body?.revision;
-  if (!['local', 'scheduled'].includes(location) || !localBackupName.test(name)
-    || typeof revision !== 'string' || !/^[a-f0-9]{64}$/.test(revision)) {
+  const copy = { ...req.params, revision: req.body?.revision };
+  if (!validLocalCopy(copy)) {
     return res.status(400).json({ error: 'Invalid database backup selection' });
   }
-  const directory = backupDirectories()[location];
   try {
-    const inspect = location === 'scheduled' ? fs.lstatSync : fs.statSync;
-    const file = path.join(directory, name);
-    if (!inspect(directory, { throwIfNoEntry: false })?.isDirectory()) {
-      return res.status(404).json({ error: 'Local database backup not found' });
-    }
-    const stat = fs.lstatSync(file, { throwIfNoEntry: false });
-    const database = activeDatabaseFile();
-    if (!isBackupCopy(stat, database)) return res.status(404).json({ error: 'Local database backup not found' });
-    if (backupRevision(stat) !== revision) {
-      return res.status(409).json({ error: 'This backup changed. Review the current copy before deleting it.' });
-    }
-    fs.unlinkSync(file);
-    auditService.log({
-      userId: req.user.id, username: req.user.username, action: 'database_backup_deleted',
-      targetType: 'database_backup', targetId: name, details: { location, size: stat.size }, ip: getClientIp(req),
-    });
+    removeLocalCopy(req, copy, activeDatabaseFile());
     res.json({ ok: true });
   } catch (error) {
-    if (error.code === 'ENOENT') return res.status(404).json({ error: 'Local database backup not found' });
-    if (['EACCES', 'EPERM'].includes(error.code)) {
-      return res.status(403).json({ error: 'Docker Dash does not have permission to delete this copy' });
-    }
-    throw error;
+    const failure = localCopyError(error);
+    res.status(failure.status).json({ error: failure.error });
   }
 });
 

@@ -486,7 +486,7 @@ const SystemPageBackup = {
   // SSL/TLS WIZARD
   // ═══════════════════════════════════════════════════
 
-  async _loadBackupOverview(root) {
+  async _loadBackupOverview(root, outcome = null) {
     const requests = await Promise.allSettled([
       Api.get('/system/backup/list?hostId=0'),
       Api.get('/system/backup/s3-status?hostId=0'),
@@ -501,6 +501,8 @@ const SystemPageBackup = {
     const cloudStatus = result(pcloud);
     const copiesOpen = root.querySelector('[data-local-copies]')?.open;
     const deleteLabel = i18n.t('common.delete');
+    const selectLabel = file => `Select ${file.name} (${file.location})`;
+    const hasSelectable = files.some(file => file.revision);
     const when = value => value ? escape(new Date(value).toLocaleString()) : 'No backup recorded';
     const status = (name, enabled, schedule, last) => `<tr><td>${name}</td>
       <td>${enabled === undefined ? 'Unavailable' : enabled ? 'Enabled' : 'Disabled'}</td>
@@ -516,37 +518,89 @@ const SystemPageBackup = {
         ${status('pCloud audit', cloudStatus?.enabled, cloudStatus?.schedules?.audit, cloudStatus?.lastBackup?.audit)}
       </tbody></table></div>
       <details data-local-copies style="margin-top:10px" ${copiesOpen ? 'open' : ''}><summary>Local database copies · ${files.length}</summary>
-        ${files.length ? `<div class="file-list-scroll"><table class="data-table compact"><thead><tr><th>Copy</th><th>Location</th><th>Size</th><th>Modified</th><th>${escape(i18n.t('common.actions'))}</th></tr></thead>
-          <tbody>${files.map((file, index) => `<tr><td class="mono">${escape(file.name)}${file.encrypted ? ' <span class="badge">Encrypted</span>' : ''}</td>
+        ${outcome ? `<div class="text-sm" role="status"><p>${escape(outcome.message)}</p>
+          ${outcome.issues?.length ? `<ul>${outcome.issues.map(issue => `<li>${escape(issue.name)} (${escape(issue.location)}) · ${escape(issue.error)}</li>`).join('')}</ul>` : ''}</div>` : ''}
+        ${hasSelectable ? `<div class="page-actions" style="margin-top:10px">
+          <span class="text-sm text-muted" data-local-copy-count aria-live="polite">0 selected</span>
+          <button type="button" class="btn btn-sm btn-danger" data-delete-local-selected disabled>Delete selected</button>
+        </div>` : ''}
+        ${files.length ? `<div class="file-list-scroll"><table class="data-table compact"><thead><tr>
+          ${hasSelectable ? '<th><input type="checkbox" data-select-all-local-copies aria-label="Select all local database copies"></th>' : ''}
+          <th>Copy</th><th>Location</th><th>Size</th><th>Modified</th><th>${escape(i18n.t('common.actions'))}</th></tr></thead>
+          <tbody>${files.map((file, index) => `<tr>${hasSelectable ? `<td>${file.revision
+            ? `<input type="checkbox" data-select-local-copy="${index}" aria-label="${escape(selectLabel(file))}">` : ''}</td>` : ''}
+          <td class="mono">${escape(file.name)}${file.encrypted ? ' <span class="badge">Encrypted</span>' : ''}</td>
           <td>${escape(file.location || 'local')}</td><td>${Utils.formatBytes(file.size)}</td><td>${when(file.created)}</td>
           <td>${file.revision ? `<button type="button" class="btn btn-sm btn-danger" data-delete-local-copy="${index}"
             aria-label="${escape(deleteLabel + ' ' + file.name + ' (' + file.location + ')')}">${escape(deleteLabel)}</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`
           : `<p class="text-muted">${local.status === 'fulfilled' ? 'No local copies available.' : 'Local copies could not be loaded.'}</p>`}</details>`;
 
     const buttons = [...root.querySelectorAll('[data-delete-local-copy]')];
-    buttons.forEach((button, index) => button.addEventListener('click', async () => {
-      const file = files[Number(button.dataset.deleteLocalCopy)];
-      buttons.forEach(item => { item.disabled = true; });
+    const checks = [...root.querySelectorAll('[data-select-local-copy]')];
+    const selectAll = root.querySelector('[data-select-all-local-copies]');
+    const bulkButton = root.querySelector('[data-delete-local-selected]');
+    const count = root.querySelector('[data-local-copy-count]');
+    if (!bulkButton) return;
+
+    const selectedCopies = () => checks.filter(check => check.checked).map(check => files[Number(check.dataset.selectLocalCopy)]);
+    const updateSelection = () => {
+      const selected = selectedCopies().length;
+      count.textContent = `${selected} selected`;
+      selectAll.checked = selected === checks.length;
+      selectAll.indeterminate = selected > 0 && !selectAll.checked;
+      bulkButton.disabled = selected === 0;
+    };
+    checks.forEach(check => check.addEventListener('change', updateSelection));
+    selectAll.addEventListener('change', () => {
+      checks.forEach(check => { check.checked = selectAll.checked; });
+      updateSelection();
+    });
+
+    const deleteCopies = async (copies, trigger, bulk) => {
+      if (!copies.length) return;
+      const controls = [bulkButton, selectAll, ...checks, ...buttons];
+      controls.forEach(control => { control.disabled = true; });
       try {
-        const confirmed = await Modal.confirm(`Permanently delete ${file.name} (${file.location})?`, {
-          danger: true, confirmText: deleteLabel,
+        const [file] = copies;
+        const message = bulk
+          ? `<p>Permanently delete ${copies.length} selected database ${copies.length === 1 ? 'copy' : 'copies'}?</p>
+            <ul style="max-height:240px;overflow:auto">${copies.map(copy => `<li><strong>${escape(copy.name)}</strong> (${escape(copy.location)})</li>`).join('')}</ul>`
+          : `Permanently delete ${file.name} (${file.location})?`;
+        const confirmed = await Modal.confirm(message, {
+          danger: true, confirmText: bulk ? 'Delete selected' : deleteLabel, html: bulk,
         });
         if (!confirmed) return;
-        const selection = [file.location, file.name].map(encodeURIComponent).join('/');
-        await Api.delete(`/system/backup/local/${selection}?hostId=0`, { revision: file.revision });
-        Toast.success('Local database copy deleted');
-        await this._loadBackupOverview(root);
+        if (bulk) {
+          const result = await Api.delete('/system/backup/local/bulk?hostId=0', {
+            copies: copies.map(({ name, location, revision }) => ({ name, location, revision })),
+          });
+          const deleted = result.deleted.length;
+          const outcome = result.failed.length
+            ? { message: `${deleted} of ${copies.length} copies deleted.`, issues: result.failed } : null;
+          if (!outcome) Toast.success(deleted === 1 ? 'Local database copy deleted' : `${deleted} local database copies deleted`);
+          await this._loadBackupOverview(root, outcome);
+        } else {
+          const selection = [file.location, file.name].map(encodeURIComponent).join('/');
+          await Api.delete(`/system/backup/local/${selection}?hostId=0`, { revision: file.revision });
+          Toast.success('Local database copy deleted');
+          await this._loadBackupOverview(root);
+        }
       } catch (error) {
         Toast.error(error.message);
-        if (error.status === 404 || error.status === 409) await this._loadBackupOverview(root);
-      } finally {
-        buttons.forEach(item => { item.disabled = false; });
-        if (root.isConnected) {
-          const remaining = root.querySelectorAll('[data-delete-local-copy]');
-          (remaining[Math.min(index, remaining.length - 1)] || root.querySelector('[data-local-copies] summary'))?.focus();
+        if (bulk || error.status === 404 || error.status === 409) {
+          await this._loadBackupOverview(root, { message: error.message, issues: error.body?.conflicts });
         }
+      } finally {
+        controls.forEach(control => { control.disabled = false; });
+        updateSelection();
+        if (trigger.isConnected) trigger.focus();
+        else root.querySelector('[data-local-copies] summary')?.focus();
       }
+    };
+    buttons.forEach(button => button.addEventListener('click', () => {
+      void deleteCopies([files[Number(button.dataset.deleteLocalCopy)]], button, false);
     }));
+    bulkButton.addEventListener('click', () => { void deleteCopies(selectedCopies(), bulkButton, true); });
   },
 
 };
