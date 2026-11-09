@@ -8,6 +8,12 @@ const WhatsNewPage = {
   // ─── Changelog Data ──────────────────────────────
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
+  //
+  // Release-scoped versioning: the version number is assigned by the
+  // maintainer when a release is cut, so a contributor does not know which
+  // version their change will ship in and cannot add a numbered entry.
+  // Contributors add their entry to _unreleased below; the release process
+  // moves those entries into a new numbered release.
   _releases: [
     { version: '8.96.39', date: '2026-11-08', title: 'Stacks sorting and resource links', changes: [
       { type: 'improvement', text: 'Sort by CPU or RAM, open stack networks and volumes, and use a more compact Stacks toolbar.' },
@@ -3333,6 +3339,14 @@ const WhatsNewPage = {
     },
   ],
 
+  // ─── Unreleased changes ──────────────────────────
+  // Contributors add their entry here instead of creating a numbered release.
+  // The version number is assigned when the release is cut, so a contributor
+  // cannot know it in advance. The release process moves these entries into a
+  // new numbered release at the top of _releases.
+  // Types: feature, fix, improvement, security, breaking
+  _unreleased: [],
+
   // ─── Render ──────────────────────────────────────
 
   async render(container) {
@@ -3394,17 +3408,16 @@ const WhatsNewPage = {
       breaking: { icon: 'fa-exclamation-triangle', color: 'var(--red)', label: 'Breaking' },
     };
 
-    return this._releases.map((release, idx) => {
-      const isLatest = idx === 0;
+    // Order: breaking, security, feature, improvement, fix
+    const typeOrder = ['breaking', 'security', 'feature', 'improvement', 'fix'];
+
+    const groupSections = (changes) => {
       const changesByType = {};
-      for (const c of release.changes) {
+      for (const c of changes) {
         if (!changesByType[c.type]) changesByType[c.type] = [];
         changesByType[c.type].push(c.text);
       }
-
-      // Order: breaking, security, feature, improvement, fix
-      const typeOrder = ['breaking', 'security', 'feature', 'improvement', 'fix'];
-      const sections = typeOrder
+      return typeOrder
         .filter(t => changesByType[t]?.length)
         .map(t => {
           const info = typeIcons[t] || typeIcons.feature;
@@ -3419,6 +3432,28 @@ const WhatsNewPage = {
             </div>
           `;
         }).join('');
+    };
+
+    // Changes that are merged but not yet part of a numbered release. They
+    // are shown above the releases so operators can see what is coming.
+    const unreleased = this._unreleased?.length
+      ? `
+        <div class="card" style="margin-bottom:16px;border-style:dashed">
+          <div class="card-header" style="display:flex;align-items:center;gap:10px">
+            <h3 style="margin:0;display:flex;align-items:center;gap:8px">
+              <span style="background:var(--surface2);color:var(--text);padding:2px 10px;border-radius:var(--radius-sm);font-family:var(--mono);font-size:14px">Unreleased</span>
+              In development
+            </h3>
+            <span class="badge badge-info" style="font-size:10px;margin-left:auto">Not yet released</span>
+          </div>
+          <div class="card-body">${groupSections(this._unreleased)}</div>
+        </div>
+      `
+      : '';
+
+    const releases = this._releases.map((release, idx) => {
+      const isLatest = idx === 0;
+      const sections = groupSections(release.changes);
 
       return `
         <div class="card" style="margin-bottom:16px${isLatest ? ';border-color:var(--accent)' : ''}">
@@ -3434,6 +3469,8 @@ const WhatsNewPage = {
         </div>
       `;
     }).join('');
+
+    return unreleased + releases;
   },
 
   destroy() {},
