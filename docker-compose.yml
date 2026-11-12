@@ -5,10 +5,11 @@ services:
       dockerfile: Dockerfile
       target: production
       args:
-        APP_VERSION: "${APP_VERSION:-8.96.41}"
-    image: docker-dash:${APP_VERSION:-8.96.41}
+        APP_VERSION: "${APP_VERSION:-8.96.42}"
+    image: docker-dash:${APP_VERSION:-8.96.42}
     container_name: docker-dash
     restart: unless-stopped
+    pids_limit: 1024
     env_file:
       - .env
     ports:
@@ -61,7 +62,7 @@ services:
         condition: service_completed_successfully
     build:
       context: ./docker/egress-filter
-    image: docker-dash-egress-filter:${APP_VERSION:-8.96.41}
+    image: docker-dash-egress-filter:${APP_VERSION:-8.96.42}
     container_name: dd-egress-filter
     restart: unless-stopped
     # Uses the default bridge so target containers on the default bridge can

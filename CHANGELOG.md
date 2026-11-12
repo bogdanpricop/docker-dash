@@ -156,6 +156,22 @@ All notable changes to Docker Dash are documented here.
   members. Commit mutations, mapping changes and HTTP audit together; remove group
   ownership mappings on deletion. [Evidence and compatibility](docs/audits/2026-09-20-scim-security.md).
 
+## [8.96.42] - 2026-11-12 — Webhook, log and HTTP security
+
+- Protect API responses against caching, redact webhook tokens from request
+  logs, strip prototype keys from nested request bodies and allow passkeys
+  within the application's own origin.
+- Rate-limit webhook receivers before parsing. Authenticate Git and automation
+  deliveries with the received JSON bytes, enforce the automation size limit
+  while parsing and constrain the CSRF exemptions to actual receiver URLs.
+- Encrypt saved outgoing webhook endpoints, signing secrets and headers.
+  Validate destinations and headers, reject redirects, bound delivery response
+  time and size, test only the selected webhook and cancel stale retries.
+  Configure the final provider URL directly when a destination redirects.
+- Bound individual and grouped log snapshots. Run regex matching in
+  time-limited workers and report truncated snapshots in the UI.
+- Apply a process limit to the application container.
+
 ## [8.96.41] - 2026-11-12 — Pinned pages and secure image refresh
 
 - Pin and reorder sidebar pages per account across browsers. Thanks to
