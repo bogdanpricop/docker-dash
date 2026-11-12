@@ -14,22 +14,30 @@ const asyncHandler = require('../utils/asyncHandler');
 const hosts = require('../services/host-permissions');
 const docker = require('../services/docker');
 const permissions = require('../services/permissions');
+const { parseHostId } = require('../utils/host-id');
 
 const isAdmin = user => user.role === 'admin';
 const unavailable = () => new diagnostics.DiagnosticsError('Diagnostic subject is not accessible', 403);
 
 async function authorizeSubject(user, subject, creating) {
-  if (isAdmin(user)) return subject;
+  if (!creating && isAdmin(user)) return subject;
   const type = creating ? subject?.type : subject.subject_type;
   const ref = creating ? subject?.ref : subject.subject_ref;
   const rawHost = type === 'vm'
     ? (creating ? subject?.providerHostId : subject.provider_host_id)
     : (creating ? subject?.hostId : subject.host_id);
   if (!['container', 'vm'].includes(type) || typeof ref !== 'string' || !ref || ref.length > 256
-    || (type === 'vm' && rawHost == null)) throw unavailable();
-  const hostId = hosts.normalizeHostId(rawHost ?? 0);
-  if (hostId === null || (!creating && hostId !== (rawHost ?? 0))
-    || !hosts.resolveEffectivePermission(user.id, hostId, false)) throw unavailable();
+    || /[\x00-\x1f\x7f]/.test(ref)) {
+    if (creating) throw new diagnostics.DiagnosticsError('Invalid diagnostic subject');
+    throw unavailable();
+  }
+  const hostId = type === 'vm' ? parseHostId(rawHost) : hosts.normalizeHostId(rawHost ?? 0);
+  if (hostId === null || (type === 'vm' && hostId === 0)) {
+    if (creating) throw new diagnostics.DiagnosticsError('Invalid diagnostic subject host');
+    throw unavailable();
+  }
+  if (isAdmin(user)) return type === 'vm' ? { ...subject, providerHostId: hostId } : { ...subject, hostId };
+  if ((!creating && hostId !== (rawHost ?? 0)) || !hosts.resolveEffectivePermission(user.id, hostId, false)) throw unavailable();
   if (type === 'vm') return creating ? { ...subject, providerHostId: hostId } : subject;
   let container;
   try { container = await docker.inspectContainer(ref, hostId); }

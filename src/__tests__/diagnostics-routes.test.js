@@ -45,7 +45,7 @@ beforeAll(async () => {
   // 3 and 20 and a counter reset at minute 21.
   const ins = db.prepare(`INSERT INTO container_stats
     (host_id, container_id, container_name, cpu_percent, mem_usage, mem_limit, net_rx, net_tx, blk_read, blk_write, pids, recorded_at)
-    VALUES (0,?,?,?,?,?,?,?,0,0,1,?)`);
+    VALUES (1,?,?,?,?,?,?,?,0,0,1,?)`);
   ins.run('web-123', 'web', 10, 100, 1000, 1000, 10, at(1));
   ins.run('web-123', 'web', 20, 200, 1000, 2000, 20, at(2));
   ins.run('web-123', 'web', 30, 300, 1000, 3000, 30, at(3));
@@ -54,9 +54,9 @@ beforeAll(async () => {
     VALUES (99, 'web-123', 'other-host', 999, ?)`).run(at(2));
 
   db.prepare(`INSERT INTO docker_events (host_id, event_type, action, actor_id, actor_name, attributes, event_time)
-    VALUES (0,'container','restart','web-123','web-123','{}',?)`).run(at(20));
+    VALUES (1,'container','restart','web-123','web-123','{}',?)`).run(at(20));
   db.prepare(`INSERT INTO health_events (host_id, container_id, container_name, status, output, exit_code, recorded_at)
-    VALUES (0,'web-123','web','unhealthy','',1,?)`).run(at(20));
+    VALUES (1,'web-123','web','unhealthy','',1,?)`).run(at(20));
 });
 
 const createSession = (over = {}) => request(app).post('/api/diagnostics/sessions').set(auth()).send({
@@ -75,6 +75,7 @@ describe('sessions — lifecycle', () => {
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ name: 'Incident 14:32', window_start: FROM, window_end: TO });
     expect(res.body.subjects).toHaveLength(1);
+    expect(res.body.subjects[0].host_id).toBe(1);
     expect(res.body.uuid).toMatch(/^[0-9a-f-]{36}$/);
     // No sample table exists to copy into — the point of retrospective mode.
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'diagnostic%'").all();
