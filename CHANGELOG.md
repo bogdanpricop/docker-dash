@@ -4,6 +4,11 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Pin and reorder sidebar pages per account across browsers.
+- Keep release versions separate from browser cache invalidation and detect
+  frontend updates in open tabs between releases.
+- Give every provider compliance evidence export its own verifiable identity.
+
 - Sort the Stacks table by CPU or RAM and open linked Docker networks and
   volumes. Compact the toolbar and mark expanded stacks with a side accent.
 - Show host-scoped CPU and RAM totals, network and disk rates, sample times,

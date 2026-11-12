@@ -76,6 +76,7 @@ jobs:
           node scripts/check-provider-tls-browser.js
           node scripts/check-ldap-tls-browser.js
           node scripts/check-notification-channels-browser.js
+          node scripts/check-nav-pins-browser.js
           node scripts/check-rollback-history-browser.js
           npm run check:inventory-browser
 

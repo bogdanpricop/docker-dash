@@ -3345,7 +3345,11 @@ const WhatsNewPage = {
   // cannot know it in advance. The release process moves these entries into a
   // new numbered release at the top of _releases.
   // Types: feature, fix, improvement, security, breaking
-  _unreleased: [],
+  _unreleased: [
+    { type: 'feature', text: 'Pin and reorder sidebar pages per account across browsers.' },
+    { type: 'improvement', text: 'Open tabs detect frontend updates even when the release version is unchanged.' },
+    { type: 'fix', text: 'Each provider compliance evidence export has its own verifiable identity.' },
+  ],
 
   // ─── Render ──────────────────────────────────────
 
