@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const log = require('../utils/logger')('csrf');
 const config = require('../config');
+const { isSignedWebhookPost } = require('./signed-webhook');
 
 const TOKEN_NAME = 'XSRF-TOKEN';
 const HEADER_NAME = 'x-xsrf-token';
@@ -14,8 +15,6 @@ const EXEMPT_PATHS = [
   '/api/auth/request-password-reset',
   '/api/auth/reset-password-token',
   '/api/auth/validate-reset-token',
-  '/api/git/webhook/',
-  '/api/automation/webhooks/',
 ];
 
 // Safety bypass: if CSRF_DISABLED=true, skip middleware (for smoke-testing without frontend rewrite)
@@ -50,7 +49,7 @@ module.exports = function csrf(req, res, next) {
   if (EXEMPT_METHODS.has(req.method)) return next();
   // The token in this exact public trigger URL is the only credential used.
   if (req.method === 'POST' && /^\/webhook\/container\/[A-Za-z0-9_-]{43}\/?$/.test(req.path)) return next();
-  if (EXEMPT_PATHS.some(p => p.endsWith('/') ? req.path.startsWith(p) : req.path === p)) return next();
+  if (isSignedWebhookPost(req) || EXEMPT_PATHS.includes(req.path)) return next();
 
   // Match authentication precedence: an arbitrary Authorization header must
   // not exempt a request that actually authenticates using a browser cookie/SSO.

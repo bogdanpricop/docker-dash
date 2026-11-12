@@ -2,7 +2,7 @@
 
 const { Router } = require('express');
 const crypto = require('crypto');
-const express = require('express');
+const { signedWebhookJson, hasSignedBody } = require('../middleware/signed-webhook');
 const gitService = require('../services/git');
 const previews = require('../services/preview-environments');
 const { hmacSign } = require('../utils/crypto');
@@ -10,12 +10,8 @@ const log = require('../utils/logger')('git-webhook');
 
 const router = Router();
 
-// Raw body middleware for HMAC verification
-const rawBodyParser = express.json({
-  verify: (req, _res, buf) => { req.rawBody = buf.toString('utf8'); },
-});
-
-router.post('/:token', rawBodyParser, async (req, res) => {
+router.post('/:token', signedWebhookJson('2mb'), async (req, res) => {
+  if (!hasSignedBody(req)) return res.status(415).json({ error: 'An application/json webhook body is required' });
   const { token } = req.params;
 
   try {
@@ -24,7 +20,7 @@ router.post('/:token', rawBodyParser, async (req, res) => {
     if (!stack) return res.status(404).json({ error: 'Not found' });
 
     // 2. Validate signature
-    const rawBody = req.rawBody || JSON.stringify(req.body);
+    const rawBody = req.rawBody;
     const provider = stack.webhook_provider || 'github';
     const secret = stack.webhook_secret;
     const eventType = String(req.headers['x-github-event'] || '').toLowerCase();
@@ -104,7 +100,7 @@ router.post('/:token', rawBodyParser, async (req, res) => {
     }
 
   } catch (err) {
-    log.error('Webhook processing error', { token: token.substring(0, 8) + '...', error: err.message });
+    log.error('Webhook processing error', { code: err.code || 'WEBHOOK_PROCESSING_ERROR' });
     res.status(500).json({ error: 'Internal error' });
   }
 });

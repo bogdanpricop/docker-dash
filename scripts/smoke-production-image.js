@@ -67,6 +67,24 @@ async function main() {
         assert.equal((await fetch('http://127.0.0.1:8101/api/health/details')).status,429);
       })().catch(error=>{console.error(error);process.exitCode=1;});`);
     console.log('PASS built HTTP server shares API quota across paths/case while health remains available');
+    await execute(container, `const assert=require('node:assert/strict');
+      (async()=>{
+        const base='http://127.0.0.1:8101';
+        const health=await fetch(base+'/api/health');
+        assert.equal(health.headers.get('cache-control'),'no-store');
+        const page=await fetch(base);
+        assert.match(page.headers.get('permissions-policy'),/publickey-credentials-get=\\(self\\)/);
+        const post=body=>fetch(base+'/api/automation/webhooks/'+ 'a'.repeat(48),{
+          method:'POST',headers:{'Content-Type':'application/json'},body});
+        const oversized=JSON.stringify({text:'x'.repeat(256*1024)});
+        const rejected=await post(oversized);
+        assert.equal(rejected.status,413);assert.equal(rejected.headers.get('cache-control'),'no-store');
+        for(let i=0;i<29;i++)assert.equal((await post('{}')).status,404);
+        const limited=await post(oversized);
+        assert.equal(limited.status,429);
+        assert.equal(limited.headers.get('cache-control'),'no-store');
+      })().catch(error=>{console.error(error);process.exitCode=1;});`);
+    console.log('PASS webhook quota runs before body parsing and sensitive responses are not cacheable');
     await execute(container, `const cp=require('child_process'),assert=require('assert/strict');
       assert.match(cp.execFileSync('docker',['--version'],{encoding:'utf8',timeout:10000}),/Docker version 29\\.8\\.2\\+dd\\.2,/);
       assert.equal(cp.execFileSync('docker',['compose','version','--short'],{encoding:'utf8',timeout:10000}).trim(),'5.6.0+dd.2');

@@ -49,6 +49,21 @@ describe('GitHub preview webhook security', () => {
     expect(previews.queuePullRequest).not.toHaveBeenCalled();
   });
 
+  it('verifies the exact JSON bytes and rejects non-JSON deliveries', async () => {
+    git.getStackByWebhookToken.mockReturnValue({
+      id: 1, webhook_provider: 'github', webhook_secret: 'hook-secret', deploy_on_push: 0,
+    });
+    const raw = JSON.stringify(body, null, 2);
+    const sign = bytes => 'sha256=' + crypto.createHmac('sha256', 'hook-secret').update(bytes).digest('hex');
+    await request(app).post('/api/git/webhook/token').set('X-GitHub-Event', 'pull_request')
+      .set('Content-Type', 'application/json').set('X-Hub-Signature-256', sign(JSON.stringify(body))).send(raw).expect(401);
+    await request(app).post('/api/git/webhook/token').set('X-GitHub-Event', 'pull_request')
+      .set('Content-Type', 'text/plain').set('X-Hub-Signature-256', sign(raw)).send(raw).expect(415);
+    await request(app).post('/api/git/webhook/token').set('X-GitHub-Event', 'pull_request')
+      .set('Content-Type', 'application/json').set('X-Hub-Signature-256', sign(raw)).send(raw).expect(202);
+    expect(previews.queuePullRequest).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects invalid HMAC and queues a valid signed pull request', async () => {
     git.getStackByWebhookToken.mockReturnValue({
       id: 1, webhook_provider: 'github', webhook_secret: 'hook-secret', deploy_on_push: 0,
