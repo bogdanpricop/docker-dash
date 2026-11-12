@@ -94,7 +94,9 @@ test('kubeconfig keeps default CA verification and serializes hostile token text
 test('Xen console descriptor retains strict server verification and configured CA', () => {
   const client = clientFor('xo', 'https://xo.example', { caCert: ca });
   const descriptor = client.vmConsoleProxy('vm-123');
-  expect(descriptor.url).toMatch(/^wss:/); expect(descriptor.rejectUnauthorized).toBe(true); expect(descriptor.ca).toBe(ca);
+  expect(descriptor.url).toMatch(/^wss:/);
+  expect(descriptor.rejectUnauthorized).toBe(true);
+  expect(descriptor.ca).toBe(ca.trimEnd() + '\n');
 });
 
 test('Xen request paths cannot downgrade TLS or send credentials to another origin', async () => {

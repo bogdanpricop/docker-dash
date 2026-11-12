@@ -705,7 +705,15 @@ function createComplianceExport(host, input = {}, actor, options = {}) {
     : { ...row, controls: controlsFor('remote_session', row.id) });
   const auditLinks = exportMode === 'hashes_only'
     ? audits.map(row => ({ id: row.id, entryHash: row.entry_hash })) : audits;
+  // The export id and the format are part of the hashed bundle: the
+  // bundle_hash column is UNIQUE, and two exports of the same scope
+  // created within the same millisecond would otherwise hash identically
+  // and collide. Both fields keep every export independently verifiable —
+  // the hash is still computed over the whole bundle minus its integrity
+  // block.
+  const id = `ppce_${generateToken(13)}`;
   const bundle = { schemaVersion: SCHEMA_VERSION, kind: 'docker-dash-compliance-evidence', generatedAt,
+    exportId: id, format,
     provider: { hostId: Number(host.id), type: String(host.daemon_type), scopeId: Number(scope.id) },
     classification, exportMode, findings: findingItems, classifications: classificationItems,
     ransomwarePosture: postureItem, privilegedAccess, remoteSessions,
@@ -719,7 +727,6 @@ function createComplianceExport(host, input = {}, actor, options = {}) {
   if (!signingSecret) throw new PrivilegedComplianceError(
     'ENCRYPTION_KEY is required to sign compliance evidence', 'COMPLIANCE_SIGNING_KEY_REQUIRED', 503);
   const signature = hmacSign(`docker-dash-compliance-v1:${bundleHash}`, signingSecret);
-  const id = `ppce_${generateToken(13)}`;
   const summary = { findingCount: findings.length, classificationCount: classifications.length,
     mappingCount: mappings.length, sessionCount: sessions.length,
     auditLinkCount: bundle.auditLinks.length, ransomwarePostureIncluded: !!bundle.ransomwarePosture };
