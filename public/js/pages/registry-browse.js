@@ -711,14 +711,14 @@ const RegistryBrowsePage = {
         </summary>
         <div style="margin-top:8px">
           <table class="info-table" style="width:100%;font-size:12px">
-            ${k.source ? _row('Source', k.sourceLink ? `<a href="${Utils.escapeHtml(k.sourceLink)}" target="_blank" rel="noopener" style="color:var(--accent)">${Utils.escapeHtml(k.source)}</a> <i class="fas fa-external-link-alt" style="font-size:9px;color:var(--text-dim);margin-left:4px"></i>` : Utils.escapeHtml(k.source)) : ''}
+            ${k.source ? _row('Source', k.sourceLink ? `<a ${Utils.externalLinkAttributes(k.sourceLink)} style="color:var(--accent)">${Utils.escapeHtml(k.source)}</a> <i class="fas fa-external-link-alt" style="font-size:9px;color:var(--text-dim);margin-left:4px"></i>` : Utils.escapeHtml(k.source)) : ''}
             ${k.revision ? _row('Commit', `<code class="mono" title="${Utils.escapeHtml(k.revision)}">${Utils.escapeHtml(k.revisionShort)}</code>${k.created ? ` <span class="text-muted" style="font-size:11px">(${Utils.escapeHtml(_fmtDate(k.created))})</span>` : ''}`) : ''}
             ${k.authors ? _row('Authors', Utils.escapeHtml(k.authors)) : ''}
             ${k.licenses ? _row('License', `<code class="mono" style="font-size:11px">${Utils.escapeHtml(k.licenses)}</code>`) : ''}
             ${k.vendor ? _row('Vendor', Utils.escapeHtml(k.vendor)) : ''}
             ${k.version ? _row('Version', `<code class="mono">${Utils.escapeHtml(k.version)}</code>`) : ''}
-            ${k.url ? _row('URL', k.urlLink ? `<a href="${Utils.escapeHtml(k.urlLink)}" target="_blank" rel="noopener" style="color:var(--accent)">${Utils.escapeHtml(k.url)}</a>` : Utils.escapeHtml(k.url)) : ''}
-            ${k.documentation ? _row('Docs', k.documentationLink ? `<a href="${Utils.escapeHtml(k.documentationLink)}" target="_blank" rel="noopener" style="color:var(--accent)">${Utils.escapeHtml(k.documentation)}</a>` : Utils.escapeHtml(k.documentation)) : ''}
+            ${k.url ? _row('URL', k.urlLink ? `<a ${Utils.externalLinkAttributes(k.urlLink)} style="color:var(--accent)">${Utils.escapeHtml(k.url)}</a>` : Utils.escapeHtml(k.url)) : ''}
+            ${k.documentation ? _row('Docs', k.documentationLink ? `<a ${Utils.externalLinkAttributes(k.documentationLink)} style="color:var(--accent)">${Utils.escapeHtml(k.documentation)}</a>` : Utils.escapeHtml(k.documentation)) : ''}
             ${k.baseName ? _row('Base image', `<code class="mono" style="font-size:11px">${Utils.escapeHtml(k.baseName)}</code>`) : ''}
             ${k.signed ? _row('Signed', `<span style="color:var(--green)"><i class="fas fa-check-circle"></i> Yes${k.signer ? ` <span class="text-muted" style="font-size:11px">(${Utils.escapeHtml(k.signer.substring(0, 60))})</span>` : ''}</span> <span class="text-muted" style="font-size:11px;margin-left:6px">— signature presence detected, not cryptographically verified</span>`) : ''}
           </table>

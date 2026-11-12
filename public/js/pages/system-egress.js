@@ -312,7 +312,7 @@ const SystemPageEgress = {
       if (entries.length === 0) { Toast.warning('No deny events to export'); return; }
       const csv = [
         ['id', 'blocked_at', 'hostname', 'port', 'proto', 'reason', 'container_id'].join(','),
-        ...entries.map(e => [e.id, e.blocked_at, e.hostname, e.port, e.proto, e.reason, e.container_id || ''].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')),
+        ...entries.map(e => [e.id, e.blocked_at, e.hostname, e.port, e.proto, e.reason, e.container_id || ''].map(Utils.csvCell).join(',')),
       ].join('\n');
       const blob = new Blob([csv], { type: 'text/csv' });
       const url = URL.createObjectURL(blob);

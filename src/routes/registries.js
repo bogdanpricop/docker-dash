@@ -9,6 +9,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const { extractHostId } = require('../middleware/hostId');
 const { requireHostAccess } = require('../middleware/hostAccess');
 const { pullImage } = require('../utils/docker-pull');
+const referenceRules = require('../utils/registry-reference');
 
 const router = Router();
 
@@ -126,7 +127,7 @@ router.get('/:id/manifest/*ref', requireAuth, asyncHandler(async (req, res) => {
 // per-layer progress in real time. Operator + admin only; admin-only would
 // be too strict (operators manage app deployments). Audited on success or
 // failure, with the size of the pushed image when known.
-router.post('/:id/push', requireAuth, requireRole('admin', 'operator'), writeable, asyncHandler(async (req, res) => {
+router.post('/:id/push', requireAuth, extractHostId, requireHostAccess('operate'), requireRole('admin', 'operator'), writeable, asyncHandler(async (req, res) => {
   const { sourceImage, targetRepo, targetTag } = req.body || {};
   if (!sourceImage || !targetRepo || !targetTag) {
     return res.status(400).json({ error: 'sourceImage, targetRepo, targetTag are all required' });
@@ -138,7 +139,7 @@ router.post('/:id/push', requireAuth, requireRole('admin', 'operator'), writeabl
   let push;
   try {
     push = await registryService.pushImage(
-      dockerService, req.hostId, parseInt(req.params.id),
+      dockerService, req.resolvedHostId ?? req.hostId, parseInt(req.params.id, 10),
       sourceImage, targetRepo, targetTag,
     );
   } catch (err) {
@@ -157,7 +158,7 @@ router.post('/:id/push', requireAuth, requireRole('admin', 'operator'), writeabl
   // already sent headers.
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
+    'Cache-Control': 'no-store',
     'Connection': 'keep-alive',
     'X-Accel-Buffering': 'no',  // disable nginx/Caddy buffering for this response
   });
@@ -165,7 +166,7 @@ router.post('/:id/push', requireAuth, requireRole('admin', 'operator'), writeabl
   let pushFailed = false;
   let lastError = null;
 
-  const docker = dockerService.getDocker(req.hostId);
+  const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
   docker.modem.followProgress(push.stream,
     (err) => {
       if (err || pushFailed) {
@@ -211,7 +212,9 @@ router.post('/:id/push', requireAuth, requireRole('admin', 'operator'), writeabl
 // Pull image from a configured registry
 router.post('/:id/pull', requireAuth, extractHostId, requireHostAccess('operate'), requireRole('admin', 'operator'), writeable, asyncHandler(async (req, res) => {
   const { image, tag } = req.body;
-  if (!image) return res.status(400).json({ error: 'image name is required' });
+  if (!referenceRules.repository(image) || (tag !== undefined && !referenceRules.tag(tag))) {
+    return res.status(400).json({ error: 'A valid registry repository and tag are required' });
+  }
 
   const registry = registryService.get(parseInt(req.params.id));
   if (!registry) return res.status(404).json({ error: 'Registry not found' });
@@ -225,7 +228,7 @@ router.post('/:id/pull', requireAuth, extractHostId, requireHostAccess('operate'
   const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
 
   // v8.7.28 — shared 10-min timeout via utils/docker-pull, authconfig forwarded.
-  const auth = registryService.getAuthForImage(fullImage);
+  const auth = registryService._authConfigForRegistry(registry);
   await pullImage(docker, fullImage, auth ? { authconfig: auth } : undefined);
 
   auditService.log({
@@ -239,11 +242,7 @@ router.post('/:id/pull', requireAuth, extractHostId, requireHostAccess('operate'
 
 router.post('/:id/pull-stream', requireAuth, extractHostId, requireHostAccess('operate'), requireRole('admin', 'operator'), writeable, asyncHandler(async (req, res) => {
   const { repository, tag, digest, platform } = req.body;
-  const component = '[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*';
-  if (typeof repository !== 'string' || repository.length > 255
-    || !new RegExp(`^${component}(?:/${component})*$`).test(repository)
-    || typeof tag !== 'string' || !/^[\w][\w.-]{0,127}$/.test(tag)
-    || typeof digest !== 'string' || !/^sha256:[a-f0-9]{64}$/.test(digest)
+  if (!referenceRules.repository(repository) || !referenceRules.tag(tag) || !referenceRules.digest(digest)
     || (platform && (typeof platform !== 'string' || !/^[a-z0-9_-]+\/[a-z0-9_-]+(?:\/[a-z0-9_-]+)?$/.test(platform)))) {
     return res.status(400).json({ error: 'A valid repository, tag, digest and optional platform are required' });
   }
@@ -253,7 +252,7 @@ router.post('/:id/pull-stream', requireAuth, extractHostId, requireHostAccess('o
   const docker = require('../services/docker').getDocker(hostId);
   const repo = new URL(registry.url).host + '/' + repository;
   const reference = repo + '@' + digest;
-  const auth = registryService.getAuthForImage(repo + ':' + tag);
+  const auth = registryService._authConfigForRegistry(registry);
   const controller = new AbortController();
   res.on('close', () => controller.abort());
   res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no' });
@@ -293,21 +292,9 @@ router.post('/:id/pull-stream', requireAuth, extractHostId, requireHostAccess('o
 // All admin-gated for writes; reads inherit the existing audit-log requirement.
 // ───────────────────────────────────────────────────────────────────────
 
-// List configured repository entries for a registry credential.
-// Auto-creates a default 'local *' row on first read so existing UX
-// (Browse, Push) just works for v7.5.0 operators upgrading to v8.1.0.
-router.get('/:id/repos', requireAuth, asyncHandler(async (req, res) => {
-  const registryId = parseInt(req.params.id);
-  const repos = registryService.listRepos(registryId);
-  if (repos.length === 0) {
-    // Auto-seed default local catch-all (deep-spec D1)
-    registryService.upsertRepo({
-      registryId, repoPath: '*', type: 'local',
-    }, req.user.id);
-    res.json(registryService.listRepos(registryId));
-    return;
-  }
-  res.json(repos);
+// List configured entries without creating records on a read.
+router.get('/:id/repos', requireAuth, requireRole('admin'), asyncHandler((req, res) => {
+  res.json(registryService.listRepos(parseInt(req.params.id, 10)));
 }));
 
 // Create or update a repository entry. Validates type + required fields per type.
@@ -365,8 +352,8 @@ function _resolveRepoId(registryId, repoPath, userId) {
 router.get('/:id/repos/:repoPath/retention', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
   const registryId = parseInt(req.params.id);
   const repoPath = req.params.repoPath;
-  const repoId = _resolveRepoId(registryId, repoPath, req.user.id);
-  const policy = registryService.getRetentionPolicy(repoId);
+  const repoId = registryService.listRepos(registryId).find(repo => repo.repoPath === repoPath)?.id ?? null;
+  const policy = repoId === null ? null : registryService.getRetentionPolicy(repoId);
   res.json(policy || { repoId, exists: false });
 }));
 

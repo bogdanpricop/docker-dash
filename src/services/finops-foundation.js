@@ -1,4 +1,5 @@
 'use strict';
+const { csvCell } = require('../utils/csv');
 
 const crypto = require('crypto');
 const { getDb } = require('../db');
@@ -109,11 +110,6 @@ function globMatch(pattern, value) {
   const escaped = pattern.replace(/[-/\\^$+?.()|[\]{}]/g, '\\$&').replace(/\*/g, '.*');
   return new RegExp(`^${escaped}$`, 'i').test(value);
 }
-function csvCell(value) {
-  const result = String(value ?? '');
-  return /[",\r\n]/.test(result) ? `"${result.replace(/"/g, '""')}"` : result;
-}
-
 class FinOpsFoundationService {
   constructor(dbProvider = getDb) { this._dbProvider = dbProvider; }
   _db() { return this._dbProvider(); }

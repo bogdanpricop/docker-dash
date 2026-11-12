@@ -12,7 +12,7 @@
 
 const { Router } = require('express');
 const asyncHandler = require('../utils/asyncHandler');
-const { requireAuth, requireRole } = require('../middleware/auth');
+const { requireAuth, requireRole, writeable } = require('../middleware/auth');
 const dockerService = require('../services/docker');
 const detect = require('../services/observability-detect');
 const importer = require('../services/observability-import');
@@ -49,7 +49,7 @@ router.get('/detect', asyncHandler(async (req, res) => {
 // Dashboard import — the user provides their Grafana URL + a
 // service-account token; we POST the dashboard JSON on their behalf.
 // Token NEVER lands in our DB or logs (see §5.3 of the deep-spec).
-router.post('/import-dashboard', asyncHandler(async (req, res) => {
+router.post('/import-dashboard', writeable, asyncHandler(async (req, res) => {
   const { grafanaUrl, token } = req.body || {};
   if (!grafanaUrl || !token) {
     return res.status(400).json({ error: 'grafanaUrl and token are required' });

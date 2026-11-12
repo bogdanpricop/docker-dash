@@ -9,6 +9,8 @@ const { requireAuth, requireRole, writeable } = require('../middleware/auth');
 const { getClientIp } = require('../utils/helpers');
 const { rateLimit } = require('../middleware/rateLimit');
 const hostPermissions = require('../services/host-permissions');
+const permissions = require('../services/permissions');
+const config = require('../config');
 
 const router = Router();
 
@@ -22,6 +24,9 @@ function _isAdmin(user) {
 
 function _hasStackAccess(user, stack, required = 'view') {
   if (_isAdmin(user)) return true;
+  if (!stack?.stack_name || !permissions.hasPermission(
+    permissions.getEffectiveRole(user.id, stack.stack_name, user.role), required,
+  )) return false;
   const targetIds = stack?.target_host_ids?.length
     ? stack.target_host_ids : [stack?.host_id ?? 0];
   return targetIds.every(hostId => {
@@ -32,8 +37,18 @@ function _hasStackAccess(user, stack, required = 'view') {
 
 function _assertStackAccess(req, stack, required = 'view') {
   if (!_hasStackAccess(req.user, stack, required)) {
-    throw Object.assign(new Error(`Insufficient ${required} access on one or more deployment targets`), { status: 403 });
+    throw Object.assign(new Error(`Insufficient ${required} access to the stack or its deployment targets`), { status: 403 });
   }
+}
+
+function publicStack(stack) {
+  const { webhook_token, webhook_secret, env_overrides, ...details } = stack;
+  return { ...details, webhook_configured: Boolean(webhook_token || webhook_secret),
+    env_override_count: Object.keys(env_overrides || {}).length };
+}
+
+function webhookUrl(token) {
+  return new URL('/api/git/webhook/' + encodeURIComponent(token), config.app.publicUrl).href;
 }
 
 // ─── Git Credentials CRUD ──────────────────────────────
@@ -106,7 +121,7 @@ router.delete('/credentials/:id', requireAuth, requireRole('admin'), writeable, 
 
 router.get('/stacks', requireAuth, (req, res) => {
   const hostId = req.query.hostId !== undefined ? parseInt(req.query.hostId) : undefined;
-  res.json(gitService.listStacks(hostId).filter(stack => _hasStackAccess(req.user, stack, 'view')));
+  res.json(gitService.listStacks(hostId).filter(stack => _hasStackAccess(req.user, stack, 'view')).map(publicStack));
 });
 
 // Drift summary for ALL git stacks (for list-page badges). MUST be registered
@@ -128,10 +143,10 @@ router.get('/stacks/:id', requireAuth, (req, res) => {
   const stack = gitService.getStack(parseInt(req.params.id));
   if (!stack) return res.status(404).json({ error: 'Git stack not found' });
   if (!_hasStackAccess(req.user, stack, 'view')) return res.status(403).json({ error: 'Insufficient view access on one or more deployment targets' });
-  res.json(stack);
+  res.json(publicStack(stack));
 });
 
-router.get('/stacks/:id/file', requireAuth, (req, res) => {
+router.get('/stacks/:id/file', requireAuth, requireRole('admin'), (req, res) => {
   try {
     const stack = gitService.getStack(parseInt(req.params.id));
     if (!stack) return res.status(404).json({ error: 'Git stack not found' });
@@ -246,7 +261,7 @@ router.post('/stacks/:id/deploy', requireAuth, requireRole('admin', 'operator'),
   }
 });
 
-router.post('/stacks/:id/check', requireAuth, async (req, res) => {
+router.post('/stacks/:id/check', requireAuth, gitDeployLimiter, async (req, res) => {
   try {
     const stackId = parseInt(req.params.id);
     const stack = gitService.getStack(stackId);
@@ -276,7 +291,7 @@ router.get('/stacks/:id/drift', requireAuth, (req, res) => {
 });
 
 // Run a fresh scan now (read-only, but triggers work → operator+)
-router.post('/stacks/:id/drift-scan', requireAuth, requireRole('admin', 'operator'), async (req, res) => {
+router.post('/stacks/:id/drift-scan', requireAuth, requireRole('admin', 'operator'), gitDeployLimiter, async (req, res) => {
   try {
     const stack = gitService.getStack(parseInt(req.params.id));
     if (!stack) return res.status(404).json({ error: 'Git stack not found' });
@@ -317,28 +332,20 @@ router.post('/stacks/:id/webhook/regenerate', requireAuth, requireRole('admin'),
     if (!stack) return res.status(404).json({ error: 'Git stack not found' });
 
     const { token, secret } = gitService.generateWebhookConfig(id);
-    const baseUrl = req.headers['x-forwarded-proto']
-      ? `${req.headers['x-forwarded-proto']}://${req.headers.host}`
-      : `${req.protocol}://${req.headers.host}`;
-    const webhookUrl = `${baseUrl}/api/git/webhook/${token}`;
-
-    res.json({ webhookToken: token, webhookSecret: secret, webhookUrl });
+    res.json({ webhookToken: token, webhookSecret: secret, webhookUrl: webhookUrl(token) });
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
   }
 });
 
-router.get('/stacks/:id/webhook-url', requireAuth, (req, res) => {
+router.get('/stacks/:id/webhook-url', requireAuth, requireRole('admin'), (req, res) => {
   const stack = gitService.getStack(parseInt(req.params.id));
   if (!stack) return res.status(404).json({ error: 'Git stack not found' });
   if (!stack.webhook_token) return res.json({ configured: false });
 
-  const baseUrl = req.headers['x-forwarded-proto']
-    ? `${req.headers['x-forwarded-proto']}://${req.headers.host}`
-    : `${req.protocol}://${req.headers.host}`;
   res.json({
     configured: true,
-    webhookUrl: `${baseUrl}/api/git/webhook/${stack.webhook_token}`,
+    webhookUrl: webhookUrl(stack.webhook_token),
     webhookSecret: stack.webhook_secret,
     provider: stack.webhook_provider,
   });
@@ -377,7 +384,7 @@ router.put('/stacks/:id/auto-deploy', requireAuth, requireRole('admin'), writeab
 
 // ─── Diff & Rollback ─────────────────────────────────
 
-router.get('/stacks/:id/diff', requireAuth, async (req, res) => {
+router.get('/stacks/:id/diff', requireAuth, requireRole('admin'), async (req, res) => {
   try {
     const stackId = parseInt(req.params.id);
     const stack = gitService.getStack(stackId);
@@ -415,7 +422,10 @@ router.post('/stacks/:id/rollback/:deploymentId', requireAuth, requireRole('admi
 
 router.get('/stacks/:id/remote-status', requireAuth, async (req, res) => {
   try {
-    const result = await gitService.getRemoteStatus(parseInt(req.params.id));
+    const stack = gitService.getStack(parseInt(req.params.id, 10));
+    if (!stack) return res.status(404).json({ error: 'Git stack not found' });
+    _assertStackAccess(req, stack, 'view');
+    const result = await gitService.getRemoteStatus(stack.id);
     res.json(result);
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
@@ -446,7 +456,7 @@ router.post('/stacks/:id/push', requireAuth, requireRole('admin'), writeable, gi
 
 // ─── Env Var Management ──────────────────────────────
 
-router.get('/stacks/:id/env', requireAuth, (req, res) => {
+router.get('/stacks/:id/env', requireAuth, requireRole('admin'), (req, res) => {
   try {
     res.json(gitService.getEnvOverrides(parseInt(req.params.id)));
   } catch (err) {

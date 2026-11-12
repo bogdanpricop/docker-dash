@@ -268,7 +268,7 @@ docker compose --profile observability up -d
     statusEl.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${i18n.t('pages.observability.actionImport.importing')}`;
     try {
       const result = await Api.post('/observability/import-dashboard', { grafanaUrl, token });
-      statusEl.innerHTML = `<span style="color:var(--green)"><i class="fas fa-check"></i> ${i18n.t('pages.observability.actionImport.success')} — <a href="${Utils.escapeHtml(result.dashboardUrl)}" target="_blank" rel="noopener">${i18n.t('pages.observability.actionImport.openDashboard')} <i class="fas fa-external-link-alt"></i></a></span>`;
+      statusEl.innerHTML = `<span style="color:var(--green)"><i class="fas fa-check"></i> ${i18n.t('pages.observability.actionImport.success')} — <a ${Utils.externalLinkAttributes(result.dashboardUrl)}>${i18n.t('pages.observability.actionImport.openDashboard')} <i class="fas fa-external-link-alt"></i></a></span>`;
       Toast.success(i18n.t('pages.observability.actionImport.success'));
       // Clear token after successful import (don't leave it in the DOM)
       tokenEl.value = '';

@@ -1,7 +1,6 @@
 'use strict';
 
-// v8.9.42-alpha.1 — Declarative Reconciler routes. Read/plan/export = any
-// authenticated user; capture/apply/import/enforce/CRUD = admin + audited.
+// Declarative Reconciler documents and plans contain estate-wide firewall state.
 
 const { Router } = require('express');
 const rec = require('../services/reconciler');
@@ -16,9 +15,9 @@ function _audit(req, action, targetId, details) {
   auditService.log({ userId: req.user && req.user.id, username: req.user && req.user.username, action, targetType: 'blueprint', targetId: String(targetId), details, ip: getClientIp(req) });
 }
 
-router.get('/', requireAuth, asyncHandler(async (_req, res) => res.json({ blueprints: rec.list() })));
+router.get('/', requireAuth, requireRole('admin'), asyncHandler(async (_req, res) => res.json({ blueprints: rec.list() })));
 
-router.get('/:id', requireAuth, asyncHandler(async (req, res) => {
+router.get('/:id', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
   const bp = rec.get(parseInt(req.params.id, 10));
   if (!bp) return res.status(404).json({ error: 'Blueprint not found' });
   res.json(bp);
@@ -56,12 +55,11 @@ router.post('/capture', ...admin, asyncHandler(async (req, res) => {
   } catch (err) { res.status(400).json({ error: err.message }); }
 }));
 
-router.get('/:id/plan', requireAuth, asyncHandler(async (req, res) => {
+router.get('/:id/plan', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
   const bp = rec.get(parseInt(req.params.id, 10));
   if (!bp) return res.status(404).json({ error: 'Blueprint not found' });
   try {
     const p = await rec.plan(bp.doc);
-    rec.recordRun(bp.id, 'plan', p.summary, (req.user && req.user.username) || 'system');
     res.json(p);
   } catch (err) { res.status(400).json({ error: err.message }); }
 }));
@@ -78,7 +76,7 @@ router.post('/:id/apply', ...admin, asyncHandler(async (req, res) => {
   } catch (err) { res.status(400).json({ ok: false, error: err.message }); }
 }));
 
-router.get('/:id/export', requireAuth, asyncHandler(async (req, res) => {
+router.get('/:id/export', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
   const bp = rec.get(parseInt(req.params.id, 10));
   if (!bp) return res.status(404).json({ error: 'Blueprint not found' });
   res.setHeader('Content-Type', 'application/json');

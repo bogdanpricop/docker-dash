@@ -738,7 +738,7 @@ const ImagesPage = {
               ${v.description ? `<div class="text-sm text-muted" style="margin-bottom:4px">${Utils.escapeHtml(v.description.substring(0, 300))}${v.description.length > 300 ? '...' : ''}</div>` : ''}
               ${v.cvss ? `<div class="text-sm" style="margin-bottom:4px"><span class="badge" style="background:${v.cvss >= 9 ? 'var(--red)' : v.cvss >= 7 ? '#f97316' : 'var(--yellow)'};color:#fff">CVSS ${v.cvss}</span></div>` : ''}
               ${v.fixedIn ? `<div class="text-sm" style="margin-bottom:4px"><i class="fas fa-wrench" style="color:var(--green);margin-right:4px"></i>Fix: upgrade <strong>${Utils.escapeHtml(v.package)}</strong> from ${Utils.escapeHtml(v.version)} to <strong>${Utils.escapeHtml(v.fixedIn)}</strong></div>` : '<div class="text-sm text-muted"><i class="fas fa-exclamation-triangle" style="margin-right:4px"></i>No fix available yet</div>'}
-              ${v.url ? `<div class="text-sm"><a href="${Utils.escapeHtml(v.url)}" target="_blank" rel="noopener" style="color:var(--accent)"><i class="fas fa-external-link-alt" style="margin-right:4px"></i>${Utils.escapeHtml(v.id)} details</a></div>` : ''}
+              ${v.url ? `<div class="text-sm"><a ${Utils.externalLinkAttributes(v.url)} style="color:var(--accent)"><i class="fas fa-external-link-alt" style="margin-right:4px"></i>${Utils.escapeHtml(v.id)} details</a></div>` : ''}
             </td>
           </tr>` : '';
 

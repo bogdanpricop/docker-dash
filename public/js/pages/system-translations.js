@@ -74,7 +74,7 @@ const SystemPageTranslations = {
                 ${p ? `<button class="btn btn-sm btn-secondary tprov-test" data-id="${p.id}"><i class="fas fa-vial" style="margin-right:4px"></i>Test</button>` : ''}
                 ${p ? `<button class="btn btn-sm btn-secondary tprov-toggle" data-id="${p.id}" data-active="${p.is_active}"><i class="fas fa-power-off" style="margin-right:4px"></i>${p.is_active ? 'Disable' : 'Enable'}</button>` : ''}
                 ${p ? `<button class="btn btn-sm btn-danger tprov-delete" data-id="${p.id}"><i class="fas fa-trash"></i></button>` : ''}
-                <a href="${signupUrl}" target="_blank" style="align-self:center;font-size:11px;color:var(--accent);text-decoration:none;margin-left:auto">Get free API key ↗</a>
+                <a ${Utils.externalLinkAttributes(signupUrl)} style="align-self:center;font-size:11px;color:var(--accent);text-decoration:none;margin-left:auto">Get free API key ↗</a>
               </div>
               <div class="tprov-status" data-provider="${providerName}" style="margin-top:10px;font-size:12px"></div>
             </div>

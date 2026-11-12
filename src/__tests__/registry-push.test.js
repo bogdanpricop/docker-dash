@@ -175,7 +175,7 @@ describe('registry service — push + manifest (v7.5.0)', () => {
 
     it('throws when repo missing', async () => {
       const id = registryService.create({ name: 'r', url: 'http://r:5000', createdBy: 1 });
-      await expect(registryService.deleteTag(id, '', 'tag')).rejects.toThrow(/repo required/);
+      await expect(registryService.deleteTag(id, '', 'tag')).rejects.toThrow(/repository and tag required/);
     });
 
     it('throws when tag missing', async () => {

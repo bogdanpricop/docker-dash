@@ -1,4 +1,5 @@
 'use strict';
+const { csvCell } = require('../utils/csv');
 
 const crypto = require('crypto');
 const { getDb } = require('../db');
@@ -263,16 +264,7 @@ class AuditService {
     const headers = ['id', 'user_id', 'username', 'action', 'target_type', 'target_id', 'details', 'ip', 'user_agent', 'created_at', 'entry_hash', 'prev_hash'];
     const lines = [headers.join(',')];
     for (const row of rows) {
-      const values = headers.map(h => {
-        const val = row[h];
-        if (val === null || val === undefined) return '';
-        const str = String(val);
-        // Escape CSV: quote if contains comma, newline, or quotes
-        if (str.includes(',') || str.includes('\n') || str.includes('"')) {
-          return '"' + str.replace(/"/g, '""') + '"';
-        }
-        return str;
-      });
+      const values = headers.map(h => csvCell(row[h]));
       lines.push(values.join(','));
     }
     return lines.join('\n');

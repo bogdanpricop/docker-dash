@@ -280,7 +280,7 @@ const StacksPage = {
       el.innerHTML = `
         ${uptimeKuma.detected ? `<div class="alert alert-info" style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px">
           <span><i class="fas fa-heartbeat" style="color:var(--green);margin-right:6px"></i><strong>Uptime Kuma detected</strong>${uptimeKuma.container?.name ? ` · ${Utils.escapeHtml(uptimeKuma.container.name)}` : ''}</span>
-          ${kumaUrl ? `<a class="btn btn-sm btn-secondary" href="${Utils.escapeHtml(kumaUrl)}" target="_blank" rel="noopener noreferrer"><i class="fas fa-external-link-alt"></i> Open</a>` : '<span class="badge">port not published</span>'}
+          ${kumaUrl ? `<a class="btn btn-sm btn-secondary" ${Utils.externalLinkAttributes(kumaUrl)}><i class="fas fa-external-link-alt"></i> Open</a>` : '<span class="badge">port not published</span>'}
         </div>` : ''}
         ${this._listView === 'table' ? this._renderStackTable(unified) : `<div class="info-grid" style="margin-top:0">
           ${unified.map(s => this._renderStackCard(s)).join('')}

@@ -50,6 +50,8 @@ beforeAll(async () => {
   ins.run('web-123', 'web', 20, 200, 1000, 2000, 20, at(2));
   ins.run('web-123', 'web', 30, 300, 1000, 3000, 30, at(3));
   ins.run('web-123', 'web', 40, 400, 1000, 50, 5, at(21));   // counter reset
+  db.prepare(`INSERT INTO container_stats (host_id, container_id, container_name, cpu_percent, recorded_at)
+    VALUES (99, 'web-123', 'other-host', 999, ?)`).run(at(2));
 
   db.prepare(`INSERT INTO docker_events (host_id, event_type, action, actor_id, actor_name, attributes, event_time)
     VALUES (0,'container','restart','web-123','web-123','{}',?)`).run(at(20));
@@ -77,6 +79,23 @@ describe('sessions — lifecycle', () => {
     // No sample table exists to copy into — the point of retrospective mode.
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'diagnostic%'").all();
     expect(tables.map(t => t.name).sort()).toEqual(['diagnostic_session_subjects', 'diagnostic_sessions']);
+  });
+
+  it('keeps other users’ session metadata, timelines and exports private', async () => {
+    const created = await createSession({ name: 'admin incident' });
+    expect(created.status).toBe(200);
+    expect(await authService.createUser({ username: 'diagnostic-viewer', email: null, password: 'DiagnosticsViewer123!', role: 'viewer' })).toHaveProperty('id');
+    const login = await request(app).post('/api/auth/login').send({
+      username: 'diagnostic-viewer', password: 'DiagnosticsViewer123!',
+    }).expect(200);
+    const bearer = { Authorization: `Bearer ${login.body.token}` };
+    const base = `/api/diagnostics/sessions/${created.body.id}`;
+    const list = await request(app).get('/api/diagnostics/sessions').set(bearer).expect(200);
+    expect(list.body.sessions).toEqual([]);
+    for (const suffix of ['', '/timeline', '/export']) {
+      await request(app).get(base + suffix).set(bearer).expect(404);
+    }
+    await request(app).delete(base).set(bearer).expect(404);
   });
 
   it('lists sessions with their subject count', async () => {
@@ -134,6 +153,7 @@ describe('timeline — the correlated view', () => {
     const cpu = res.body.series[0].metrics.find(m => m.key === 'cpu');
     const mem = res.body.series[0].metrics.find(m => m.key === 'mem');
     expect(cpu.points).toHaveLength(60);
+    expect(cpu.points.every(point => point.v === null || point.v <= 40)).toBe(true);
     expect(cpu.points.map(p => p.t)).toEqual(mem.points.map(p => p.t));
   });
 

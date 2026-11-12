@@ -1224,7 +1224,7 @@ const ContainersPage = {
           <tbody>${sortedVulns.slice(0, 100).map(v => `
             <tr>
               <td class="mono" style="color:${sevColor(v.severity)};font-weight:700;font-size:11px">${v.severity.toUpperCase()}</td>
-              <td class="mono" style="font-size:11px">${v.url ? `<a href="${Utils.escapeHtml(v.url)}" target="_blank" style="color:var(--accent)">${Utils.escapeHtml(v.id)}</a>` : Utils.escapeHtml(v.id)}</td>
+              <td class="mono" style="font-size:11px">${v.url ? `<a ${Utils.externalLinkAttributes(v.url)} style="color:var(--accent)">${Utils.escapeHtml(v.id)}</a>` : Utils.escapeHtml(v.id)}</td>
               <td style="font-size:12px">${Utils.escapeHtml(v.package)}</td>
               <td class="mono" style="font-size:11px">${Utils.escapeHtml(v.version)}</td>
               <td style="font-size:11px">${v.fixedIn ? `<span style="color:var(--green)">${Utils.escapeHtml(v.fixedIn)}</span>` : '<span style="color:var(--text-dim)">—</span>'}</td>
@@ -1534,9 +1534,9 @@ const ContainersPage = {
     let metaLine = '';
     if (isSandbox) metaLine += sandboxBadge + ' ';
     if (meta.app_name) metaLine += `<span class="meta-app-name">${Utils.escapeHtml(meta.app_name)}</span>`;
-    if (meta.lan_link) metaLine += ` <a href="${Utils.escapeHtml(meta.lan_link)}" class="meta-link" target="_blank" rel="noopener" data-stop-propagation title="LAN"><i class="fas fa-home"></i></a>`;
-    if (meta.web_link) metaLine += ` <a href="${Utils.escapeHtml(meta.web_link)}" class="meta-link" target="_blank" rel="noopener" data-stop-propagation title="WEB"><i class="fas fa-globe"></i></a>`;
-    if (meta.docs_url) metaLine += ` <a href="${Utils.escapeHtml(meta.docs_url)}" class="meta-link" target="_blank" rel="noopener" data-stop-propagation title="Docs"><i class="fas fa-book"></i></a>`;
+    if (meta.lan_link) metaLine += ` <a ${Utils.externalLinkAttributes(meta.lan_link)} class="meta-link" data-stop-propagation title="LAN"><i class="fas fa-home"></i></a>`;
+    if (meta.web_link) metaLine += ` <a ${Utils.externalLinkAttributes(meta.web_link)} class="meta-link" data-stop-propagation title="WEB"><i class="fas fa-globe"></i></a>`;
+    if (meta.docs_url) metaLine += ` <a ${Utils.externalLinkAttributes(meta.docs_url)} class="meta-link" data-stop-propagation title="Docs"><i class="fas fa-book"></i></a>`;
     if (meta.category) metaLine += ` <span class="badge badge-meta-cat">${Utils.escapeHtml(meta.category)}</span>`;
     const sandboxBorderColor = isSandbox ? (sandboxMode === 'ephemeral' ? 'var(--red)' : 'var(--yellow)') : '';
     const colorStyle = sandboxBorderColor ? `border-left: 3px solid ${sandboxBorderColor}; padding-left: 8px;` : (meta.color ? `border-left: 3px solid ${meta.color}; padding-left: 8px;` : '');
@@ -1606,7 +1606,7 @@ const ContainersPage = {
       const url = `${scheme}://${host}:${pub}`;
       return `<span class="port-link-wrap" data-stop-propagation>
         <span class="mono text-sm">${pub}→${priv}</span>
-        <a href="${url}" target="_blank" rel="noopener" class="port-open-btn" title="Open ${url}"><i class="fas fa-external-link-alt"></i></a>
+        <a ${Utils.externalLinkAttributes(url)} class="port-open-btn" title="Open ${url}"><i class="fas fa-external-link-alt"></i></a>
       </span>`;
     }).join(' ');
   },

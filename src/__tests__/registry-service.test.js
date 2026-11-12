@@ -50,6 +50,9 @@ describe('registry service — service layer (v8.2.0 audit)', () => {
     db.prepare('DELETE FROM registries').run();
   });
 
+  const oldDigest = 'sha256:' + 'a'.repeat(64);
+  const newDigest = 'sha256:' + 'b'.repeat(64);
+
   // ── helpers ──────────────────────────────────────────────────────────
 
   function makeRegistry(overrides = {}) {
@@ -87,6 +90,17 @@ describe('registry service — service layer (v8.2.0 audit)', () => {
       _fakeStream: fakeStream,
     };
   }
+
+  it('keeps credentials attached to their origin and account', () => {
+    const id = makeRegistry();
+    expect(registryService.getAuthForImage('registry.local:5001/team/app')).toBeNull();
+    expect(registryService.getAuthForImage('registry.local:5000/team/app')?.password).toBe('s3cret');
+    registryService.update(id, { name: 'renamed', url: 'http://registry.local:5000/', username: 'alice' });
+    expect(registryService._authConfigForRegistry(registryService.get(id)).password).toBe('s3cret');
+    registryService.update(id, { name: 'renamed', url: 'http://registry.local:5001', username: 'alice' });
+    expect(registryService._authConfigForRegistry(registryService.get(id)).password).toBe('');
+    expect(() => makeRegistry({ url: 'https://user:password@registry.local' })).toThrow(/origin/);
+  });
 
   // ── _authConfigForRegistry ───────────────────────────────────────────
 
@@ -259,13 +273,25 @@ describe('registry service — service layer (v8.2.0 audit)', () => {
   // ── deleteTag ────────────────────────────────────────────────────────
 
   describe('deleteTag', () => {
+    it('never deletes a digest supplied by a redirect or an invalid HEAD header', async () => {
+      const id = makeRegistry();
+      const api = jest.spyOn(registryService, '_apiCall')
+        .mockResolvedValueOnce({ status: 302, headers: { 'docker-content-digest': newDigest } })
+        .mockResolvedValueOnce({ status: 200, headers: { 'docker-content-digest': '../api/other' } });
+      try {
+        await expect(registryService.deleteTag(id, 'team/app', 'nightly')).rejects.toThrow(/HTTP 302/);
+        await expect(registryService.deleteTag(id, 'team/app', 'nightly')).rejects.toThrow(/valid digest/);
+        expect(api.mock.calls.map(call => call[2].method)).toEqual(['HEAD', 'HEAD']);
+      } finally { api.mockRestore(); }
+    });
+
     it('refuses to delete a tag retargeted after a retention plan', async () => {
       const id = makeRegistry();
       const spy = jest.spyOn(registryService, '_apiCall').mockResolvedValue({
-        status: 200, headers: { 'docker-content-digest': 'sha256:new' },
+        status: 200, headers: { 'docker-content-digest': newDigest },
       });
       try {
-        await expect(registryService.deleteTag(id, 'team/app', 'nightly', { expectedDigest: 'sha256:old' }))
+        await expect(registryService.deleteTag(id, 'team/app', 'nightly', { expectedDigest: oldDigest }))
           .rejects.toThrow(/Manifest changed/);
         expect(spy).toHaveBeenCalledTimes(1);
         expect(spy.mock.calls[0][2].method).toBe('HEAD');
@@ -276,7 +302,7 @@ describe('registry service — service layer (v8.2.0 audit)', () => {
       const id = makeRegistry();
       const spy = jest.spyOn(registryService, '_apiCall').mockImplementation(async (reg, path, opts) => {
         if (opts && opts.method === 'HEAD') {
-          return { status: 200, headers: { 'docker-content-digest': 'sha256:deadbeef' } };
+          return { status: 200, headers: { 'docker-content-digest': newDigest } };
         }
         if (opts && opts.method === 'DELETE') {
           return { status: 202, headers: {} };
@@ -286,7 +312,7 @@ describe('registry service — service layer (v8.2.0 audit)', () => {
 
       try {
         const result = await registryService.deleteTag(id, 'team/app', 'v1.0.0');
-        expect(result).toEqual({ ok: true, digest: 'sha256:deadbeef' });
+        expect(result).toEqual({ ok: true, digest: newDigest });
 
         expect(spy).toHaveBeenCalledTimes(2);
         const [, headPath, headOpts] = spy.mock.calls[0];
@@ -294,7 +320,7 @@ describe('registry service — service layer (v8.2.0 audit)', () => {
         expect(headOpts.method).toBe('HEAD');
 
         const [, delPath, delOpts] = spy.mock.calls[1];
-        expect(delPath).toBe('/v2/team/app/manifests/sha256:deadbeef');
+        expect(delPath).toBe(`/v2/team/app/manifests/${newDigest}`);
         expect(delOpts.method).toBe('DELETE');
       } finally {
         spy.mockRestore();
@@ -305,7 +331,7 @@ describe('registry service — service layer (v8.2.0 audit)', () => {
       const id = makeRegistry();
       const spy = jest.spyOn(registryService, '_apiCall').mockImplementation(async (reg, path, opts) => {
         if (opts && opts.method === 'HEAD') {
-          return { status: 200, headers: { 'docker-content-digest': 'sha256:abc' } };
+          return { status: 200, headers: { 'docker-content-digest': newDigest } };
         }
         if (opts && opts.method === 'DELETE') {
           return { status: 405, headers: {} };
@@ -338,7 +364,7 @@ describe('registry service — service layer (v8.2.0 audit)', () => {
       const id = makeRegistry();
       const spy = jest.spyOn(registryService, '_apiCall').mockImplementation(async (reg, path, opts) => {
         if (opts && opts.method === 'HEAD') {
-          return { status: 200, headers: { 'docker-content-digest': 'sha256:gone' } };
+          return { status: 200, headers: { 'docker-content-digest': newDigest } };
         }
         if (opts && opts.method === 'DELETE') {
           return { status: 404, headers: {} };
@@ -347,7 +373,7 @@ describe('registry service — service layer (v8.2.0 audit)', () => {
       });
       try {
         const result = await registryService.deleteTag(id, 'team/app', 'old');
-        expect(result).toEqual({ ok: true, digest: 'sha256:gone' });
+        expect(result).toEqual({ ok: true, digest: newDigest });
       } finally {
         spy.mockRestore();
       }

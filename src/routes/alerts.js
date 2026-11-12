@@ -3,7 +3,7 @@
 const { Router } = require('express');
 const alertService = require('../services/alerts');
 const auditService = require('../services/audit');
-const { requireAuth, requireRole } = require('../middleware/auth');
+const { requireAuth, requireRole, writeable } = require('../middleware/auth');
 const { getClientIp } = require('../utils/helpers');
 const asyncHandler = require('../utils/asyncHandler');
 
@@ -16,21 +16,21 @@ router.get('/rules/:id', requireAuth, (req, res) => {
   res.json(rule);
 });
 
-router.post('/rules', requireAuth, requireRole('admin', 'operator'), asyncHandler((req, res) => {
+router.post('/rules', requireAuth, requireRole('admin', 'operator'), writeable, asyncHandler((req, res) => {
   const result = alertService.createRule({ ...req.body, created_by: req.user.id });
   auditService.log({ userId: req.user.id, username: req.user.username,
     action: 'alert_rule_create', targetType: 'alert_rule', targetId: String(result.id), ip: getClientIp(req) });
   res.status(201).json(result);
 }));
 
-router.put('/rules/:id', requireAuth, requireRole('admin', 'operator'), asyncHandler((req, res) => {
+router.put('/rules/:id', requireAuth, requireRole('admin', 'operator'), writeable, asyncHandler((req, res) => {
   alertService.updateRule(parseInt(req.params.id), req.body);
   auditService.log({ userId: req.user.id, username: req.user.username,
     action: 'alert_rule_update', targetType: 'alert_rule', targetId: req.params.id, ip: getClientIp(req) });
   res.json({ ok: true });
 }));
 
-router.delete('/rules/:id', requireAuth, requireRole('admin'), asyncHandler((req, res) => {
+router.delete('/rules/:id', requireAuth, requireRole('admin'), writeable, asyncHandler((req, res) => {
   alertService.deleteRule(parseInt(req.params.id));
   auditService.log({ userId: req.user.id, username: req.user.username,
     action: 'alert_rule_delete', targetType: 'alert_rule', targetId: req.params.id, ip: getClientIp(req) });
@@ -45,7 +45,7 @@ router.get('/history', requireAuth, (req, res) => {
   res.json(alertService.getAlertHistory({ page: parseInt(page) || 1, limit: safeLimit }));
 });
 
-router.post('/events/:id/acknowledge', requireAuth, asyncHandler((req, res) => {
+router.post('/events/:id/acknowledge', requireAuth, writeable, asyncHandler((req, res) => {
   alertService.acknowledge(parseInt(req.params.id), req.user.id);
   res.json({ ok: true });
 }));

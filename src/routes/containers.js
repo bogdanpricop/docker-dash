@@ -6,6 +6,7 @@ const { execFileSync } = require('child_process');
 const fs = require('fs');
 const https = require('https');
 const zlib = require('zlib');
+const { pipeline } = require('node:stream/promises');
 const dockerService = require('../services/docker');
 const auditService = require('../services/audit');
 const permService = require('../services/permissions');
@@ -1721,11 +1722,8 @@ router.post('/:id/deploy-with-deps', requireAuth, requireRole('admin'), writeabl
 // ─── Container File Browser ─────────────────────────
 
 function validateFilePath(p) {
-  if (!p || typeof p !== 'string') return false;
-  if (!p.startsWith('/')) return false;
-  if (p.includes('..')) return false;
-  if (p.includes('\0')) return false;
-  return true;
+  return typeof p === 'string' && p.startsWith('/') && Buffer.byteLength(p) <= 4096
+    && !/[\x00-\x1f\x7f]/.test(p) && !p.split('/').includes('..');
 }
 
 // v8.1.3 — robust file listing.
@@ -1790,18 +1788,18 @@ router.get('/:id/files', requireAuth, requireContainerAccess('view'), asyncHandl
 
   // First try: GNU ls with deterministic ISO timestamps
   let output = await dockerService.execCommand(
-    req.params.id,
+    req.authorizedContainerId ?? req.params.id,
     ['ls', '-la', '--time-style=+%Y-%m-%dT%H:%M:%S', filePath],
-    req.hostId
+    req.resolvedHostId ?? req.hostId
   );
   let entries = parseLs(output);
 
   // Fallback: drop --time-style for BusyBox / minimal coreutils
   if (entries.length === 0) {
     output = await dockerService.execCommand(
-      req.params.id,
+      req.authorizedContainerId ?? req.params.id,
       ['ls', '-la', filePath],
-      req.hostId
+      req.resolvedHostId ?? req.hostId
     );
     entries = parseLs(output);
   }
@@ -1813,13 +1811,13 @@ router.get('/:id/files/content', requireAuth, requireContainerAccess('view'), as
   const filePath = req.query.path;
     if (!validateFilePath(filePath)) return res.status(400).json({ error: 'Invalid path' });
 
+    const maxSize = 1024 * 1024;
     const output = await dockerService.execCommand(
-      req.params.id,
-      ['cat', filePath],
-      req.hostId
+      req.authorizedContainerId ?? req.params.id,
+      ['head', '-c', String(maxSize + 1), filePath],
+      req.resolvedHostId ?? req.hostId
     );
 
-    const maxSize = 1024 * 1024; // 1MB
     const truncated = output.length > maxSize;
     res.json({
       path: filePath,
@@ -1834,20 +1832,20 @@ router.get('/:id/files/download', requireAuth, requireContainerAccess('view'), a
     if (!validateFilePath(filePath)) return res.status(400).json({ error: 'Invalid path' });
 
     const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
-    const container = docker.getContainer(req.params.id);
+    const container = docker.getContainer(req.authorizedContainerId ?? req.params.id);
     const archive = await container.getArchive({ path: filePath });
     const fileName = filePath.split('/').pop() || 'download';
 
     res.setHeader('Cache-Control', 'no-store');
     res.attachment(fileName + '.tar');
     res.type('application/x-tar');
-    archive.pipe(res);
+    await pipeline(archive, res);
 }));
 
 // ─── Container File Upload ─────────────────────────────
 const MAX_UPLOAD_SIZE = 50 * 1024 * 1024; // 50MB
 
-router.post('/:id/files/upload', express.json({ limit: '75mb' }), requireAuth, requireRole('operator'), writeable, requireContainerAccess('operate'), asyncHandler(async (req, res) => {
+router.post('/:id/files/upload', requireAuth, requireRole('admin', 'operator'), writeable, requireContainerAccess('operate'), express.json({ limit: '75mb' }), asyncHandler(async (req, res) => {
   const { path: destPath, content, filename } = req.body || {};
 
     if (!destPath || typeof destPath !== 'string') {
@@ -1860,7 +1858,13 @@ router.post('/:id/files/upload', express.json({ limit: '75mb' }), requireAuth, r
       return res.status(400).json({ error: 'File content (base64) is required' });
     }
 
-    // Decode base64 and check size
+    const maximumEncodedLength = Math.ceil(MAX_UPLOAD_SIZE / 3) * 4;
+    if (content.length > maximumEncodedLength) {
+      return res.status(413).json({ error: `File too large. Maximum size is ${formatBytes(MAX_UPLOAD_SIZE)}` });
+    }
+    if (content.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}(?![\s\S])/.test(content)) {
+      return res.status(400).json({ error: 'File content must be valid base64' });
+    }
     const fileBuffer = Buffer.from(content, 'base64');
     if (fileBuffer.length > MAX_UPLOAD_SIZE) {
       return res.status(413).json({ error: `File too large. Maximum size is ${formatBytes(MAX_UPLOAD_SIZE)}` });
@@ -1869,16 +1873,19 @@ router.post('/:id/files/upload', express.json({ limit: '75mb' }), requireAuth, r
       return res.status(400).json({ error: 'File is empty' });
     }
 
-    const fileName = (filename || 'uploaded-file').replace(/[/\\]/g, '_');
+    const fileName = filename ?? 'uploaded-file';
+    if (typeof fileName !== 'string' || !fileName || fileName === '.' || fileName === '..'
+      || /[/\\\x00-\x1f\x7f]/.test(fileName) || Buffer.byteLength(fileName, 'utf8') > 100) {
+      return res.status(400).json({ error: 'Use a file name of at most 100 UTF-8 bytes without slashes or control characters' });
+    }
 
     // Create a tar archive in memory containing the file
     // tar format: 512-byte header + file data + padding to 512-byte boundary + 1024 zero bytes
     const fileSize = fileBuffer.length;
     const headerBuf = Buffer.alloc(512, 0);
 
-    // File name (max 100 chars)
-    const nameBytes = Buffer.from(fileName, 'utf8');
-    nameBytes.copy(headerBuf, 0, 0, Math.min(nameBytes.length, 100));
+    // The file name has already been checked against the tar header field size.
+    Buffer.from(fileName, 'utf8').copy(headerBuf, 0);
 
     // File mode: 0644
     Buffer.from('0000644\0', 'ascii').copy(headerBuf, 100);
@@ -1918,7 +1925,7 @@ router.post('/:id/files/upload', express.json({ limit: '75mb' }), requireAuth, r
 
     // Upload using dockerode putArchive
     const docker = dockerService.getDocker(req.resolvedHostId ?? req.hostId);
-    const container = docker.getContainer(req.params.id);
+    const container = docker.getContainer(req.authorizedContainerId ?? req.params.id);
     await container.putArchive(tarBuffer, { path: destPath });
 
     auditService.log({

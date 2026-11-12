@@ -119,6 +119,16 @@ const Utils = {
     return String(str).replace(/[&<>"']/g, character => entities[character]);
   },
 
+  externalLinkAttributes(value) {
+    if (typeof value !== 'string' || value.length > 4096 || !/^https?:\/\//i.test(value.trim())
+      || /[\x00-\x20\x7f]/.test(value.trim())) return '';
+    try {
+      const url = new URL(value.trim());
+      if (url.username || url.password) return '';
+      return `href="${this.escapeHtml(url.href)}" target="_blank" rel="noopener noreferrer"`;
+    } catch { return ''; }
+  },
+
   fileBreadcrumb(path) {
     let current = '';
     const parts = [['/', '/'], ...path.split('/').filter(Boolean).map(segment => {
@@ -319,10 +329,17 @@ const Utils = {
     URL.revokeObjectURL(url);
   },
 
+  csvCell(value) {
+    let text = String(value ?? '');
+    if (typeof value === 'string' && /^(?:[\s\uFEFF]*[=+\-@＝＋－＠]|[\t\r\n])/.test(text)) {
+      text = "'" + text;
+    }
+    return /[",\r\n]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
+  },
+
   exportCsv(filename, headers, rows) {
-    const esc = v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
-    const lines = [headers.map(esc).join(',')];
-    for (const r of rows) lines.push(r.map(esc).join(','));
+    const lines = [headers.map(this.csvCell).join(',')];
+    for (const r of rows) lines.push(r.map(this.csvCell).join(','));
     // Leading BOM so Excel reads UTF-8 correctly.
     const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
     this.downloadBlob(filename, blob);
