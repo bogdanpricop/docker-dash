@@ -52,6 +52,9 @@ jobs:
       - name: Verify toolchain pins and install policy
         run: npm run check:toolchain
 
+      - name: Verify version consistency across release metadata
+        run: npm run check:version-consistency
+
       - name: Validate image vulnerability policy
         run: node scripts/gate-image-vulnerabilities.test.js
 
@@ -73,6 +76,7 @@ jobs:
           node scripts/check-provider-tls-browser.js
           node scripts/check-ldap-tls-browser.js
           node scripts/check-notification-channels-browser.js
+          node scripts/check-nav-pins-browser.js
           node scripts/check-rollback-history-browser.js
           node scripts/check-operator-workflows-browser.js
           npm run check:inventory-browser

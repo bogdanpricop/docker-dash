@@ -50,6 +50,8 @@ const StacksPage = {
     this._stackHost = App._hostSelectorHosts?.find(host => host.id === selectedId || (!selectedId && host.isDefault)) || { id: selectedId };
     this._stackHostReady = false;
     this._listStacks = [];
+    this._secondaryStacks = new Set();
+    this._showSecondaryStacks = false;
     this._uptimeKuma = null;
 
     container.innerHTML = `
@@ -69,6 +71,9 @@ const StacksPage = {
               ${states.map(state => `<option value="${state}" ${state === this._stateFilter ? 'selected' : ''}>${i18n.t('pages.stacks.state.' + state)}</option>`).join('')}
             </select>
           </div>
+          <label class="toggle-label">
+            <input type="checkbox" id="stacks-show-secondary"> ${i18n.t('common.showSecondaryStacks')}<span id="stacks-secondary-count"></span>
+          </label>
           <label class="toggle-label" title="Include stopped Compose projects discovered under DD_STACKS_DIR">
             <input type="checkbox" id="stacks-show-disk" ${this._showDiskStacks ? 'checked' : ''}> From disk
           </label>
@@ -124,6 +129,10 @@ const StacksPage = {
       });
     });
     container.querySelector('#stacks-refresh').addEventListener('click', () => this._loadList());
+    container.querySelector('#stacks-show-secondary').addEventListener('change', event => {
+      this._showSecondaryStacks = event.target.checked;
+      this._renderStackList();
+    });
     container.querySelector('#stacks-show-disk')?.addEventListener('change', event => {
       this._showDiskStacks = event.target.checked;
       localStorage.setItem('dd-stacks-show-disk', String(this._showDiskStacks));
@@ -154,7 +163,8 @@ const StacksPage = {
         Api.detectUptimeKuma().catch(() => ({ detected: false })),
       ]);
       if (!current()) return;
-      const { stacks: composeStacks, host } = compose;
+      const { stacks: composeStacks, host, secondaryStacks } = compose;
+      this._secondaryStacks = new Set(secondaryStacks);
       this._stackHost = host;
       this._stackHostReady = true;
       this._uptimeKuma = uptimeKuma;
@@ -233,9 +243,12 @@ const StacksPage = {
     const el = document.getElementById('stacks-content');
     if (!el) return;
     this._stopStackMetrics();
-    const unified = this._listStacks.filter(stack => (this._tab === 'all' || stack.source === this._tab)
+    const matching = this._listStacks.filter(stack => (this._tab === 'all' || stack.source === this._tab)
       && (this._showDiskStacks || !stack.diskOnly) && (!this._stateFilter || this._stackState(stack) === this._stateFilter)
       && this._matchesStackSearch(stack));
+    const unified = this._showSecondaryStacks ? matching : matching.filter(stack => !this._secondaryStacks.has(stack.name));
+    const count = new Set(this._listStacks.filter(stack => this._secondaryStacks.has(stack.name)).map(stack => stack.name)).size;
+    document.getElementById('stacks-secondary-count').textContent = count ? ` (${count})` : '';
     const uptimeKuma = this._uptimeKuma || { detected: false };
 
       if (this._stackListError) {
@@ -247,10 +260,12 @@ const StacksPage = {
           el.textContent = i18n.t('common.loading');
           return;
         }
+        const emptyMessage = matching.length > 0 ? 'common.secondaryStacksHidden'
+          : this._filter || this._stateFilter || this._tab !== 'all' ? 'common.noResults' : 'pages.stacks.noStacks';
         el.innerHTML = `
           <div class="empty-msg" style="padding:48px">
             <i class="fas fa-layer-group" style="font-size:48px;opacity:0.3;margin-bottom:12px"></i>
-            <p>${i18n.t(this._filter || this._stateFilter || this._tab !== 'all' ? 'common.noResults' : 'pages.stacks.noStacks')}</p>
+            <p>${i18n.t(emptyMessage)}</p>
           </div>`;
         return;
       }
@@ -309,6 +324,10 @@ const StacksPage = {
       this._syncStackSort(el);
       el.querySelectorAll('[data-stack-review]').forEach(button => {
         button.addEventListener('click', () => this._reviewStack(button.dataset.stackName, button.dataset.stackReview, button));
+      });
+
+      el.querySelectorAll('[data-stack-visibility]').forEach(button => {
+        button.addEventListener('click', () => this._setStackVisibility(button, el));
       });
 
       // Remediation Wizard — stack entry point (compose only; v6.6.3)
@@ -452,6 +471,35 @@ const StacksPage = {
     return approved && !previewOnly ? plan.host : null;
   },
 
+  async _setStackVisibility(button, list) {
+    if (!this._stackHostReady) return;
+    const { name } = button.dataset;
+    const hostId = this._stackHost.id;
+    const requestedHostId = Api.getHostId();
+    const user = App.user;
+    const current = () => list.isConnected && this._stackHost.id === hostId
+      && Api.getHostId() === requestedHostId && App.user === user;
+    const secondary = !this._secondaryStacks.has(name);
+    button.disabled = true;
+    try {
+      await Api.setStackVisibility(name, secondary, hostId);
+      if (!current()) return;
+      await this._loadList();
+      if (!current()) return;
+      const replacement = [...list.querySelectorAll('[data-stack-visibility]')].find(item => item.dataset.name === name);
+      (replacement || document.getElementById('stacks-show-secondary'))?.focus();
+    } catch (err) {
+      if (current()) Toast.error(i18n.t('pages.stacks.visibilitySaveFailed', { message: err.message }));
+    } finally {
+      button.disabled = false;
+    }
+  },
+
+  _secondaryBadge(stack) {
+    return this._secondaryStacks.has(stack.name)
+      ? ` <span class="badge">${i18n.t('common.secondaryStack')}</span>` : '';
+  },
+
   _renderStackCard(s) {
     const isGit = s.source === 'git';
     const statusColor = isGit
@@ -464,7 +512,7 @@ const StacksPage = {
         <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
           <h3 style="display:flex;align-items:center;gap:8px">
             <i class="${isGit ? 'fab fa-git-alt' : 'fas fa-cubes'}" style="color:var(--accent)"></i>
-            ${Utils.escapeHtml(s.name)}
+            ${Utils.escapeHtml(s.name)}${this._secondaryBadge(s)}
           </h3>
           <div style="display:flex;align-items:center;gap:6px">
             <span class="badge">${isGit ? 'Git' : s.discovered ? 'Local Compose file' : 'Discovered on host'}</span>
@@ -494,7 +542,11 @@ const StacksPage = {
     const name = Utils.escapeHtml(stack.name);
     const composeAction = (action, label, icon) => `<button type="button" class="action-btn stack-action-btn" data-source="compose"
       data-stack="${name}" data-action="${action}" title="${label}" aria-label="${label}"><i class="fas ${icon}" aria-hidden="true"></i></button>`;
+    const secondary = this._secondaryStacks.has(stack.name);
+    const visibilityLabel = i18n.t('pages.stacks.' + (secondary ? 'markEssential' : 'markSecondary'));
     return `<div class="stack-list-actions">
+      <button type="button" class="action-btn" data-stack-visibility data-name="${name}" title="${Utils.escapeHtml(visibilityLabel)}"
+        aria-label="${Utils.escapeHtml(visibilityLabel + ' · ' + stack.name)}"><i class="fas ${secondary ? 'fa-eye' : 'fa-eye-slash'}" aria-hidden="true"></i></button>
       ${stack.source === 'git' ? `
         <button type="button" class="action-btn stack-action-btn" data-source="git" data-stack="${name}" data-stack-id="${stack.id}" data-action="deploy"
           title="Deploy" aria-label="Deploy"><i class="fas fa-rocket" aria-hidden="true"></i></button>` : `
@@ -537,7 +589,7 @@ const StacksPage = {
         return `<tr data-stack-row${opened && hasServices ? ' class="stack-row-expanded"' : ''}>
           <td>${hasServices ? `<button type="button" class="action-btn stack-expand" data-stack-expand="${esc(identity)}" aria-controls="${id}"
             aria-expanded="${opened}" aria-label="${esc(t('services') + ' · ' + stack.name)}"><i class="fas fa-chevron-right" aria-hidden="true"></i></button>` : ''}</td>
-          <td><a href="${path}">${esc(stack.name)}</a></td>
+          <td><a href="${path}">${esc(stack.name)}</a>${this._secondaryBadge(stack)}</td>
           <td><span class="badge badge-${badge}">${t('state.' + state)}</span></td>
           <td><span class="badge">${source}</span></td>
           <td>${stack.running} / ${stack.total}</td>

@@ -28,7 +28,7 @@ async function main() {
     await page.evaluate(async () => {
       const handlers = new Map();
       const rows = [['a', 'demo-api', 'running'], ['b', 'demo-worker', 'running'], ['c', 'demo-old', 'exited'], ['d', 'other', 'running']]
-        .map(([id, name, state]) => ({ id, name, state, image: 'fixture:1.0', created: 1700000000, labels: {}, ports: [] }));
+        .map(([id, name, state]) => ({ id, name, state, image: 'fixture:1.0', created: 1700000000, labels: id === 'd' ? { 'com.docker.compose.project': 'helper' } : {}, ports: [] }));
       const hosts = [
         { id: 17, name: 'LAN Docker2', connectionType: 'socket', isDefault: true },
         { id: 28, name: 'VPS Edge', connectionType: 'ssh' },
@@ -59,7 +59,8 @@ async function main() {
           fixture.requests.push({ resource, hostId });
           if (!resource) {
             if (fixture.offline) throw new Error('fixture daemon unreachable');
-            return { containers: rows, host: hosts.find(host => host.id === hostId) || hosts[0] };
+            const host = hosts.find(item => item.id === hostId) || hosts[0];
+            return { containers: rows, host, secondaryStacks: host.id === 28 ? fixture.secondaryStacks : [] };
           }
           if (resource === 'stats' && id === 'a' && hostId === 17) {
             return new Promise(resolve => fixture.delayed.push({ resolve, signal }));
@@ -161,6 +162,33 @@ async function main() {
         visibleBanner: getComputedStyle(banner).position === 'sticky',
       };
     }), { host: 'VPS Edge', requestHost: 28, mobileFit: true, visibleBanner: true });
+    await page.setViewport({ width: 1500, height: 900 });
+    await page.evaluate(async () => {
+      ContainersPage._inspector.close(false);
+      fixture.secondaryStacks = ['helper'];
+      Api.getGroups = async () => [{ id: 1, name: 'Favorites' }];
+      Api.getGroup = async () => ({ members: ['a', 'd'] });
+      await ContainersPage._loadList();
+    });
+    const secondaryRow = '#containers-grouped tr[data-cid="d"]';
+    assert.equal(await page.$(secondaryRow), null);
+    assert.ok(await page.$('#containers-grouped tr[data-cid="a"]'));
+    assert.equal(await page.$eval('#containers-secondary-count', node => node.textContent.trim()), '(1)');
+    await page.waitForSelector('#container-groups-section [data-nav-container="a"]');
+    assert.equal(await page.$('#container-groups-section [data-nav-container="d"]'), null);
+
+    await page.click('#containers-show-secondary');
+    await page.waitForSelector(secondaryRow);
+    await page.waitForSelector('#container-groups-section [data-nav-container="d"]');
+    assert.match(await page.$eval('.stack-header[data-stack="helper"]', el => el.textContent), /Secondary/);
+    await page.locator(secondaryRow + ' .bulk-row-check').click();
+    await page.locator(rowAction('d', 'stats')).click();
+    await page.waitForFunction(() => document.querySelector('#container-inspector-title').textContent === 'other');
+    await page.click('#containers-show-secondary');
+    assert.equal(await page.$(secondaryRow), null);
+    assert.equal(await page.$eval('#container-inspector', el => el.hidden), true);
+    assert.equal(await page.evaluate(() => ContainersPage._selectedIds.has('d')), false);
+    assert.equal(await page.$('#container-groups-section [data-nav-container="d"]'), null);
     await page.evaluate(() => ContainersPage.destroy());
     assert.deepEqual(errors, []);
     console.log('Container inspector browser checks passed');

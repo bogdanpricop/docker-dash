@@ -18,9 +18,10 @@ const auditService = require('../services/audit');
 const { requireAuth, requireRole, writeable } = require('../middleware/auth');
 const { getClientIp } = require('../utils/helpers');
 const { extractHostId } = require('../middleware/hostId');
-const { requireHostAccessForMethod } = require('../middleware/hostAccess');
+const { requireHostAccess, requireHostAccessForMethod } = require('../middleware/hostAccess');
 const asyncHandler = require('../utils/asyncHandler');
 const { parseDockerRun } = require('../services/docker-run-parser');
+const { listSecondaryStacks, setSecondaryStack } = require('../services/stack-display-preferences');
 
 const router = Router();
 router.use(extractHostId);
@@ -619,8 +620,9 @@ router.post('/stacks/:name/validate', requireAuth, hostAccess, requireRole('admi
   }
 });
 router.get('/stacks', requireAuth, hostAccess, async (req, res) => {
+  const hostId = req.resolvedHostId ?? req.hostId;
   try {
-    const containers = await dockerService.listContainers(req.resolvedHostId ?? req.hostId, { includeNetworkIds: true });
+    const containers = await dockerService.listContainers(hostId, { includeNetworkIds: true });
     const stacks = new Map();
 
     for (const c of containers) {
@@ -693,11 +695,24 @@ router.get('/stacks', requireAuth, hostAccess, async (req, res) => {
       volumes: [...stack.volumes].sort((a, b) => a.localeCompare(b)),
     }));
     res.json(req.query.context === '1'
-      ? { stacks: list, host: { id: req.resolvedHostId ?? req.hostId, name: req.hostName } } : list);
+      ? { stacks: list, host: { id: hostId, name: req.hostName }, secondaryStacks: listSecondaryStacks(req.user.id, hostId) }
+      : list);
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+// Personal display preferences only require permission to view the selected host.
+router.put('/stacks/:name/visibility', requireAuth, requireHostAccess('view'), asyncHandler((req, res) => {
+  const { name } = req.params;
+  const secondary = req.body?.secondary;
+  if (!name.trim() || name.length > 255 || name.includes('\0') || typeof secondary !== 'boolean') {
+    return res.status(400).json({ error: 'A valid stack name and secondary flag are required' });
+  }
+  const hostId = req.resolvedHostId ?? req.hostId;
+  setSecondaryStack(req.user.id, hostId, name, secondary);
+  res.json({ name, secondary, hostId });
+}));
 
 router.get('/stacks/:name', requireAuth, hostAccess, async (req, res) => {
   try {

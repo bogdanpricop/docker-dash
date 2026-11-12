@@ -3,9 +3,11 @@
 // This is the base/fallback language. All keys must be defined here.
 i18n.register('en', 'EN', 'English', {
   common: {
+    secondaryStack: 'Secondary', showSecondaryStacks: 'Show secondary stacks',
+    secondaryStacksHidden: 'Secondary stacks are hidden. Turn on Show secondary stacks to see them.',
     remoteSecretExecution: 'Transmit and execute through verified SSH without saving a temporary script. If interrupted, check the host before retrying. Configure SSH access on the Hosts page.',
     replacementCleanup: 'Replacement is active, but retained recovery resources need administrator cleanup. Operation: {{operation}}. See the rollback recovery guide.',
-    newVersionAvailable: 'New version {{version}} available', reload: 'Reload',
+    newVersionAvailable: 'New version {{version}} available', newBuildAvailable: 'A dashboard update is available', reload: 'Reload',
     close: 'Close', cancel: 'Cancel', confirm: 'Confirm', save: 'Save',
     remove: 'Remove', delete: 'Delete', create: 'Create', edit: 'Edit',
     refresh: 'Refresh', loading: 'Loading...', error: 'Error', retry: 'Retry',
@@ -53,6 +55,17 @@ i18n.register('en', 'EN', 'English', {
     sectionResources: 'Resources', sectionOperations: 'Operations', sectionAdmin: 'Admin',
     sectionCompute: 'Compute', sectionStorage: 'Storage', sectionNetworking: 'Networking', sectionMonitor: 'Monitor',
     more: 'More', showAll: 'Show all',
+    pinned: 'Pinned', pinnedManage: 'Manage pinned pages',
+    pinnedEmpty: 'Choose pages to pin from the sidebar.',
+    pinnedSyncFailed: 'Pinned pages could not be synced. Your changes are saved in this browser.',
+    pinnedHint: 'Pinned entries move to the top of the sidebar, above the other categories.',
+    pinAction: 'Pin to top', unpinAction: 'Unpin from top',
+    pinnedOthers: 'All pages',
+    pinnedNone: 'Nothing pinned yet.',
+    pinnedOrderHint: 'Drag an entry or use its arrow buttons to reorder it. Keyboard shortcut: Alt + Up or Down.',
+    pinMoveUp: 'Move {{name}} up', pinMoveDown: 'Move {{name}} down',
+    pinReorderLabel: '{{name}}, pinned at position {{position}} of {{total}}',
+    pinnedReordered: '{{name}} moved to position {{position}} of {{total}}',
   },
   login: {
     title: 'Docker Dash', username: 'Username', password: 'Password',
@@ -183,6 +196,7 @@ i18n.register('en', 'EN', 'English', {
     },
     // ── Containers ──────────────────────────────
     containers: {
+      noVisibleGroupMembers: 'No visible containers in this group.',
       rollbackSnapshotHint: 'Rollback configuration is encrypted. Preserve the installation encryption key for recovery.',
       rollbackSnapshotGuide: 'Recovery and backup guidance',
       title: 'Containers', filterPlaceholder: 'Filter containers...',
@@ -1389,6 +1403,8 @@ i18n.register('en', 'EN', 'English', {
     },
     // ── Stacks ──────────────────────────────────
     stacks: {
+      markSecondary: 'Mark as secondary', markEssential: 'Mark as essential',
+      visibilitySaveFailed: 'Could not save stack visibility: {{message}}',
       title: 'Stacks',
       subtitle: 'Compose stacks and Git-linked deployments',
       filterPlaceholder: 'Filter stacks...',

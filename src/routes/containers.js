@@ -22,6 +22,7 @@ const isolationPosture = require('../services/isolation-posture');
 const imageAdmission = require('../services/image-admission');
 const containerHistory = require('../services/container-history');
 const containerReplacement = require('../services/container-replacement');
+const { listSecondaryStacks } = require('../services/stack-display-preferences');
 const { imageReference } = require('../utils/container-config');
 const requireContainerAccess = require('../middleware/containerAccess');
 const { logReader } = require('../utils/docker-log-reader');
@@ -45,13 +46,15 @@ function _cliDetails(action, params) {
 
 // List containers (filtered by per-stack permissions)
 router.get('/', requireAuth, asyncHandler(async (req, res) => {
-  let containers = await dockerService.listContainers(req.resolvedHostId ?? req.hostId);
+  const hostId = req.resolvedHostId ?? req.hostId;
+  let containers = await dockerService.listContainers(hostId);
   // Apply per-stack permission filtering
   containers = permService.filterContainers(containers, req.user.id, req.user.role);
   if (req.query.context === '1') {
     return res.json({
       containers,
-      host: { id: req.resolvedHostId ?? req.hostId, name: req.hostName, connectionType: req.hostConnectionType },
+      host: { id: hostId, name: req.hostName, connectionType: req.hostConnectionType },
+      secondaryStacks: listSecondaryStacks(req.user.id, hostId),
     });
   }
   res.json(containers);

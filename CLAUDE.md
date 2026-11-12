@@ -6,7 +6,14 @@ This file is loaded into every Claude Code session in this repo. Keep it tight; 
 
 Self-hosted Docker management dashboard. Single binary, no build step, vanilla JS frontend, SQLite embedded. Two deployment modes: **standalone** (default) and **HA** (opt-in `DD_MODE=ha`, Redis-backed leader election).
 
-Current version source of truth: [`src/version.js`](src/version.js). Bump via `npm version X.Y.Z` (runs `scripts/sync-version.js` to propagate to `docker-compose.yml` + `package.json`).
+Current version source of truth: [`src/version.js`](src/version.js). Bump via `npm version X.Y.Z --no-git-tag-version` (runs `scripts/sync-version.js` to propagate to `docker-compose.yml` + `package.json`).
+
+The version is bumped **only when a release is cut**, never per commit — see
+`docs/planning/proposals/release-scoped-versioning.md`. Feature PRs add a
+`CHANGELOG.md` entry under `## [Unreleased]` and a `public/js/pages/whatsnew.js`
+`_unreleased` entry, and leave the version files alone. The `?v=__BUILD__`
+asset cache-buster is computed from the served files' contents
+(`scripts/build-id.js`), so it never needs hand-editing.
 
 ## Architecture invariants — DO NOT violate
 
@@ -89,12 +96,15 @@ To migrate a how-to from migration to markdown: drop `src/db/howto-content/<slug
 
 ## Release workflow
 
-1. Bump version: `npm version X.Y.Z` (auto-syncs `src/version.js`, `docker-compose.yml`, stages files).
-2. Update `CHANGELOG.md` (most-recent at top).
-3. Update `public/js/pages/whatsnew.js` `_releases` array (most-recent at top).
-4. Commit + tag: `git tag vX.Y.Z && git push origin main --tags`.
-5. GitHub release with `gh release create vX.Y.Z --latest` (the `--latest` flag matters — without it, GitHub UI shows older releases as "Latest").
-6. Deploy to all 3 targets (local + LAN + VPS) — `--target production` on remotes.
+Run by the maintainer when a release is cut — never per commit.
+
+1. Bump version: `npm version X.Y.Z --no-git-tag-version` (auto-syncs `src/version.js`, `docker-compose.yml`, stages files).
+2. Update `CHANGELOG.md` — move the `## [Unreleased]` bullets under a new `## [X.Y.Z] - <date>` heading.
+3. Update `public/js/pages/whatsnew.js` — move the `_unreleased` entries into a new numbered `_releases` entry (most-recent at top).
+4. Verify: `npm run check:version-consistency`.
+5. Commit the version and release notes, tag that commit with `git tag -a vX.Y.Z -m "Docker Dash vX.Y.Z"`, and push the branch and that tag.
+6. GitHub release with `gh release create vX.Y.Z --latest` (the `--latest` flag matters — without it, GitHub UI shows older releases as "Latest").
+7. Deploy to all 3 targets (local + LAN + VPS) — `--target production` on remotes.
 
 ## Known cross-session quirks
 

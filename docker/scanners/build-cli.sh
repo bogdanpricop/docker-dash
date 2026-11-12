@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 export CGO_ENABLED=0 GOTOOLCHAIN=local GOMAXPROCS=2 GOMEMLIMIT=2GiB
-test "$(go env GOVERSION)" = 'go1.27.3'
+test "$(go env GOVERSION)" = 'go1.27.4'
 module=github.com/docker/cli
 version=v29.8.2+incompatible
 mkdir -p /out
@@ -15,6 +15,7 @@ cp -a "$source_dir" /tmp/docker-cli-source
 cp go.mod go.sum /tmp/docker-cli-source/
 cd /tmp/docker-cli-source
 go mod verify
+go test -mod=readonly -p 2 google.golang.org/grpc/test -run 'Test/MissingAuthorityAndHostHeader' -count=1
 go build -mod=readonly -p 2 -trimpath -buildvcs=false \
   -ldflags '-s -w -X github.com/docker/cli/cli/version.Version=29.8.2+dd.2 -X github.com/docker/cli/cli/version.GitCommit=7fc2dff9bceb96b266a3b2c3117c0955a0d9e616' \
   -o /out/docker-cli ./cmd/docker

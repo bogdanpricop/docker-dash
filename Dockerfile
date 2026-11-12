@@ -1,7 +1,9 @@
-FROM golang:1.27.3-alpine@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS scanner-build
+FROM golang:1.27.4-alpine@sha256:0a5f7fe796599ff487605987432e7619ae45beeb2fba4c2ce0b907879932aebf AS scanner-build
+RUN apk add --no-cache patch
 COPY docker/scanners/build.sh /build.sh
 WORKDIR /src/grype
 COPY docker/scanners/grype/go.mod docker/scanners/grype/go.sum ./
+COPY docker/scanners/grype/prepare-ar-patch.sh docker/scanners/grype/ar-negative-size.patch docker/scanners/grype/ar-negative-size_test.go /grype-patches/
 RUN sh /build.sh grype
 WORKDIR /src/trivy
 COPY docker/scanners/trivy/go.mod docker/scanners/trivy/go.sum ./
@@ -29,7 +31,7 @@ RUN apk update && apk upgrade --no-cache
 # Compose is executed from inside Docker Dash for stack plans, Git deploys,
 # pull-request previews, and OCI Compose artifacts.
 # Require patched libexpat and zlib even when the Alpine upgrade layer is cached.
-RUN apk add --no-cache tini curl git openssh-client openssl 'libexpat>=2.10.0-r0' 'zlib>=1.4-r0'
+RUN apk add --no-cache tini curl 'git>=2.54.1-r0' 'openssh-client-default>=10.3_p1-r2' openssl 'libexpat>=2.10.0-r0' 'zlib>=1.4-r0'
 
 # Use the verified source build instead of Alpine's independently packaged CLI.
 COPY --from=scanner-build /out/docker-cli /usr/local/bin/docker

@@ -1,5 +1,6 @@
 {
   "schema": 1,
+  "goVersion": "go1.27.4",
   "scope": "Reviewed Linux amd64 source builds; evidence only, never a scan ignore policy",
   "basis": [
     "docs/audits/2026-09-20-scanner-rebuild-evidence.json",
@@ -10,45 +11,56 @@
   "artifacts": {
     "docker-cli": {
       "path": "/usr/local/bin/docker",
-      "binarySha256": "0b30490cc3a092331f8302d5779ef293c23d87f34900b4d56f73e35527c0ae61",
+      "binarySha256": "34c38c9fc10728527bbe682c3c76c6eb4972bda775a8bfa5475eae291a61b461",
       "metadata": {
         "packages.txt": "00809fa58c8f0b6415f6e01a04ab04b906857ed4f22b12eebbc7d407abd15b5f",
-        "build-info.txt": "b97bd5cc749552d903504ed14b4c38f4e3249aa7bd7a8e6d4289c87289cc58aa",
+        "build-info.txt": "1ef13764bb08aa53e380ec3eaef8956c185f2397cf86af0d7a31d3422cb7aa46",
         "source.json": "24e4a575747c60fbd260ebbc5e605debf6f65211d3b25cadfc7dbcdb66ae3a3a"
       }
     },
     "docker-compose": {
       "path": "/usr/libexec/docker/cli-plugins/docker-compose",
-      "binarySha256": "f7a124eabe10048e29618a6b2b8e89aa5a178ffd15ddd446bb669539b3f4f86f",
+      "binarySha256": "c3423789ae8d34849842f52a903c9e366ea588351f96e7d987cddd709d2ab9ea",
       "metadata": {
         "packages.txt": "5ecc7e5da71aaa8e1ba53073c3095c4612ac78ac28a94288b79e666dc0107026",
-        "build-info.txt": "883b41a917be38daf0069436cbe7bef68e3438727c55d5407c73d1b4b22e150f",
+        "build-info.txt": "248c156fc2590fee743d0feac9c003be09eec52e6634ec1c147ca4781a6801fb",
         "source.json": "cd74496e5abb0316bdb94f6b6829be9bea7ce9acb84517f8ee61b5f7520b5095"
       }
     },
     "trivy": {
       "path": "/usr/local/bin/trivy",
-      "binarySha256": "dce25a47dd571c9d5a65a37e4400ffde2691faacc14a620ae741641b922d7af6",
+      "binarySha256": "34978b23c1c151085a02bd9f661ca934ff1da2a521573edf8698123b112fd969",
       "metadata": {
         "packages.txt": "cf1e2382c4b1b59c8d10e4f01c30e1413a3357ffee00145606e6de70b376fe9d",
-        "build-info.txt": "ee26167bc0e04b8057d83a05e1cc46ae6bbd9c932c245b99356f3fb77d11441f",
+        "build-info.txt": "2d230003e7fa69acadf9016f7c6e7994b0790b5df968c4a829986b9029605e8d",
         "source.json": "ce8a2bb29e0b27e0688f99f058441d0425ae3ceddd62c89b9dd59568dceb34be"
       }
     },
     "grype": {
       "path": "/usr/local/bin/grype",
-      "binarySha256": "a66afa2cf13519fee5e684b62a7b943e0c598f98b52945db48ab67f831edc028",
+      "binarySha256": "61479f8f446cc3bb8751fc52430a4c94e164a8465105dad39887b738306c7b9f",
       "metadata": {
-        "packages.txt": "eb05cac2ba6c20791065efc7b476ae9792b1c3704ce25ab18a0503fbdec51c8f",
-        "build-info.txt": "1fed595620876335b15cbcdf20134935c23bd108ce5087c0e309bfd96576b695",
-        "source.json": "ec012233813b1cd8ce25d4009ce09e0655a586e25b1483964100bd0d01031862"
+        "packages.txt": "ad7fff1fb15f12d07993107ff51afb26502362f1cfeea89a867d5654a29ed9e7",
+        "build-info.txt": "656b8ad901af0fa137cf324a7307d176848ffe68480383f3673cba652ef4a55b",
+        "source.json": "44d2c3e09f2a70b6a278e060c918706ef6a5031b7f468cb6f9a9ddbed4a8d7ae"
       }
     }
   },
   "grpc": {
-    "version": "v1.84.0",
-    "sum": "h1:soMyaPJ8pAak5PIQ0DGBUir0XRo2fRoMqhNWMLlLxO0=",
-    "transportSha256": "6ff2da17e276ba22a782dffe467ec32b664895d12faccfbb5fc1ec40d59cdcf6c",
+    "artifacts": {
+      "docker-cli": {
+        "version": "v1.83.2",
+        "sum": "h1:EManeRomTObA0BU7I8vXgg/78uE5MJ9M8B39EX2WscU=",
+        "transportSha256": "84ad3bde6a86be6ab86af02adc250ae04418fb24aafa628292141fb6fc9ed093",
+        "regressionEvidence": "docker/scanners/build-cli.sh"
+      },
+      "trivy": {
+        "version": "v1.84.0",
+        "sum": "h1:soMyaPJ8pAak5PIQ0DGBUir0XRo2fRoMqhNWMLlLxO0=",
+        "transportSha256": "6ff2da17e276ba22a782dffe467ec32b664895d12faccfbb5fc1ec40d59cdcf6c",
+        "regressionEvidence": "docker/scanners/build.sh"
+      }
+    },
     "regression": "Test/MissingAuthorityAndHostHeader",
     "advisory": "https://github.com/grpc/grpc-go/security/advisories/GHSA-2v4p-qf9q-27wj"
   }

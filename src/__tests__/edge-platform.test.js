@@ -197,6 +197,6 @@ describe('V6.5a edge and disconnected foundation (B326-B335)', () => {
     const page = fs.readFileSync(path.join(root, 'public/js/pages/edge-platform.js'), 'utf8');
     expect(server).toContain("app.use('/api/edge'"); expect(api).toContain('getEdgeOverview()');
     expect(app).toContain("'edge-platform': () => EdgePlatformPage"); expect(index).toContain('href="#/edge-platform"');
-    expect(index).toContain('/js/pages/edge-platform.js?v=__VERSION__'); expect(page).not.toMatch(/\son(?:click|change|submit)=/i);
+    expect(index).toContain('/js/pages/edge-platform.js?v=__BUILD__'); expect(page).not.toMatch(/\son(?:click|change|submit)=/i);
   });
 });

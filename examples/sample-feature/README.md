@@ -95,9 +95,14 @@ in the `App._pages` registry.
 
 ### 8. Add the script tag in `public/index.html`
 ```html
-<script src="/js/pages/<your-feature>.js?v=__VERSION__"></script>
+<script src="/js/pages/<your-feature>.js?v=__BUILD__"></script>
 ```
 Place it next to the other page scripts.
+
+`__BUILD__` is the cache-busting token, computed automatically from the
+served files' contents (`scripts/build-id.js`). Use it for asset URLs.
+`__VERSION__` is the release version — use it only for user-visible version
+strings.
 
 ### 9. Add a sidebar entry in `public/index.html`
 ```html

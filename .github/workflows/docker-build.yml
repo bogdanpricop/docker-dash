@@ -29,6 +29,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Verify the release tag and read the application version
+        id: version
+        run: |
+          version=$(jq -er '.version' package.json)
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match application version $version"
+            exit 1
+          fi
+          printf 'value=%s\n' "$version" >> "$GITHUB_OUTPUT"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
@@ -37,6 +47,8 @@ jobs:
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          flavor: latest=false
+          labels: org.opencontainers.image.version=${{ steps.version.outputs.value }}
           # `latest` added explicitly so install.sh can pull a known-good image
           # instead of falling back to git-clone+local-build (the fallback path
           # was the trigger for the Ubuntu 25.10 restart-loop bug — see history).
@@ -54,6 +66,7 @@ jobs:
         with:
           context: .
           target: production
+          build-args: APP_VERSION=${{ steps.version.outputs.value }}
           load: true
           push: false
           tags: docker-dash:ci-${{ github.sha }}
@@ -64,7 +77,13 @@ jobs:
       - name: Verify production startup and secret persistence
         env:
           CANDIDATE: docker-dash:ci-${{ github.sha }}
+          APP_VERSION: ${{ steps.version.outputs.value }}
         run: |
+          label_version=$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.version" }}' "$CANDIDATE")
+          if [ "$label_version" != "$APP_VERSION" ]; then
+            echo "::error::Image label $label_version does not match application version $APP_VERSION"
+            exit 1
+          fi
           docker run --rm --network none --cap-drop=ALL \
             --security-opt=no-new-privileges --cpus=1 --memory=512m \
             -v /var/run/docker.sock:/var/run/docker.sock:ro \
@@ -77,6 +96,18 @@ jobs:
           CANDIDATE: docker-dash:ci-${{ github.sha }}
         run: |
           IMAGE_ID=$(docker image inspect --format '{{.Id}}' "$CANDIDATE")
+          docker run --rm --network none --read-only --cap-drop=ALL --entrypoint sh "$IMAGE_ID" -ec '
+            sha256sum /usr/local/bin/docker /usr/libexec/docker/cli-plugins/docker-compose /usr/local/bin/trivy /usr/local/bin/grype
+            sha256sum /usr/share/docker-dash/scanners/*.packages.txt /usr/share/docker-dash/scanners/*.build-info.txt /usr/share/docker-dash/scanners/*.source.json
+            apk list --installed git git-init-template openssh-client-default
+          '
+          AR_PATCH_SHA=$(sha256sum docker/scanners/grype/ar-negative-size.patch | cut -d ' ' -f 1)
+          docker run --rm --network none --read-only --cap-drop=ALL -e AR_PATCH_SHA="$AR_PATCH_SHA" --entrypoint node "$IMAGE_ID" -e '
+            const assert = require("node:assert/strict"), fs = require("node:fs");
+            const evidence = fs.readFileSync("/usr/share/docker-dash/scanners/grype-ar-patch.sha256", "utf8");
+            assert.equal(evidence.split(/\s+/)[0], process.env.AR_PATCH_SHA);
+            assert.ok(fs.readFileSync("/usr/local/bin/grype").includes(Buffer.from("ar: negative member size")));
+          '
           docker run --rm --network none --cap-drop=ALL \
             --security-opt=no-new-privileges --cpus=1 --memory=512m \
             -v /var/run/docker.sock:/var/run/docker.sock:ro \
@@ -120,6 +151,28 @@ jobs:
             -e DD_SCANNER_REVIEW=/audit/docker/scanners/reviewed-artifacts.json \
             -e DD_REPOSITORY_ROOT=/audit \
             --entrypoint node "$CANDIDATE" /audit/scripts/gate-image-vulnerabilities.js
+
+      - name: Verify all scanner binaries against the reviewed build
+        env:
+          CANDIDATE: docker-dash:ci-${{ github.sha }}
+        run: |
+          docker run --rm --network none --read-only --cap-drop=ALL \
+            --security-opt=no-new-privileges -v "$PWD:/audit:ro" \
+            -e NODE_PATH=/app/node_modules --entrypoint node "$CANDIDATE" -e '
+              const fs = require("node:fs"), crypto = require("node:crypto");
+              const lock = require("/audit/docker/scanners/reviewed-artifacts.json");
+              const { assessArtifact } = require("/audit/scripts/verify-scanner-artifacts");
+              const digest = bytes => crypto.createHash("sha256").update(bytes).digest("hex");
+              for (const [name, artifact] of Object.entries(lock.artifacts)) {
+                const binary = fs.readFileSync(artifact.path);
+                const metadata = Object.fromEntries(Object.keys(artifact.metadata).map(suffix => {
+                  const contents = fs.readFileSync("/usr/share/docker-dash/scanners/" + name + "." + suffix);
+                  return [suffix, { sha256: digest(contents), text: contents.toString("utf8") }];
+                }));
+                const result = assessArtifact(name, { sha256: digest(binary), bytes: binary.length }, metadata, lock);
+                console.log("REVIEWED " + name + " " + result.binarySha256 + " (" + result.compiledPackages + " packages)");
+              }
+            '
 
       - name: Log in to GitHub Container Registry
         if: github.event_name != 'pull_request'

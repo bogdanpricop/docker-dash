@@ -2,9 +2,12 @@
 // Romanian translations — regenerated with full key parity to en.js
 i18n.register('ro', 'RO', "Română", {
   common: {
+    secondaryStack: 'Secundar', showSecondaryStacks: 'Arată stack-urile secundare',
+    secondaryStacksHidden: 'Stack-urile secundare sunt ascunse. Activează afișarea lor pentru a le vedea.',
     remoteSecretExecution: 'Transmite si executa prin SSH verificat, fara salvarea unui script temporar. La intrerupere, verifica hostul inainte de a repeta. Configureaza accesul SSH in pagina Hosts.',
     replacementCleanup: 'Inlocuitorul este activ, dar resursele pastrate pentru recuperare necesita curatare de catre administrator. Operatie: {{operation}}. Consulta ghidul de recuperare rollback.',
     newVersionAvailable: "Versiune nouă {{version}} disponibilă",
+    newBuildAvailable: 'Este disponibilă o actualizare a tabloului de bord',
     reload: "Reîncarcă",
     close: "Inchide",
     cancel: "Anuleaza",
@@ -101,6 +104,19 @@ i18n.register('ro', 'RO', "Română", {
     sectionMonitor: "Monitorizare",
     more: "Mai multe",
     showAll: "Arata tot",
+    pinned: "Fixate",
+    pinnedManage: "Gestioneaza paginile fixate",
+    pinnedEmpty: "Alege paginile pe care vrei să le fixezi.",
+    pinnedSyncFailed: "Paginile fixate nu au putut fi sincronizate. Modificările sunt salvate în acest browser.",
+    pinnedHint: "Intrarile fixate se muta in partea de sus a barei laterale, deasupra celorlalte categorii.",
+    pinAction: "Fixeaza sus",
+    unpinAction: "Scoate de sus",
+    pinnedOthers: "Toate paginile",
+    pinnedNone: "Nimic fixat inca.",
+    pinnedOrderHint: "Trage o pagină sau folosește butoanele cu săgeți pentru a-i schimba poziția. Scurtătură: Alt + Sus sau Jos.",
+    pinMoveUp: "Mută {{name}} în sus", pinMoveDown: "Mută {{name}} în jos",
+    pinReorderLabel: "{{name}}, fixat pe pozitia {{position}} din {{total}}",
+    pinnedReordered: "{{name}} a fost mutat pe pozitia {{position}} din {{total}}",
     stacks: "Stacks",
     notifications: "Notificări",
     "api-playground": "API",
@@ -294,6 +310,7 @@ i18n.register('ro', 'RO', "Română", {
       }
     },
     containers: {
+      noVisibleGroupMembers: 'Niciun container vizibil în acest grup.',
       rollbackSnapshotHint: 'Configuratia de rollback este criptata. Pastreaza cheia de criptare a instalarii pentru recuperare.',
       rollbackSnapshotGuide: 'Ghid de recuperare si backup',
       title: "Containere",
@@ -2166,6 +2183,8 @@ i18n.register('ro', 'RO', "Română", {
       manage: "Gestionează"
     },
     stacks: {
+      markSecondary: 'Marchează ca secundar', markEssential: 'Marchează ca esențial',
+      visibilitySaveFailed: 'Vizibilitatea stack-ului nu a putut fi salvată: {{message}}',
       allStates: 'Toate stările',
       state: { running: 'Pornit', partial: 'Parțial', stopped: 'Oprit' },
       listView: 'Vizualizare stack-uri',

@@ -136,13 +136,13 @@ function main() {
   const reviewed = read('DD_SCANNER_REVIEW');
   const today = new Date().toISOString().slice(0, 10);
   const result = evaluateReports(read('DD_TRIVY_REPORT'), read('DD_GRYPE_REPORT'), policy, today);
+  for (const item of result.blocked) console.error('BLOCKING ' + JSON.stringify(item));
+  for (const item of result.unused) console.error(`STALE-OR-MISSING ${item.scanner} ${item.id} ${item.packageName}@${item.packageVersion}`);
   for (const { rule } of result.allowed) {
     verifyArtifactEvidence(rule, reviewed);
     verifyRuntimeEvidence(rule, process.env.DD_REPOSITORY_ROOT);
   }
   for (const item of result.allowed) console.log(`REVIEWED ${item.finding.scanner} ${item.finding.id} ${item.finding.packageName}@${item.finding.packageVersion}: ${item.rule.reason}`);
-  for (const item of result.blocked) console.error('BLOCKING ' + JSON.stringify(item));
-  for (const item of result.unused) console.error(`STALE-OR-MISSING ${item.scanner} ${item.id} ${item.packageName}@${item.packageVersion}`);
   assert.deepEqual(result.blocked, [], 'Unreviewed High/Critical/Unknown image findings');
   assert.deepEqual(result.unused, [], 'Policy contains stale or missing findings; review and remove/update the rule');
   console.log(`PASS image vulnerability gate: ${result.allowed.length} exact reviewed findings; no unreviewed blocking findings`);

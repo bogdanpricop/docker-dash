@@ -232,6 +232,20 @@ describe('provider privileged access and compliance lifecycle', () => {
     }));
   });
 
+  it('gives back-to-back exports of the same scope distinct bundle hashes', () => {
+    // provider_compliance_exports.bundle_hash is UNIQUE. Two exports created
+    // within the same millisecond must still hash differently, otherwise the
+    // second export fails with a UNIQUE constraint violation.
+    service.upsertClassification(host, { scopeId: 1, resourceKind: 'endpoint',
+      resourceId: 'endpoint:7', classification: 'confidential' }, admin, options());
+    const first = service.createComplianceExport(host, { scopeId: 1, format: 'json' }, admin, options());
+    const second = service.createComplianceExport(host, { scopeId: 1, format: 'json' }, admin, options());
+    const third = service.createComplianceExport(host, { scopeId: 1, format: 'pdf' }, admin, options());
+    expect(second.export.bundleHash).not.toBe(first.export.bundleHash);
+    expect(third.export.bundleHash).not.toBe(first.export.bundleHash);
+    expect(db.prepare('SELECT COUNT(*) count FROM provider_compliance_exports').get().count).toBe(3);
+  });
+
   it('seeds four granular critical-operation permissions without changing the B176 ten-permission proof', () => {
     expect(criticalOperationMigration._PERMISSIONS).toHaveLength(4);
     expect(db.prepare("SELECT COUNT(*) count FROM governance_permissions WHERE permission_key LIKE 'provider.vm.%'")

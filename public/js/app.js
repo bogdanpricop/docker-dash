@@ -582,9 +582,6 @@ const App = {
       }
     }, true); // capture phase — error doesn't bubble
 
-    // Sync preferences from server (fire-and-forget, localStorage wins for instant display)
-    this._syncUserPreferences();
-
     // Setup language toggle
     this._initLangToggle();
 
@@ -603,6 +600,8 @@ const App = {
 
     // Apply sidebar layout for saved UI mode (router sets _currentPageName first)
     this._renderSidebarForMode(this._uiMode);
+    window.NavPins?.init(this.user);
+    this._syncUserPreferences();
 
     // v8.8.2 — capability-based nav gating. Fetch the current host's
     // capabilities (from v8.7.44's /api/system/info matrix) and hide
@@ -610,14 +609,17 @@ const App = {
     // Runs at boot and on hostChanged. Also called from Api.setHost
     // indirectly through the hostChanged event.
     this._refreshCapabilities();
-    window.addEventListener('hostChanged', () => this._refreshCapabilities());
+    if (!this._hostChangedCapabilitiesBound) {
+      this._hostChangedCapabilitiesBound = true;
+      window.addEventListener('hostChanged', () => this._refreshCapabilities());
+    }
 
     // v8.7.43 — periodic check for a server-side version upgrade.
     // Docker Dash is a long-lived SPA: users often keep a browser tab
     // open across a deploy. Hash-based routing (#/system, #/dashboard)
     // does NOT reload index.html, so the JS in memory stays at whatever
     // version was loaded when the tab first opened — even though every
-    // asset URL contains ?v=<VERSION> for HTTP-cache busting, the
+    // asset URL contains ?v=<BUILD> for HTTP-cache busting, the
     // in-memory bundle isn't reset until the tab actually reloads.
     // Result: a user viewing System after a deploy sees the OLD JS and
     // never sees new features until they F5.
@@ -1009,6 +1011,10 @@ const App = {
     // Always derive alternate layouts from the original standard navigation,
     // never from a previously grouped layout.
     if (!this._standardNavHTML) this._standardNavHTML = nav.innerHTML;
+    const availability = new Map([...nav.querySelectorAll('.nav-item[data-page]')].map(item => [
+      item.dataset.page,
+      { display: item.style.display, reason: item.dataset.availabilityReason, disabled: item.getAttribute('aria-disabled') },
+    ]));
     nav.innerHTML = this._standardNavHTML;
 
     const navItems = {};
@@ -1071,6 +1077,15 @@ const App = {
       // caught up yet. Showing `nav.some-page` makes the primary navigation
       // look broken and is less useful than the documented English fallback.
       if (span && page && label !== key) span.textContent = label;
+      const previous = availability.get(page);
+      if (previous) {
+        item.style.display = previous.display;
+        if (previous.disabled !== null) item.setAttribute('aria-disabled', previous.disabled);
+        if (previous.reason !== undefined) {
+          item.dataset.availabilityReason = previous.reason;
+          item.title = previous.reason;
+        }
+      }
     });
     const simpleMore = nav.querySelector('.nav-simple-more');
     if (simpleMore?.querySelector('.nav-item.active')) simpleMore.open = true;
@@ -1084,6 +1099,7 @@ const App = {
         span.textContent = (raw === 'nav.' + key) ? label : raw;
       }
     });
+    window.NavPins?.apply();
   },
 
   _initComposeSimpleMode() {
@@ -1116,8 +1132,12 @@ const App = {
   },
 
   async _syncUserPreferences() {
+    const user = this.user;
+    const pins = window.NavPins?.snapshot();
     try {
       const prefs = await Api.getUserPreferences();
+      if (this.user !== user || !user) return;
+      window.NavPins?.setFromServer(prefs.pinnedNav, pins);
       // Theme: server overrides localStorage only if localStorage has no value (new device)
       // or if values differ and we want server to be source of truth across devices
       if (prefs.theme) {
@@ -1248,6 +1268,7 @@ const App = {
   },
 
   _updateStaticUI() {
+    window.NavPins?.updateLabels();
     // Sidebar nav labels
     document.querySelectorAll('.nav-item[data-page]').forEach(item => {
       const page = item.dataset.page;
@@ -1617,6 +1638,7 @@ const App = {
   },
 
   async _logout() {
+    window.NavPins?.reset();
     try { await Api.logout(); } catch { /* ignore */ }
     this.user = null;
     this._loginPassword = null;
@@ -1642,6 +1664,7 @@ const App = {
     if (this._inUnauthState) return;
     this._inUnauthState = true;
     this.user = null;
+    window.NavPins?.reset();
     WS.disconnect();
     // Stop the current page's timers/intervals so they don't keep firing
     // 401s in a loop while the user is on the login screen.
@@ -1660,10 +1683,16 @@ const App = {
   // types (Incus, Proxmox, k8s) will use the same mechanism.
 
   async _refreshCapabilities() {
+    const user = this.user;
+    if (!user) return;
+    const revision = (this._capabilitiesRevision || 0) + 1;
+    this._capabilitiesRevision = revision;
+    const isCurrent = () => this.user === user && this._capabilitiesRevision === revision;
     let info;
     try {
       info = await Api.getSystemInfo();
     } catch { return; }
+    if (!isCurrent()) return;
     const caps = info && info.capabilities;
     if (caps && typeof caps === 'object') {
       this._capabilities = caps;
@@ -1676,6 +1705,7 @@ const App = {
         el.style.display = supported ? '' : 'none';
       });
     }
+    window.NavPins?.updateAvailability();
 
     // v8.9.0-alpha.3 — fleet-level daemon gating. Some nav items (e.g.
     // "Incus (alpha)") should be visible only when the operator has at
@@ -1684,6 +1714,7 @@ const App = {
     // reads /api/hosts once per refresh.
     try {
       const hosts = await Api.getHosts();
+      if (!isCurrent()) return;
       const daemonTypesPresent = new Set(
         (hosts || []).map(h => (h.daemonType || 'docker'))
       );
@@ -1699,11 +1730,14 @@ const App = {
         el.style.display = visible ? '' : 'none';
       });
     } catch { /* /api/hosts is best-effort — leave fleet-daemon items visible */ }
+    if (!isCurrent()) return;
+    window.NavPins?.updateAvailability();
 
     // The experience manifest refines configured-daemon gating with permitted,
     // active endpoint health and keeps a human-readable reason on every item.
     try {
       const manifest = await Api.getExperienceNavigation();
+      if (!isCurrent()) return;
       this._experienceNavigation = manifest;
       (manifest.pages || []).forEach(decision => {
         const el = document.querySelector(`.nav-item[data-page="${decision.page}"]`);
@@ -1714,6 +1748,7 @@ const App = {
         el.style.display = decision.available ? '' : 'none';
       });
     } catch { /* navigation remains usable when the manifest is unavailable */ }
+    if (isCurrent()) window.NavPins?.updateAvailability();
   },
 
   // ─── Version Watcher (v8.7.43) ─────────────────
@@ -1731,7 +1766,8 @@ const App = {
     const el = document.getElementById('sidebar-version');
     const raw = el ? (el.textContent || '').trim() : '';
     this._loadedVersion = raw.replace(/^v/, '');
-    if (!this._loadedVersion) return; // unknown → no baseline to compare
+    this._loadedBuild = document.querySelector('meta[name="dd-build"]')?.content || '';
+    if (!this._loadedVersion && !this._loadedBuild) return;
     this._newVersionNotified = false;
 
     // First check 30s after boot (avoid racing initial API calls / login).
@@ -1754,12 +1790,16 @@ const App = {
       if (!resp.ok) return;
       const data = await resp.json();
       const serverVersion = String(data.version || '').trim();
-      if (!serverVersion) return;
-      if (serverVersion === this._loadedVersion) return;
+      const serverBuild = String(data.buildId || '').trim();
+      const versionChanged = serverVersion && this._loadedVersion && serverVersion !== this._loadedVersion;
+      const buildChanged = serverBuild && this._loadedBuild && serverBuild !== this._loadedBuild;
+      if (!versionChanged && !buildChanged) return;
       // Server has moved on. Persistent toast (duration=0) with an
       // inline Reload button that force-reloads the page.
       this._newVersionNotified = true;
-      const msg = i18n.t('common.newVersionAvailable', { version: serverVersion });
+      const msg = versionChanged
+        ? i18n.t('common.newVersionAvailable', { version: serverVersion })
+        : i18n.t('common.newBuildAvailable');
       Toast.info(msg, 0, {
         action: {
           label: i18n.t('common.reload'),

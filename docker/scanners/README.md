@@ -1,11 +1,11 @@
 # Scanner security rebuilds
 
-These build modules use upstream Trivy 0.75.0 and Grype 0.120.1 source
-with fixed dependency versions and Go 1.27.1. The root Dockerfile consumes this
+These build modules use upstream Trivy 0.75.0 and Grype 0.121.3 source
+with fixed dependency versions and Go 1.27.4. The root Dockerfile consumes this
 build stage. Integration alone is not a claim that the production image is clean;
 the final image vulnerability gate remains mandatory.
 The same artifact stage also builds Docker CLI 29.8.2 from its verified upstream
-module with Go 1.27.1 and pinned gRPC/telemetry updates. Its version is
+module with Go 1.27.4 and pinned gRPC/telemetry updates. Its version is
 `29.8.2+dd.2`; `build-cli.sh` records its source and binary provenance separately.
 Compose 5.6.0 is also rebuilt from its verified upstream module, without source
 patches, using containerd 2.4.1 and x/crypto 0.57.0. Its version is `5.6.0+dd.2`.
@@ -16,7 +16,7 @@ source checksum, dependency graph, build module, license and binary hash live
 alongside the other provenance files. `scripts/smoke-compose-image.js` validates
 an immutable image against a real Docker daemon in a disposable Compose project.
 This update does not constitute an exception for scanner findings in other tools.
-Application versions carry `+dd.2`. Embedded Go metadata retains the upstream
+Application versions carry a `+dd` build suffix. Embedded Go metadata retains the upstream
 module version/checksum and the actual dependency versions.
 
 Trivy 0.75.0 includes the Go 1.27 `json.SkipFunc` to
@@ -36,6 +36,11 @@ It has no executable entrypoint. The production image includes provenance and
 licenses under `/usr/share/docker-dash/scanners`, and binaries under
 `/usr/local/bin`. Functional and vulnerability verification are required before
 publishing the candidate image.
+
+Grype 0.121.3 replaces the legacy Docker module with Moby client and API
+modules. Its build also applies a checked patch to the pinned ar reader for
+[GO-2026-6905](https://pkg.go.dev/vuln/GO-2026-6905). The build tests the guard
+against negative sizes and records the patch checksum with the scanner evidence.
 
 The source module checksums and release commits are pinned in `build.sh`.
 `go.mod`/`go.sum` describe the complete build selection; builds use readonly
