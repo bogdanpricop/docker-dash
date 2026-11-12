@@ -24,6 +24,8 @@ process.env.DB_PATH = ':memory:';
 jest.resetModules();
 
 const crypto = require('crypto');
+const { setImmediate: nextTurn } = require('node:timers');
+const flushDelivery = () => new Promise(nextTurn);
 
 describe('webhooks service — service layer (v8.2.x audit)', () => {
   let db;
@@ -72,11 +74,7 @@ describe('webhooks service — service layer (v8.2.x audit)', () => {
 
   /** Build a fetch-Response-like object the service's await resp.text() expects. */
   function fakeResponse({ status = 200, body = 'ok' } = {}) {
-    return {
-      status,
-      ok: status >= 200 && status < 300,
-      text: async () => body,
-    };
+    return new global.Response(body, { status });
   }
 
   /** Read the latest delivery row for a webhook (most recent first). */
@@ -92,11 +90,56 @@ describe('webhooks service — service layer (v8.2.x audit)', () => {
     //   advance fake timers → flush microtasks (await fetch) → repeat.
     for (let i = 0; i < maxIterations; i++) {
       // Drain pending micro-tasks before advancing timers.
-      await Promise.resolve();
+      await flushDelivery();
       jest.runOnlyPendingTimers();
-      await Promise.resolve();
+      await flushDelivery();
     }
   }
+
+  it('tests only the requested hook and reports a blocked redirect without retaining the response', async () => {
+    const { id } = webhooks.create({ name: 'selected', url: 'https://example.test/hook?token=hidden-value' });
+    webhooks.create({ name: 'unrelated', url: 'https://example.test/unrelated' });
+    global.fetch.mockResolvedValueOnce(new global.Response('x'.repeat(5000), {
+      status: 307, headers: { Location: 'http://127.0.0.1/private' },
+    }));
+    await expect(webhooks.test(id)).resolves.toMatchObject({ ok: false, status: 307 });
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(global.fetch.mock.calls[0][1].redirect).toBe('manual');
+    expect(latestDelivery(id).response_body).toBe('');
+    expect(JSON.stringify(webhooks.get(id))).not.toContain('hidden-value');
+  });
+
+  it('cancels pending delivery after its destination is changed or disabled', async () => {
+    jest.useFakeTimers();
+    const { id } = webhooks.create({ name: 'revoked', url: 'https://example.test/original' });
+    global.fetch.mockResolvedValueOnce(fakeResponse({ status: 503 }));
+    await webhooks.dispatch('container.start', {});
+    await flushDelivery();
+    webhooks.update(id, { url: 'https://example.test/new', is_active: false });
+    await drainRetries();
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['ftp://example.test/hook', 'https://user:pass@example.test/hook', 'https://example.test/hook#fragment'])
+  ('rejects an invalid delivery destination %s', url => {
+    expect(() => webhooks.create({ name: 'invalid', url })).toThrow('Webhook destination');
+  });
+
+  it('migrates existing webhook credentials without changing the delivery target', () => {
+    const Database = require('better-sqlite3');
+    const legacy = new Database(':memory:');
+    try {
+      legacy.exec('CREATE TABLE users (id INTEGER PRIMARY KEY)');
+      require('../db/migrations/005_webhooks').up(legacy);
+      const url = 'https://example.test/old?token=legacy-value';
+      const headers = JSON.stringify({ Authorization: 'Bearer private-value' });
+      legacy.prepare("INSERT INTO webhooks (name,url,headers,secret) VALUES ('legacy',?,?,?)").run(url, headers, 'signing-key');
+      legacy.transaction(() => require('../db/migrations/191_encrypt_webhook_destinations').up(legacy))();
+      const row = legacy.prepare('SELECT * FROM webhooks').get();
+      expect(row).toMatchObject({ url: '', headers: '{}', secret: null });
+      expect(JSON.parse(require('../utils/crypto').decrypt(row.delivery_config_enc))).toEqual({ url, headers, secret: 'signing-key' });
+    } finally { legacy.close(); }
+  });
 
   // ── 1. CREATE ─────────────────────────────────────────────────────────
 
@@ -112,7 +155,7 @@ describe('webhooks service — service layer (v8.2.x audit)', () => {
 
     const row = webhooks.get(id);
     expect(row.name).toBe('hook-create');
-    expect(row.url).toBe('https://example.test/hook');
+    expect(row.url).toBe('https://example.test');
     expect(row.method).toBe('POST'); // default
     expect(row.is_active).toBe(1);
     expect(JSON.parse(row.events)).toEqual(['container.start']);
@@ -127,12 +170,14 @@ describe('webhooks service — service layer (v8.2.x audit)', () => {
       secret: 'super-shared-secret',
     });
     const row = webhooks.get(id);
-    expect(row.secret).toBe('super-shared-secret');
-
-    // Sanity: same secret signing a known body produces a deterministic HMAC.
-    const body = 'test-body';
-    const expected = crypto.createHmac('sha256', row.secret).update(body).digest('hex');
-    expect(expected).toMatch(/^[0-9a-f]{64}$/);
+    expect(row.hasSecret).toBe(true);
+    expect(row.secret).toBeUndefined();
+    const stored = db.prepare('SELECT * FROM webhooks WHERE id = ?').get(id);
+    expect(stored).toMatchObject({ url: '', headers: '{}', secret: null });
+    expect(stored.delivery_config_enc).not.toContain('super-shared-secret');
+    expect(JSON.parse(require('../utils/crypto').decrypt(stored.delivery_config_enc))).toMatchObject({
+      url: 'https://example.test/hook', secret: 'super-shared-secret',
+    });
   });
 
   // ── 3. UPDATE — idempotent ────────────────────────────────────────────
@@ -201,8 +246,8 @@ describe('webhooks service — service layer (v8.2.x audit)', () => {
     global.fetch.mockResolvedValueOnce(fakeResponse({ status: 200 }));
     await webhooks.dispatch('container.start', { foo: 'bar' });
     // dispatch fires-and-forgets; let the microtask queue drain.
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushDelivery();
+    await flushDelivery();
 
     expect(global.fetch).toHaveBeenCalledTimes(1);
     const [url, init] = global.fetch.mock.calls[0];
@@ -216,7 +261,7 @@ describe('webhooks service — service layer (v8.2.x audit)', () => {
     expect(init.headers['X-Signature-256']).toBe('sha256=' + expectedHex);
 
     // Loose await to let the post-fetch DB write settle.
-    await Promise.resolve();
+    await flushDelivery();
     expect(latestDelivery(id)).toBeTruthy();
   });
 
@@ -232,8 +277,8 @@ describe('webhooks service — service layer (v8.2.x audit)', () => {
 
     global.fetch.mockResolvedValueOnce(fakeResponse({ status: 200 }));
     await webhooks.dispatch('container.start', { ok: true });
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushDelivery();
+    await flushDelivery();
 
     const [, init] = global.fetch.mock.calls[0];
     const sigHeader = init.headers['X-Signature-256'];
@@ -266,8 +311,8 @@ describe('webhooks service — service layer (v8.2.x audit)', () => {
 
     global.fetch.mockResolvedValueOnce(fakeResponse({ status: 200 }));
     await webhooks.dispatch('container.start', {});
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushDelivery();
+    await flushDelivery();
 
     const [, init] = global.fetch.mock.calls[0];
     expect(init.method).toBe('POST');
@@ -366,9 +411,9 @@ describe('webhooks service — service layer (v8.2.x audit)', () => {
     await webhooks.dispatch('container.start', {});
     // Service catches the error, writes the row, then schedules a retry —
     // we only care about the FIRST recorded delivery here.
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushDelivery();
+    await flushDelivery();
+    await flushDelivery();
 
     const row = db.prepare(
       'SELECT * FROM webhook_deliveries WHERE webhook_id = ? ORDER BY id ASC LIMIT 1'
@@ -376,7 +421,7 @@ describe('webhooks service — service layer (v8.2.x audit)', () => {
     expect(row).toBeTruthy();
     expect(row.success).toBe(0);
     expect(row.response_code).toBe(0);
-    expect(row.error).toMatch(/abort/i);
+    expect(row.error).toMatch(/timed out/i);
   });
 
   // ── 12. Delivery log persistence — success path ──────────────────────
@@ -390,8 +435,8 @@ describe('webhooks service — service layer (v8.2.x audit)', () => {
 
     global.fetch.mockResolvedValueOnce(fakeResponse({ status: 201, body: 'created' }));
     await webhooks.dispatch('container.start', { hello: 'world' });
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushDelivery();
+    await flushDelivery();
 
     const row = latestDelivery(id);
     expect(row).toBeTruthy();
@@ -427,8 +472,8 @@ describe('webhooks service — service layer (v8.2.x audit)', () => {
     };
     global.fetch.mockResolvedValueOnce(fakeResponse({ status: 200 }));
     await webhooks.dispatch('container.start', { x: 1 });
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushDelivery();
+    await flushDelivery();
 
     // Second call — frozen at T2 (one minute later).
     global.Date = class extends realNow {
@@ -437,8 +482,8 @@ describe('webhooks service — service layer (v8.2.x audit)', () => {
     };
     global.fetch.mockResolvedValueOnce(fakeResponse({ status: 200 }));
     await webhooks.dispatch('container.start', { x: 1 });
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushDelivery();
+    await flushDelivery();
 
     global.Date = realNow;
 
@@ -471,8 +516,8 @@ describe('webhooks service — service layer (v8.2.x audit)', () => {
 
     global.fetch.mockResolvedValue(fakeResponse({ status: 200 }));
     await webhooks.dispatch('container.start', {});
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushDelivery();
+    await flushDelivery();
     expect(global.fetch).not.toHaveBeenCalled();
 
     // Re-enable via update — row remains, NOT a delete + recreate.
@@ -480,8 +525,8 @@ describe('webhooks service — service layer (v8.2.x audit)', () => {
     expect(webhooks.get(id).is_active).toBe(1);
 
     await webhooks.dispatch('container.start', {});
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushDelivery();
+    await flushDelivery();
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
@@ -506,8 +551,8 @@ describe('webhooks service — service layer (v8.2.x audit)', () => {
 
     global.fetch.mockResolvedValue(fakeResponse({ status: 200 }));
     await webhooks.dispatch('container.start', {});
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushDelivery();
+    await flushDelivery();
 
     const calls = global.fetch.mock.calls.map(c => c[0]);
     expect(calls).toContain('https://example.test/wild');
@@ -532,9 +577,9 @@ describe('webhooks service — service layer (v8.2.x audit)', () => {
 
     global.fetch.mockRejectedValueOnce(new Error('ECONNREFUSED 127.0.0.1:443'));
     await webhooks.dispatch('container.start', {});
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushDelivery();
+    await flushDelivery();
+    await flushDelivery();
 
     const row = db.prepare(
       'SELECT * FROM webhook_deliveries WHERE webhook_id = ? ORDER BY id ASC LIMIT 1'
@@ -542,7 +587,7 @@ describe('webhooks service — service layer (v8.2.x audit)', () => {
     expect(row).toBeTruthy();
     expect(row.success).toBe(0);
     expect(row.response_code).toBe(0);
-    expect(row.error).toContain('ECONNREFUSED');
+    expect(row.error).toBe('Webhook request failed');
   });
 
   // ── 17. getDeliveries pagination ─────────────────────────────────────
@@ -584,9 +629,9 @@ describe('webhooks service — service layer (v8.2.x audit)', () => {
     expect(JSON.parse(page3[0].payload).i).toBe(0);
   });
 
-  // ── 18. Malformed events JSON falls back to ['*'] safely ─────────────
+  // ── 18. Malformed events JSON fails closed ─────────────────────────
 
-  it('18. malformed events JSON in DB is handled gracefully (defaults to ["*"])', async () => {
+  it('18. malformed events JSON cannot subscribe to every event', async () => {
     // Insert a webhook with deliberately corrupt events column.
     const r = db.prepare(`
       INSERT INTO webhooks (name, url, method, headers, secret, events, is_active)
@@ -596,15 +641,10 @@ describe('webhooks service — service layer (v8.2.x audit)', () => {
 
     global.fetch.mockResolvedValueOnce(fakeResponse({ status: 200 }));
     await webhooks.dispatch('container.start', {});
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushDelivery();
+    await flushDelivery();
 
-    // Service should fall back to ['*'] and still deliver — no crash.
-    expect(global.fetch).toHaveBeenCalledTimes(1);
-    expect(global.fetch.mock.calls[0][0]).toBe('https://example.test/h');
-
-    const row = latestDelivery(id);
-    expect(row).toBeTruthy();
-    expect(row.success).toBe(1);
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(latestDelivery(id)).toBeUndefined();
   });
 });

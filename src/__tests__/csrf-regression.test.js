@@ -13,7 +13,8 @@ app.use(cookieParser());
 app.use(require('../middleware/csrf'));
 app.use((_req, res) => res.json({ ok: true }));
 
-test.each(['/api/status-page/config', '/api/status-page/items', '/api/auth/login-extra'])('%s cannot bypass CSRF', async path => {
+test.each(['/api/status-page/config', '/api/status-page/items', '/api/auth/login-extra',
+  '/api/git/webhook/token/extra', '/api/automation/webhooks/token/extra'])('%s cannot bypass CSRF', async path => {
   await request(app).post(path).expect(403);
 });
 test('real login and signed webhook routes remain exempt', async () => {
@@ -45,6 +46,16 @@ test('matching double-submit tokens permit cookie-authenticated writes', async (
     .set('Cookie', `${config.session.cookieName}=session; XSRF-TOKEN=token`)
     .set('X-XSRF-TOKEN', 'token').expect(200);
 });
+test('strips prototype mutation keys inside objects and arrays', async () => {
+  const parser = express();
+  parser.use(express.json());
+  parser.use(require('../middleware/request-body'));
+  parser.post('/', (req, res) => res.json(req.body));
+  await request(parser).post('/').type('json')
+    .send('{"nested":[{"__proto__":{"polluted":true},"constructor":{"prototype":{"polluted":true}},"name":"valid"}]}')
+    .expect(200, { nested: [{ name: 'valid' }] });
+});
+
 test('encrypted credentials require the full 128-bit authentication tag', () => {
   const value = encrypt('secret');
   const [iv, tag, data] = value.split(':');

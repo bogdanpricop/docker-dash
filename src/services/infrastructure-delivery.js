@@ -447,8 +447,9 @@ class InfrastructureDeliveryService {
     const event = string(headers['x-docker-dash-event'], 'event', 80, SAFE_REF); const signature = string(headers['x-docker-dash-signature'], 'signature', 80, /^sha256=[a-f0-9]{64}$/);
     if (!Number.isInteger(timestamp) || Math.abs(Math.floor(Date.now() / 1000) - timestamp) > row.timestamp_skew_seconds) throw fail('Webhook timestamp is outside the accepted window', 401, 'WEBHOOK_TIMESTAMP_INVALID');
     if (!parse(row.event_allowlist_json, []).includes(event)) throw fail('Webhook event is not allowlisted', 403, 'WEBHOOK_EVENT_DENIED');
-    const body = String(rawBody || ''); if (Buffer.byteLength(body) > 256 * 1024) throw fail('Webhook body exceeds 256 KiB', 413, 'WEBHOOK_BODY_TOO_LARGE');
-    const expected = `sha256=${hmacSign(`${timestamp}.${nonce}.${event}.${body}`, decrypt(row.secret_enc))}`;
+    const body = Buffer.isBuffer(rawBody) ? rawBody : Buffer.from(String(rawBody || ''));
+    if (body.length > 256 * 1024) throw fail('Webhook body exceeds 256 KiB', 413, 'WEBHOOK_BODY_TOO_LARGE');
+    const expected = `sha256=${hmacSign(Buffer.concat([Buffer.from(`${timestamp}.${nonce}.${event}.`), body]), decrypt(row.secret_enc))}`;
     if (!timingEqual(signature, expected)) throw fail('Webhook signature is invalid', 401, 'WEBHOOK_SIGNATURE_INVALID');
     let deliveryId;
     try { deliveryId = Number(db.prepare(`INSERT INTO infrastructure_webhook_deliveries

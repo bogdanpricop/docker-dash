@@ -172,11 +172,12 @@ describe('V0.3c infrastructure delivery and GitOps (B236-B245)', () => {
     const api = fs.readFileSync(path.join(root, 'public/js/api.js'), 'utf8');
     const page = fs.readFileSync(path.join(root, 'public/js/pages/governance-controls.js'), 'utf8');
     const server = fs.readFileSync(path.join(root, 'src/server.js'), 'utf8');
-    const csrf = fs.readFileSync(path.join(root, 'src/middleware/csrf.js'), 'utf8');
+
     for (const endpoint of ['/resource-manifests', '/import', '/drift', '/reconcile-runs', '/controllers',
       '/previews/pull-request', '/terraform/import-mappings', '/terraform/plans', '/ansible-inventory', '/webhook-triggers']) expect(route).toContain(endpoint);
     expect(receiver).toContain('receiveWebhook'); expect(monitor).toContain('runDueControllers');
-    expect(server).toContain("req.rawBody = buf.toString('utf8')"); expect(csrf).toContain('/api/automation/webhooks/');
+    expect(server).toContain("app.use('/api/automation/webhooks',");
+    expect(receiver).toContain("signedWebhookJson('256kb')");
     for (const method of ['saveInfrastructureResourceManifest', 'importInfrastructureResource', 'evaluateInfrastructureDrift',
       'createInfrastructureReconcile', 'createInfrastructureController', 'previewInfrastructurePullRequest',
       'createTerraformImportMappings', 'ingestTerraformPlan', 'getAnsibleInfrastructureInventory',

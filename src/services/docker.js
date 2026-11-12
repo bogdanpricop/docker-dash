@@ -5,6 +5,7 @@ const config = require('../config');
 const log = require('../utils/logger')('docker');
 const os = require('os');
 const { getDb } = require('../db');
+const { readLogSnapshot } = require('../utils/docker-log-reader');
 const { defaultHost, parseHostId, isDockerCompatible } = require('../utils/host-id');
 
 class DockerService {
@@ -518,13 +519,10 @@ class DockerService {
     return { id: container.id };
   }
 
-  async getContainerLogs(id, { tail = 100, since, until } = {}, hostId = 0) {
+  async getContainerLogs(id, options, hostId = 0) {
     const container = this.getDocker(hostId).getContainer(id);
-    const opts = { stdout: true, stderr: true, tail, timestamps: true };
-    if (since) opts.since = Math.floor(new Date(since).getTime() / 1000);
-    if (until) opts.until = Math.floor(new Date(until).getTime() / 1000);
-    const buffer = await container.logs(opts);
-    return this._demuxLogs(buffer);
+    const { entries, truncated } = await readLogSnapshot(container, options);
+    return { lines: entries.map(({ timestamp, line }) => timestamp + ' ' + line), truncated };
   }
 
   async getContainerStats(id, hostId = 0) {
@@ -1179,22 +1177,6 @@ class DockerService {
     };
   }
 
-  _demuxLogs(buffer) {
-    if (typeof buffer === 'string') return buffer.split('\n').filter(Boolean);
-    const lines = [];
-    let pos = 0;
-    const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
-    while (pos < buf.length) {
-      if (pos + 8 > buf.length) break;
-      const size = buf.readUInt32BE(pos + 4);
-      pos += 8;
-      if (pos + size > buf.length) break;
-      const line = buf.slice(pos, pos + size).toString('utf8').trimEnd();
-      if (line) lines.push(line);
-      pos += size;
-    }
-    return lines.length > 0 ? lines : buf.toString('utf8').split('\n').filter(Boolean);
-  }
 }
 
 // v8.7.44 — Podman detection helper. Podman exposes a Docker-compatible

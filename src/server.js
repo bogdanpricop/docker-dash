@@ -6,6 +6,8 @@ const express = require('express');
 const path = require('path');
 const cookieParser = require('cookie-parser');
 const helmet = require('helmet');
+const { isSignedWebhookPost } = require('./middleware/signed-webhook');
+const { rateLimit } = require('./middleware/rateLimit');
 
 // ─── Single source of truth for version ─────────────────────
 // index.html uses __VERSION__ placeholder — replaced here at startup.
@@ -33,6 +35,12 @@ const log = require('./utils/logger')('server');
 
 const app = express();
 app.locals.buildId = _buildId;
+
+// Cache policy also covers parser errors, quota responses and token endpoints.
+app.use(['/api', '/webhook/container'], (_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store');
+  next();
+});
 
 // Security headers
 // Helmet defaults (v8+) already set HSTS (1yr + includeSubDomains), Referrer-Policy
@@ -88,29 +96,19 @@ app.use((req, res, next) => {
     'cross-origin-isolated=(), display-capture=(), encrypted-media=(), ' +
     'fullscreen=(self), geolocation=(), gyroscope=(), keyboard-map=(), ' +
     'magnetometer=(), microphone=(), midi=(), payment=(), ' +
-    'picture-in-picture=(), publickey-credentials-get=(), ' +
+    'picture-in-picture=(), publickey-credentials-get=(self), publickey-credentials-create=(self), ' +
     'screen-wake-lock=(), sync-xhr=(), usb=(), web-share=(), xr-spatial-tracking=()'
   );
   next();
 });
 
-app.use(express.json({
-  limit: '2mb', // Reduced from 10mb — increase per-route if needed
-  verify: (req, _res, buf) => {
-    if (req.url.startsWith('/api/git/webhook') || req.url.startsWith('/api/automation/webhooks')) {
-      req.rawBody = buf.toString('utf8');
-    }
-  },
-}));
+const webhookReceiverLimiter = rateLimit(30, 60 * 1000, 'webhook-receiver');
+app.use(['/api/git/webhook', '/api/automation/webhooks'], webhookReceiverLimiter);
 
-// Global prototype pollution protection on all JSON bodies
+const jsonBody = express.json({ limit: '2mb' });
 app.use((req, res, next) => {
-  if (req.body && typeof req.body === 'object') {
-    delete req.body.__proto__;
-    delete req.body.constructor;
-    delete req.body.prototype;
-  }
-  next();
+  if (isSignedWebhookPost(req)) return next();
+  return jsonBody(req, res, next);
 });
 
 // Request timeout — prevent hanging requests (5 min default)
@@ -120,6 +118,7 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.urlencoded({ extended: true }));
+app.use(require('./middleware/request-body'));
 app.use(cookieParser());
 app.use(require('./middleware/csrf'));
 
@@ -133,15 +132,16 @@ app.use((req, res, next) => {
   if (req.url.startsWith('/api/health') || req.url.startsWith('/ws') || !req.url.startsWith('/api')) {
     return next();
   }
+  const requestPath = safeRequestPath(req.path);
   const start = Date.now();
   const origEnd = res.end;
   res.end = function(...args) {
     const duration = Date.now() - start;
     // Log slow requests (>2s) as warnings
     if (duration > 2000) {
-      log.warn('Slow request', { method: req.method, url: req.url, duration: `${duration}ms`, status: res.statusCode });
+      log.warn('Slow request', { method: req.method, path: requestPath, duration: `${duration}ms`, status: res.statusCode });
     } else if (config.app.env === 'development') {
-      log.debug(`${req.method} ${req.url} ${res.statusCode} ${duration}ms`);
+      log.debug(`${req.method} ${requestPath} ${res.statusCode} ${duration}ms`);
     }
     // Record for Prometheus (v6.15.0). Exclude /api/metrics itself to avoid self-measurement skew.
     if (!req.url.startsWith('/api/metrics')) {
@@ -156,16 +156,14 @@ app.use((req, res, next) => {
 
 // ─── API Routes ─────────────────────────────────────────────
 
-const { rateLimit } = require('./middleware/rateLimit');
 const apiLimiter = rateLimit(config.rateLimit.apiMaxRequests, config.rateLimit.apiWindowMs, 'api');
 
 // Exact GET/HEAD health route precedes quotas; prefix lookalikes remain limited.
 app.get('/api/health', require('./routes/health'));
 
 // Git webhook receiver — public, no auth, separate rate limit
-const webhookReceiverLimiter = rateLimit(30, 60 * 1000, 'webhook-receiver');
-app.use('/api/git/webhook', webhookReceiverLimiter, require('./routes/gitWebhook'));
-app.use('/api/automation/webhooks', webhookReceiverLimiter, require('./routes/infrastructure-webhooks'));
+app.use('/api/git/webhook', require('./routes/gitWebhook'));
+app.use('/api/automation/webhooks', require('./routes/infrastructure-webhooks'));
 
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/auth/passkeys', require('./routes/passkeys'));
@@ -316,20 +314,27 @@ app.get('/*splat', (req, res) => {
   }
 });
 
+function safeRequestPath(pathname) {
+  return pathname.replace(/^(\/(?:api\/git\/webhook|api\/automation\/webhooks|webhook\/container))(?:\/.*)?$/i,
+    '$1/[redacted]');
+}
+
 // Central error handler — sanitize errors before sending to client
-app.use((err, req, res, _next) => {
+app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err);
   const status = err.status || err.statusCode || 500;
+  const message = err.type === 'entity.parse.failed' ? 'Invalid request body' : err.message;
   const isOperational = status < 500; // 4xx errors are operational (user's fault)
 
   // Log server errors fully, operational errors briefly
   if (isOperational) {
-    log.warn('Request error', { status, message: err.message, path: req.path });
+    log.warn('Request error', { status, message, path: safeRequestPath(req.path) });
   } else {
-    log.error('Server error', { message: err.message, stack: err.stack?.substring(0, 500), path: req.path });
+    log.error('Server error', { message: err.message, stack: err.stack?.substring(0, 500), path: safeRequestPath(req.path) });
   }
 
   // Never expose internal details for 500 errors
-  const clientMessage = isOperational ? err.message : 'Internal server error';
+  const clientMessage = isOperational ? message : 'Internal server error';
 
   // Remove any potential credential/path leaks from error messages
   const sanitized = clientMessage

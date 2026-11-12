@@ -312,7 +312,7 @@ const LogsPage = {
       return;
     }
     try {
-      const { logs } = await Api.getMultiLogs({ containers, tail, since, search, level, hostId: this._hostId });
+      const { logs, truncated } = await Api.getMultiLogs({ containers, tail, since, search, level, hostId: this._hostId });
       if (!output.isConnected || this._loadSequence !== sequence) return;
       if (JSON.stringify(logs) !== JSON.stringify(this._lastLogs) || this._renderedMode !== this._mode || this._renderedSearch !== search) {
         this._lastLogs = logs;
@@ -321,7 +321,8 @@ const LogsPage = {
         viewer.set(logs, search, this._mode);
         if (!logs.length) output.textContent = 'No log entries match your filters.';
       }
-      status.textContent = `Snapshot at ${new Date().toLocaleTimeString()} · up to 25 containers`;
+      status.textContent = truncated ? 'Snapshot limit reached. Narrow the filters to see more detail.'
+        : `Snapshot at ${new Date().toLocaleTimeString()} · up to 25 containers`;
     } catch (error) {
       if (output.isConnected && this._loadSequence === sequence) status.textContent = 'Could not refresh logs · ' + error.message;
     }

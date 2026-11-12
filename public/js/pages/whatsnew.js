@@ -15,6 +15,11 @@ const WhatsNewPage = {
   // Contributors add their entry to _unreleased below; the release process
   // moves those entries into a new numbered release.
   _releases: [
+    { version: '8.96.42', date: '2026-11-12', title: 'Webhook, log and HTTP security', changes: [
+      { type: 'security', text: 'Encrypt outgoing webhook settings and verify incoming signatures against the original JSON bytes.' },
+      { type: 'security', text: 'Bound Docker log snapshots and isolate regex matching from the web server.' },
+      { type: 'security', text: 'Protect API responses from caching and allow passkeys within the app’s own origin.' },
+    ] },
     { version: '8.96.41', date: '2026-11-12', title: 'Pinned pages and secure image refresh', changes: [
       { type: 'feature', text: 'Pin and reorder sidebar pages per account across browsers. Thanks to @noone-silent.' },
       { type: 'improvement', text: 'Open tabs detect frontend updates even when the release version is unchanged. Thanks to @noone-silent.' },
