@@ -178,7 +178,7 @@ const SettingsPage = {
       <div class="form-group"><label>${i18n.t('common.name')}</label><input type="text" id="wh-name" class="form-control" required></div>
       <div class="form-group"><label>${i18n.t('pages.settings.url')}</label><input type="url" id="wh-url" class="form-control" required placeholder="${i18n.t('pages.settings.urlPlaceholder')}"></div>
       <div class="form-group"><label>${i18n.t('pages.settings.eventsLabel')}</label><input type="text" id="wh-events" class="form-control" value="container.start,container.stop,alert.triggered"></div>
-      <div class="form-group"><label>${i18n.t('pages.settings.secretLabel')}</label><input type="text" id="wh-secret" class="form-control"></div>
+      <div class="form-group"><label>${i18n.t('pages.settings.secretLabel')}</label><input type="password" id="wh-secret" class="form-control" autocomplete="new-password"></div>
     `, {
       title: i18n.t('pages.settings.createWebhookTitle'),
       width: '480px',

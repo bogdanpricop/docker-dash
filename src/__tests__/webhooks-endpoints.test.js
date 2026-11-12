@@ -2,6 +2,7 @@
 
 process.env.APP_SECRET = 'test-secret-webhooks';
 process.env.APP_ENV = 'test';
+process.env.ENCRYPTION_KEY = 'webhook-endpoint-regression-key';
 process.env.DB_PATH = ':memory:';
 process.env.ADMIN_PASSWORD = 'WebhooksTest123!';
 

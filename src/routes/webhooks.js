@@ -3,7 +3,7 @@
 const { Router } = require('express');
 const webhookService = require('../services/webhooks');
 const auditService = require('../services/audit');
-const { requireAuth, requireRole } = require('../middleware/auth');
+const { requireAuth, requireRole, writeable } = require('../middleware/auth');
 const { getClientIp } = require('../utils/helpers');
 const asyncHandler = require('../utils/asyncHandler');
 
@@ -16,30 +16,29 @@ router.get('/:id', requireAuth, requireRole('admin'), (req, res) => {
   res.json(hook);
 });
 
-router.post('/', requireAuth, requireRole('admin'), asyncHandler((req, res) => {
+router.post('/', requireAuth, requireRole('admin'), writeable, asyncHandler((req, res) => {
   const result = webhookService.create({ ...req.body, created_by: req.user.id });
   auditService.log({ userId: req.user.id, username: req.user.username,
     action: 'webhook_create', targetType: 'webhook', targetId: String(result.id), ip: getClientIp(req) });
   res.status(201).json(result);
 }));
 
-router.put('/:id', requireAuth, requireRole('admin'), asyncHandler((req, res) => {
+router.put('/:id', requireAuth, requireRole('admin'), writeable, asyncHandler((req, res) => {
   webhookService.update(parseInt(req.params.id), req.body);
   res.json({ ok: true });
 }));
 
-router.delete('/:id', requireAuth, requireRole('admin'), asyncHandler((req, res) => {
+router.delete('/:id', requireAuth, requireRole('admin'), writeable, asyncHandler((req, res) => {
   webhookService.delete(parseInt(req.params.id));
   auditService.log({ userId: req.user.id, username: req.user.username,
     action: 'webhook_delete', targetType: 'webhook', targetId: req.params.id, ip: getClientIp(req) });
   res.json({ ok: true });
 }));
 
-router.post('/:id/test', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
-  const hook = webhookService.get(parseInt(req.params.id));
-  if (!hook) return res.status(404).json({ error: 'Webhook not found' });
-  await webhookService.dispatch('test', { message: 'Test event from Docker Dash' });
-  res.json({ ok: true });
+router.post('/:id/test', requireAuth, requireRole('admin'), writeable, asyncHandler(async (req, res) => {
+  const result = await webhookService.test(parseInt(req.params.id, 10));
+  if (!result.ok) return res.status(502).json({ error: result.error || 'Webhook delivery failed', status: result.status });
+  res.json(result);
 }));
 
 router.get('/:id/deliveries', requireAuth, requireRole('admin'), (req, res) => {

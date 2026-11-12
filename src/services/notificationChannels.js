@@ -125,7 +125,7 @@ async function request(url, options, diagnostic) {
   try {
     let res;
     try {
-      res = await fetch(url, { method: 'POST', ...options, signal: controller.signal });
+      res = await fetch(url, { method: 'POST', ...options, redirect: 'manual', signal: controller.signal });
     } catch (err) {
       const failure = new Error('Could not reach the notification provider');
       if (diagnostic) failure.details = networkDiagnostic(err);
@@ -135,9 +135,11 @@ async function request(url, options, diagnostic) {
       if (!res.ok) {
         const failure = new Error(`HTTP ${res.status}`);
         if (diagnostic) {
-          const response = safeProviderText(await readFailureResponse(res), [...diagnostic, url]);
+          const redirect = res.status >= 300 && res.status < 400;
+          const response = redirect ? undefined : safeProviderText(await readFailureResponse(res), [...diagnostic, url]);
           failure.details = {
             ...httpDiagnostic(res.status, res.headers?.get('retry-after')),
+            ...(redirect ? { reason: 'Provider redirects are blocked. Configure the final URL.' } : {}),
             response,
             responseOmitted: Boolean(res.body && !response),
           };
