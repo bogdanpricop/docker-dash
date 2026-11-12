@@ -87,6 +87,9 @@ const ContainersPage = {
           <label class="toggle-label">
             <input type="checkbox" id="show-all" checked> ${i18n.t('pages.containers.showStopped')}
           </label>
+          <label class="toggle-label">
+            <input type="checkbox" id="containers-show-secondary"> ${i18n.t('common.showSecondaryStacks')}<span id="containers-secondary-count"></span>
+          </label>
           <label class="container-column-mode"><span class="sr-only">Table columns</span><select id="container-column-mode" class="form-control" aria-label="Table columns">
             ${tableModes.map(mode => `<option value="${mode}" ${mode === tableMode ? 'selected' : ''}>${mode[0].toUpperCase() + mode.slice(1)} columns</option>`).join('')}
           </select></label>
@@ -167,7 +170,10 @@ const ContainersPage = {
     });
     const requestedHostId = Api.getHostId();
     const host = App._hostSelectorHosts?.find(item => item.id === requestedHostId || (!requestedHostId && item.isDefault));
-    const context = this._listContext = { workspace, banner: container.querySelector('#container-host-bar'), requestedHostId, host, status: 'connecting' };
+    const context = this._listContext = {
+      workspace, banner: container.querySelector('#container-host-bar'), requestedHostId, host, status: 'connecting',
+      showSecondaryStacks: false, secondaryStacks: new Set(),
+    };
     this._inspector = new ContainerInspector(workspace, () => this._syncInspectorRows(), item => {
       const level = this._stackPerms?.[item.stack || '_standalone'];
       return item.state === 'running' && (App.user?.role === 'admin'
@@ -181,6 +187,14 @@ const ContainersPage = {
       this._renderGrouped();
     }, 200));
     container.querySelector('#show-all').addEventListener('change', () => this._renderGrouped());
+    container.querySelector('#containers-show-secondary').addEventListener('change', event => {
+      context.showSecondaryStacks = event.target.checked;
+      this._applyStackVisibility();
+      this._inspector.sync(this._containers, context);
+      this._renderGrouped();
+      container.querySelector('#container-groups-section').replaceChildren();
+      this._renderUserGroups(context.request?.signal);
+    });
     container.querySelector('#containers-refresh').addEventListener('click', () => this._loadList());
     container.querySelector('#container-create').addEventListener('click', () => this._createContainerDialog());
     container.querySelector('#container-sandbox').addEventListener('click', () => this._sandboxDialog());
@@ -342,6 +356,26 @@ const ContainersPage = {
     });
   },
 
+  _applyStackVisibility() {
+    const context = this._listContext;
+    const secondaryNames = new Set();
+    const visible = [];
+    const previousSelectionSize = this._selectedIds.size;
+    for (const container of this._lastContainers) {
+      const name = container.stack || container.labels?.['com.docker.compose.project'];
+      const secondary = context.secondaryStacks.has(name);
+      if (secondary) secondaryNames.add(name);
+      if (secondary && !context.showSecondaryStacks) {
+        this._selectedIds.delete(container.id);
+      } else {
+        visible.push(container);
+      }
+    }
+    this._containers = visible;
+    document.getElementById('containers-secondary-count').textContent = secondaryNames.size ? ` (${secondaryNames.size})` : '';
+    if (this._selectedIds.size !== previousSelectionSize) this._updateBulkBar();
+  },
+
   async _loadList() {
     const context = this._listContext;
     if (!context) return;
@@ -356,13 +390,13 @@ const ContainersPage = {
         Api.getMyPermissions().catch(() => ({ permissions: [] })),
       ]);
       if (!current()) return;
-      const { containers, host } = result;
+      const { containers, host, secondaryStacks } = result;
       if (context.confirmed && context.host.id !== host.id) {
         this._inspector.close(false);
         this._selectedIds.clear();
         this._updateBulkBar();
       }
-      Object.assign(context, { host, confirmed: true, status: 'connected', checked: new Date() });
+      Object.assign(context, { host, confirmed: true, status: 'connected', checked: new Date(), secondaryStacks: new Set(secondaryStacks) });
       if (App.user?.role === 'operator') {
         Api.getEffectiveHostPermission(host.id).then(grant => {
           if (!current() || context.host.id !== host.id) return;
@@ -374,8 +408,8 @@ const ContainersPage = {
           this._inspector.sync(this._containers, context);
         });
       }
-      this._containers = containers;
       this._lastContainers = containers;
+      this._applyStackVisibility();
       this._metaMap = metaMap || {};
       this._userGroups = userGroups || [];
       // Build stack permission map for visual indicators
@@ -392,7 +426,8 @@ const ContainersPage = {
       const shouldNotify = context.status === 'connecting';
       if (inaccessible) {
         this._inspector.close(false);
-        this._containers = this._lastContainers = [];
+        this._lastContainers = [];
+        this._applyStackVisibility();
         this._selectedIds.clear();
         this._renderGrouped();
         this._renderUserGroups(request.signal);
@@ -571,8 +606,13 @@ const ContainersPage = {
       });
     }
 
-    if (containers.length === 0 && !this._stateFilter) {
-      el.innerHTML = `<div class="table-empty">${i18n.t('pages.containers.noContainers')}</div>`;
+    const allSecondary = this._lastContainers?.length && this._containers.length === 0;
+    if (allSecondary || (containers.length === 0 && !this._stateFilter)) {
+      this._kbRows = [];
+      this._kbRow = -1;
+      document.getElementById('container-summary-inline')?.replaceChildren();
+      const message = allSecondary ? 'common.secondaryStacksHidden' : 'pages.containers.noContainers';
+      el.innerHTML = `<div class="table-empty">${i18n.t(message)}</div>`;
       return;
     }
 
@@ -658,6 +698,7 @@ const ContainersPage = {
               <i class="fas ${isStandalone ? 'fa-cube' : 'fa-layer-group'} stack-icon"></i>
               <span class="stack-name">${isStandalone ? i18n.t('pages.containers.standalone') : Utils.escapeHtml(stack)}</span>
               <span class="stack-count">${total}</span>
+              ${this._listContext.secondaryStacks.has(stack) ? `<span class="badge">${i18n.t('common.secondaryStack')}</span>` : ''}
               ${hasRestriction ? `<span class="badge badge-warning" style="font-size:9px;margin-left:6px" title="Your permission: ${permLabel}"><i class="fas fa-lock" style="margin-right:3px"></i>${permLabel}</span>` : ''}
             </div>
             <div class="stack-header-right">
@@ -2227,9 +2268,10 @@ const ContainersPage = {
     for (const g of this._userGroups) {
       let groupDetail;
       try { groupDetail = await Api.getGroup(g.id); } catch { continue; }
-      if (signal.aborted) return;
+      if (signal?.aborted || !section.isConnected || this._containers !== containers) return;
       const members = (groupDetail.members || []).map(cid => containerMap[cid]).filter(Boolean);
       const running = members.filter(c => c.state === 'running').length;
+      const emptyMessage = groupDetail.members?.length ? i18n.t('pages.containers.noVisibleGroupMembers') : 'No containers in this group. Click + to add.';
       const collapsed = this._collapsed[`group_${g.id}`] || false;
 
       groupsHtml.push(`
@@ -2252,7 +2294,7 @@ const ContainersPage = {
             </div>
           </div>
           <div class="stack-body">
-            ${members.length === 0 ? '<div class="text-muted text-sm" style="padding:12px 16px">No containers in this group. Click + to add.</div>' : `
+            ${members.length === 0 ? `<div class="text-muted text-sm" style="padding:12px 16px">${emptyMessage}</div>` : `
             <table class="data-table containers-table">
               <thead><tr><th>Container</th><th>Image</th><th>State</th><th style="width:60px"></th></tr></thead>
               <tbody>
@@ -2273,6 +2315,7 @@ const ContainersPage = {
       `);
     }
 
+    if (signal?.aborted || !section.isConnected || this._containers !== containers) return;
     section.innerHTML = groupsHtml.join('');
 
     section.querySelectorAll('.stack-header').forEach(header => {

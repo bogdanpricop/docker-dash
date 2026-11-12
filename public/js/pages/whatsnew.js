@@ -15,6 +15,9 @@ const WhatsNewPage = {
   // Contributors add their entry to _unreleased below; the release process
   // moves those entries into a new numbered release.
   _releases: [
+    { version: '8.96.40', date: '2026-11-12', title: 'Secondary stacks', changes: [
+      { type: 'feature', text: 'Mark stacks as secondary per account and host. Show them and their containers on demand in Stacks and Containers.' },
+    ] },
     { version: '8.96.39', date: '2026-11-08', title: 'Stacks sorting and resource links', changes: [
       { type: 'improvement', text: 'Sort by CPU or RAM, open stack networks and volumes, and use a more compact Stacks toolbar.' },
     ] },

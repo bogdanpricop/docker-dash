@@ -76,6 +76,8 @@ async function main() {
       window.App = { _hostSelectorHosts: [{ id: 17, name: 'Docker2' }, { id: 18, name: 'VPS' }] };
       window.i18n = { t: key => key.split('.').at(-1) };
       window.metricRequests = [];
+      window.stackVisibilityByHost = new Map();
+      window.visibilityChanges = [];
       window.Api = {
         getHostId: () => window.stacksHostId,
         detectUptimeKuma: async () => ({ detected: false }),
@@ -83,7 +85,15 @@ async function main() {
           const host = App._hostSelectorHosts.find(item => item.id === window.stacksHostId);
           if (url === '/git/stacks?hostId=' + host.id) return [];
           if (url !== '/system/stacks?context=1&hostId=' + host.id) throw new Error('Stacks request was not pinned to the selected host');
-          return { host, stacks: compose };
+          return { host, stacks: compose, secondaryStacks: [...(stackVisibilityByHost.get(host.id) || [])] };
+        },
+        setStackVisibility: async (name, secondary, hostId) => {
+          if (hostId !== window.stacksHostId) throw new Error('Stack preference was not pinned to the selected host');
+          const marked = stackVisibilityByHost.get(hostId) || new Set();
+          if (secondary) marked.add(name);
+          else marked.delete(name);
+          stackVisibilityByHost.set(hostId, marked);
+          visibilityChanges.push({ name, secondary, hostId });
         },
         request: async (method, url, selection) => {
           const hostId = window.stacksHostId;
@@ -177,6 +187,33 @@ async function main() {
     assert.equal(await page.$eval('[data-stack-expand]', el => el.getAttribute('aria-expanded')), 'false');
     assert.deepEqual(await page.evaluate(() => ['view', 'search', 'state'].map(key => localStorage.getItem('dd-stacks-' + key))),
       ['table', 'postgres', 'partial']);
+
+    const billingVisibility = '[data-stack-visibility][data-name="billing"]';
+    await page.click(billingVisibility);
+    await page.waitForFunction(() => document.getElementById('stacks-content').textContent.includes('secondaryStacksHidden'));
+    assert.equal(await page.$('#stacks-content [data-stack-row]'), null);
+    assert.equal(await page.$eval('#stacks-secondary-count', node => node.textContent.trim()), '(1)');
+    await page.click('#stacks-show-secondary');
+    assert.match(await page.$eval('[data-stack-row]', row => row.textContent), /secondaryStack/);
+    assert.equal(await page.$eval('#stack-search', input => input.value), 'postgres');
+    assert.equal(await page.$eval('#stacks-state', select => select.value), 'partial');
+    await page.click('#stack-view [data-view="cards"]');
+    assert.match(await page.$eval('.stack-card', card => card.textContent), /secondaryStack/);
+    await page.evaluate(async () => {
+      StacksPage.destroy();
+      await StacksPage.render(document.querySelector('#test'));
+    });
+    assert.equal(await page.$eval('#stacks-show-secondary', input => input.checked), false);
+    assert.equal(await page.$('.stack-card'), null);
+    await page.click('#stacks-show-secondary');
+    await page.click(billingVisibility);
+    await page.waitForFunction(() => document.getElementById('stacks-secondary-count').textContent === '');
+    assert.doesNotMatch(await page.$eval('.stack-card', card => card.textContent), /secondaryStack/);
+    assert.deepEqual(await page.evaluate(() => visibilityChanges), [
+      { name: 'billing', secondary: true, hostId: 18 },
+      { name: 'billing', secondary: false, hostId: 18 },
+    ]);
+    await page.evaluate(() => StacksPage.destroy());
 
     await page.evaluate(async () => {
       const host = { id: 17, name: 'Docker2', daemonType: 'docker', isActive: true, isDefault: true };

@@ -2,6 +2,8 @@
 // Romanian translations — regenerated with full key parity to en.js
 i18n.register('ro', 'RO', "Română", {
   common: {
+    secondaryStack: 'Secundar', showSecondaryStacks: 'Arată stack-urile secundare',
+    secondaryStacksHidden: 'Stack-urile secundare sunt ascunse. Activează afișarea lor pentru a le vedea.',
     remoteSecretExecution: 'Transmite si executa prin SSH verificat, fara salvarea unui script temporar. La intrerupere, verifica hostul inainte de a repeta. Configureaza accesul SSH in pagina Hosts.',
     replacementCleanup: 'Inlocuitorul este activ, dar resursele pastrate pentru recuperare necesita curatare de catre administrator. Operatie: {{operation}}. Consulta ghidul de recuperare rollback.',
     newVersionAvailable: "Versiune nouă {{version}} disponibilă",
@@ -308,6 +310,7 @@ i18n.register('ro', 'RO', "Română", {
       }
     },
     containers: {
+      noVisibleGroupMembers: 'Niciun container vizibil în acest grup.',
       rollbackSnapshotHint: 'Configuratia de rollback este criptata. Pastreaza cheia de criptare a instalarii pentru recuperare.',
       rollbackSnapshotGuide: 'Ghid de recuperare si backup',
       title: "Containere",
@@ -2175,6 +2178,8 @@ i18n.register('ro', 'RO', "Română", {
       manage: "Gestionează"
     },
     stacks: {
+      markSecondary: 'Marchează ca secundar', markEssential: 'Marchează ca esențial',
+      visibilitySaveFailed: 'Vizibilitatea stack-ului nu a putut fi salvată: {{message}}',
       allStates: 'Toate stările',
       state: { running: 'Pornit', partial: 'Parțial', stopped: 'Oprit' },
       listView: 'Vizualizare stack-uri',
