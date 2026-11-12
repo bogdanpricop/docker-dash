@@ -47,9 +47,20 @@
     }
   },
   "grpc": {
-    "version": "v1.84.0",
-    "sum": "h1:soMyaPJ8pAak5PIQ0DGBUir0XRo2fRoMqhNWMLlLxO0=",
-    "transportSha256": "6ff2da17e276ba22a782dffe467ec32b664895d12faccfbb5fc1ec40d59cdcf6c",
+    "artifacts": {
+      "docker-cli": {
+        "version": "v1.83.2",
+        "sum": "h1:EManeRomTObA0BU7I8vXgg/78uE5MJ9M8B39EX2WscU=",
+        "transportSha256": "84ad3bde6a86be6ab86af02adc250ae04418fb24aafa628292141fb6fc9ed093",
+        "regressionEvidence": "docker/scanners/build-cli.sh"
+      },
+      "trivy": {
+        "version": "v1.84.0",
+        "sum": "h1:soMyaPJ8pAak5PIQ0DGBUir0XRo2fRoMqhNWMLlLxO0=",
+        "transportSha256": "6ff2da17e276ba22a782dffe467ec32b664895d12faccfbb5fc1ec40d59cdcf6c",
+        "regressionEvidence": "docker/scanners/build.sh"
+      }
+    },
     "regression": "Test/MissingAuthorityAndHostHeader",
     "advisory": "https://github.com/grpc/grpc-go/security/advisories/GHSA-2v4p-qf9q-27wj"
   }

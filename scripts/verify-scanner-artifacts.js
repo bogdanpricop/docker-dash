@@ -58,8 +58,11 @@ function assessArtifact(name, binary, metadata, lock = reviewed) {
     result.engineImplementationPresent = false;
   }
   if (['docker-cli', 'trivy'].includes(name)) {
-    assert.ok(info.includes('\tdep\tgoogle.golang.org/grpc\t' + lock.grpc.version + '\t' + lock.grpc.sum + '\n'), 'gRPC module does not match tested source');
-    result.grpc = { ...lock.grpc, regressionEvidence: 'docs/audits/2026-09-20-scanner-rebuild.md',
+    const grpc = lock.grpc.artifacts[name];
+    assert.ok(grpc, 'Missing reviewed gRPC source for ' + name);
+    assert.ok(info.includes('\tdep\tgoogle.golang.org/grpc\t' + grpc.version + '\t' + grpc.sum + '\n'),
+      'gRPC module does not match tested source for ' + name);
+    result.grpc = { ...grpc, regression: lock.grpc.regression, advisory: lock.grpc.advisory,
       testRerunByThisCommand: false };
   }
   return result;
