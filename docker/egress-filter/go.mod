@@ -1,3 +1,3 @@
 module github.com/bogdanpricop/docker-dash/egress-filter
 
-go 1.27.3
+go 1.27.4
