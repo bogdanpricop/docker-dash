@@ -20,7 +20,7 @@ describe('workstation fleet page contract', () => {
     expect(read('public/js/app.js')).toContain("'workstation-fleet': () => WorkstationFleetPage");
     const index = read('public/index.html');
     expect(index).toContain('href="#/workstation-fleet"');
-    expect(index).toContain('/js/pages/workstation-fleet.js?v=__VERSION__');
+    expect(index).toContain('/js/pages/workstation-fleet.js?v=__BUILD__');
   });
 
   test('page uses delegated listeners, accessible controls and explicit guardrail copy', () => {

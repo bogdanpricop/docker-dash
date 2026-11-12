@@ -15,6 +15,7 @@ module.exports = (req, res) => {
     res.json({
       status: 'ok',
       version: _pkgVersion,
+      buildId: req.app?.locals?.buildId,
       timestamp: new Date().toISOString(),
       mode: status.mode,
       role: status.role,

@@ -57,6 +57,23 @@ Looking for where to start? These are great first contributions:
 - **`CLAUDE.md` at repo root** documents the project conventions for AI-assisted contributions. Read it if you're using Claude Code or any AI agent to contribute.
 - **Anti-features are documented WITH RATIONALE.** When a feature is *not* shipped, the deep-spec or CHANGELOG section says why. Examples: "no always-on AI chat sidebar" (v8.0.0), "no pCloud OAuth" (v8.2.0), "no automatic registry GC" (v7.6.0).
 
+## Contributor credit
+
+We credit the people who contribute code, documentation, designs, ideas, and bug
+reports. When a change builds on an earlier pull request, issue, or discussion,
+name the contributor by their public GitHub handle and link to the original
+contribution in the pull request description. Carry that credit into the
+changelog or release notes when the change ships.
+
+Keep the original commit authors when integrating their commits. When adapting
+submitted work into a new commit, use a
+[co-author trailer](https://docs.github.com/en/pull-requests/how-tos/commit-changes/creating-a-commit-with-multiple-authors)
+for the contributors whose work it incorporates. Preserve those trailers in the
+final commit message if the change is squash-merged.
+
+If a replacement pull request carries the work forward, thank the contributor
+and link to the replacement in the original discussion when closing it.
+
 ## Architecture Principles
 
 These are non-negotiable design decisions. Please respect them in your contributions:

@@ -19,7 +19,7 @@ describe('Compose catalog page contract', () => {
     expect(read('public/js/app.js')).toContain("'compose-catalog': () => ComposeCatalogPage");
     const index = read('public/index.html');
     expect(index).toContain('href="#/compose-catalog"');
-    expect(index).toContain('/js/pages/compose-catalog.js?v=__VERSION__');
+    expect(index).toContain('/js/pages/compose-catalog.js?v=__BUILD__');
   });
 
   test('uses delegated event listeners and documents the two-stage deployment boundary', () => {

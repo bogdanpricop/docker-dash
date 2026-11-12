@@ -9,11 +9,20 @@ const helmet = require('helmet');
 
 // ─── Single source of truth for version ─────────────────────
 // index.html uses __VERSION__ placeholder — replaced here at startup.
-// To release a new version: bump package.json (npm version X.Y.Z) → restart. Done.
+// See docs/CONTRIBUTING.md for the release steps.
 // src/version.js is auto-updated by scripts/sync-version.js (npm lifecycle hook).
+//
+// __BUILD__ is a separate, automatically computed token used ONLY for
+// cache-busting asset URLs (?v=__BUILD__) and identifying the loaded UI. The release version changes once
+// per release; the build token changes whenever a served asset changes, so
+// browsers never keep stale JS between releases. See src/build-id.js.
 const _appVersion = require('./version');
+const { computeBuildId } = require('./build-id');
+const _publicDir = path.join(__dirname, '..', 'public');
+const _buildId = computeBuildId(_publicDir);
 const _indexHtml = fs
-  .readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8')
+  .readFileSync(path.join(_publicDir, 'index.html'), 'utf8')
+  .replace(/__BUILD__/g, _buildId)
   .replace(/__VERSION__/g, _appVersion);
 
 const config = require('./config');
@@ -23,6 +32,7 @@ const log = require('./utils/logger')('server');
 // ─── Express App ────────────────────────────────────────────
 
 const app = express();
+app.locals.buildId = _buildId;
 
 // Security headers
 // Helmet defaults (v8+) already set HSTS (1yr + includeSubDomains), Referrer-Policy

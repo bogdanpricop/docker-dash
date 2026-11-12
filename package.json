@@ -1,6 +1,6 @@
 {
   "name": "docker-dash",
-  "version": "8.96.40",
+  "version": "8.96.41",
   "description": "Full-featured Docker management dashboard",
   "main": "src/server.js",
   "scripts": {
@@ -21,6 +21,7 @@
     "check:vendor": "node scripts/sync-vendor.js --check",
     "check:syntax": "node scripts/check-syntax.js",
     "check:toolchain": "node scripts/check-toolchain-pins.js",
+    "check:version-consistency": "node scripts/check-version-consistency.js",
     "audit:dependencies": "node scripts/audit-dependencies.js",
     "check:browser": "node scripts/check-browser-libraries.js",
     "check:inventory-browser": "node scripts/check-inventory-views-browser.js"

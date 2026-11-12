@@ -1,0 +1,20 @@
+--- a/reader.go
++++ b/reader.go
+@@ -23,6 +23,7 @@
+ package ar
+ 
+ import (
++	"errors"
+ 	"io"
+ 	"io/ioutil"
+ 	"os"
+@@ -112,6 +113,9 @@
+ 	header.Gid = int(rd.numeric(s.next(6)))
+ 	header.Mode = rd.octal(s.next(8))
+ 	header.Size = rd.numeric(s.next(10))
++	if header.Size < 0 {
++		return nil, errors.New("ar: negative member size")
++	}
+ 
+ 	rd.nb = int64(header.Size)
+ 	if header.Size%2 == 1 {

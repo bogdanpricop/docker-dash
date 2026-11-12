@@ -11,19 +11,22 @@ function archive(entries) {
   for (const entry of entries) pack.entry(entry.header, entry.body || '');
   pack.finalize(); return pack;
 }
-function fixture(name = 'grype', extra = [], info = 'scanner: go1.27.1\n') {
+function fixture(name = 'grype', extra = [], info = 'scanner: go1.27.4\n') {
   const texts = {
     'packages.txt': [...Array.from({ length: 101 }, (_, i) => 'example.org/pkg/p' + i),
-      'github.com/docker/docker/client', 'github.com/docker/docker/api/types',
+      'github.com/moby/moby/client',
       'github.com/moby/moby/client/internal', 'github.com/moby/moby/api/types/container',
       'github.com/ProtonMail/go-crypto/openpgp', ...extra].join('\n') + '\n',
     'build-info.txt': info, 'source.json': '{"reviewed":true}\n',
   };
   const metadata = Object.fromEntries(Object.entries(texts).map(([k, text]) => [k, { text, sha256: sha(text) }]));
   const binary = { sha256: sha('binary'), bytes: 6 };
-  const lock = { artifacts: { [name]: { path: '/scanner', binarySha256: binary.sha256,
+  const lock = { goVersion: 'go1.27.4', artifacts: { [name]: { path: '/scanner', binarySha256: binary.sha256,
     metadata: Object.fromEntries(Object.entries(metadata).map(([k, v]) => [k, v.sha256])) } },
-  grpc: { version: 'v1.84.0', sum: 'h1:tested' } };
+  grpc: { artifacts: {
+    'docker-cli': { version: 'v1.83.2', sum: 'h1:cli' },
+    trivy: { version: 'v1.84.0', sum: 'h1:tested' },
+  } } };
   return { binary, metadata, lock };
 }
 function assess(name, f) { return assessArtifact(name, f.binary, f.metadata, f.lock); }
@@ -88,9 +91,11 @@ describe('artifact-specific provenance review', () => {
     expect(() => assess('grype', fixture('grype', [], 'scanner: go1.26.8\n'))).toThrow();
   });
   test('requires the tested gRPC version and checksum together', () => {
-    const info = 'scanner: go1.27.1\n\tdep\tgoogle.golang.org/grpc\tv1.84.0\th1:tested\n';
+    const info = 'scanner: go1.27.4\n\tdep\tgoogle.golang.org/grpc\tv1.84.0\th1:tested\n';
     expect(assess('trivy', fixture('trivy', [], info)).grpc.testRerunByThisCommand).toBe(false);
     expect(() => assess('trivy', fixture('trivy', [], info.replace('h1:tested', 'h1:other')))).toThrow('gRPC module');
-    expect(() => assess('docker-cli', fixture('docker-cli', [], info.replace('v1.84.0', 'v1.83.1')))).toThrow('gRPC module');
+    const cliInfo = info.replace('v1.84.0\th1:tested', 'v1.83.2\th1:cli');
+    expect(assess('docker-cli', fixture('docker-cli', [], cliInfo)).grpc.version).toBe('v1.83.2');
+    expect(() => assess('docker-cli', fixture('docker-cli', [], info))).toThrow('gRPC module');
   });
 });
