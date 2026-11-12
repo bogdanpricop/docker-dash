@@ -27,6 +27,7 @@ jest.mock('../services/docker', () => ({
   getDocker: jest.fn(),
 }));
 
+const { Readable } = require('node:stream');
 const express = require('express');
 const request = require('supertest');
 const dockerService = require('../services/docker');
@@ -40,7 +41,8 @@ describe('bounded multi-container log history', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    logs = jest.fn(async () => Buffer.from('2026-07-26T12:00:00.000000000Z value [literal match\n'));
+    logs = jest.fn((_options, callback) => callback(null,
+      Readable.from([Buffer.from('2026-07-26T12:00:00.000000000Z value [literal match\n')])));
     dockerService.getDocker.mockReturnValue({
       listContainers: jest.fn(async () => []),
       getContainer: jest.fn(id => ({
@@ -48,7 +50,8 @@ describe('bounded multi-container log history', () => {
           Name: `/${id}`,
           Config: { Labels: { 'com.docker.compose.project': 'demo' } },
         })),
-        logs,
+        id,
+        modem: { dial: logs },
       })),
     });
   });
@@ -70,6 +73,8 @@ describe('bounded multi-container log history', () => {
     expect(response.body).toMatchObject({ count: 1 });
     expect(response.body.logs[0]).toMatchObject({ container: 'demo-web', severity: 'info' });
     expect(logs).toHaveBeenCalledTimes(1);
-    expect(logs).toHaveBeenCalledWith(expect.objectContaining({ tail: 2_000, timestamps: true }));
+    expect(logs).toHaveBeenCalledWith(expect.objectContaining({
+      isStream: true, options: expect.objectContaining({ tail: 2_000, follow: false, timestamps: true }),
+    }), expect.any(Function));
   });
 });

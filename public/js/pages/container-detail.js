@@ -1625,7 +1625,8 @@ const ContainersPageDetail = {
         if (request.signal.aborted || disposed || !output.isConnected) return;
         rows = [];
         append(data.lines);
-        status.textContent = `Snapshot at ${new Date().toLocaleTimeString()}`;
+        status.textContent = data.truncated ? 'Snapshot limit reached. Select fewer lines or a shorter time range.'
+          : `Snapshot at ${new Date().toLocaleTimeString()}`;
         if (reconnect && WS.isConnected && this._detailData?.state?.Running && !this._detailData?.state?.Paused) {
           streamId = 'detail-' + ++ContainerInspector.nextRequest;
           WS.send('logs:subscribe', { containerId: id, hostId, requestId: streamId, tail: 0 });

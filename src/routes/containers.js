@@ -25,7 +25,8 @@ const containerReplacement = require('../services/container-replacement');
 const { listSecondaryStacks } = require('../services/stack-display-preferences');
 const { imageReference } = require('../utils/container-config');
 const requireContainerAccess = require('../middleware/containerAccess');
-const { logReader } = require('../utils/docker-log-reader');
+const { readLogSnapshot } = require('../utils/docker-log-reader');
+const filterLogsByRegex = require('../utils/log-regex');
 
 const router = Router();
 router.use(requireAuth);
@@ -90,6 +91,9 @@ router.get('/logs/multi', requireAuth, asyncHandler(async (req, res) => {
     if (targetIds.length > 25) {
       return res.status(400).json({ error: 'Select at most 25 containers' });
     }
+    if (containerIds !== undefined && targetIds.length === 0) {
+      return res.status(400).json({ error: 'Select at least one valid container' });
+    }
     if (targetIds.length === 0) {
       const all = await docker.listContainers();
       targetIds = all.slice(0, 20).map(c => c.Id.substring(0, 12)); // max 20
@@ -102,20 +106,12 @@ router.get('/logs/multi', requireAuth, asyncHandler(async (req, res) => {
       const inspect = await container.inspect();
       const stack = inspect.Config?.Labels?.['com.docker.compose.project'] || '_standalone';
       const effectiveRole = permService.getEffectiveRole(req.user.id, stack, req.user.role);
-      if (!permService.hasPermission(effectiveRole, 'view')) return [];
+      if (!permService.hasPermission(effectiveRole, 'view')) return { logs: [], truncated: false };
       const name = inspect.Name.replace(/^\//, '');
-      const opts = { stdout: true, stderr: true, tail: safeTail, timestamps: true };
-      if (since) opts.since = Math.floor(new Date(since).getTime() / 1000);
-
-      const logBuffer = Buffer.from(await container.logs(opts));
-      const lines = [];
-      const hasHeader = logBuffer.length >= 8 && [1, 2].includes(logBuffer[0])
-        && !logBuffer[1] && !logBuffer[2] && !logBuffer[3];
-      const reader = logReader(!hasHeader || inspect.Config?.Tty, entry => lines.push(entry));
-      reader.write(logBuffer);
-      reader.end();
-
-      return lines.map(({ timestamp: ts, line: msg }) => {
+      const { entries, truncated } = await readLogSnapshot(docker.getContainer(inspect.Id || id), {
+        tail: safeTail, since, maxBytes: 256 * 1024,
+      });
+      const logs = entries.map(({ timestamp: ts, line: msg }) => {
         // Detect severity
         let severity = 'info';
         if (/\b(error|fatal|panic|exception|fail|critical)\b/i.test(msg)) severity = 'error';
@@ -124,12 +120,17 @@ router.get('/logs/multi', requireAuth, asyncHandler(async (req, res) => {
 
         return { ts, msg, container: name, containerId: id, severity };
       });
+      return { logs, truncated };
     }));
 
     // Merge all logs and sort by timestamp
     let allLogs = [];
-    results.forEach(r => {
-      if (r.status === 'fulfilled') allLogs.push(...r.value);
+    let truncated = false;
+    results.forEach(result => {
+      if (result.status === 'fulfilled') {
+        allLogs.push(...result.value.logs);
+        truncated ||= result.value.truncated;
+      }
     });
     allLogs.sort((a, b) => (a.ts || '').localeCompare(b.ts || ''));
 
@@ -144,9 +145,10 @@ router.get('/logs/multi', requireAuth, asyncHandler(async (req, res) => {
     }
 
     // Limit output
+    truncated ||= allLogs.length > 500;
     allLogs = allLogs.slice(-500);
 
-  res.json({ logs: allLogs, count: allLogs.length });
+  res.json({ logs: allLogs, count: allLogs.length, truncated });
 }));
 
 // ─── Dependency Graph (all containers) ───────────────
@@ -303,10 +305,16 @@ router.get('/:id/logs', requireAuth, asyncHandler(async (req, res) => {
     if (!permService.hasPermission(effectiveRole, 'view')) {
       return res.status(403).json({ error: 'Insufficient stack permissions for logs' });
     }
-    let lines = await dockerService.getContainerLogs(req.params.id, {
-      tail: parseInt(tail) || 100,
+    for (const filter of [tail, search, regex, level]) {
+      if (filter !== undefined && (typeof filter !== 'string' || filter.length > 200)) {
+        return res.status(400).json({ error: 'Invalid log filter' });
+      }
+    }
+    const snapshot = await dockerService.getContainerLogs(inspection.id || req.params.id, {
+      tail: Number.parseInt(tail, 10) || 100,
       since, until,
     }, req.resolvedHostId ?? req.hostId);
+    let { lines } = snapshot;
 
     // Server-side full-text search
     if (search) {
@@ -314,19 +322,7 @@ router.get('/:id/logs', requireAuth, asyncHandler(async (req, res) => {
       lines = lines.filter(l => l.toLowerCase().includes(q));
     }
 
-    // Regex search (with length limit to prevent ReDoS)
-    if (regex) {
-      try {
-        if (regex.length > 200) throw new Error('Regex too long');
-        const re = new RegExp(regex, 'i');
-        // Test on first line to detect catastrophic backtracking
-        const testLine = lines[0] || '';
-        const start = Date.now();
-        re.test(testLine);
-        if (Date.now() - start > 100) throw new Error('Regex too slow');
-        lines = lines.filter(l => re.test(l));
-      } catch { /* invalid/dangerous regex, skip */ }
-    }
+    if (regex) lines = await filterLogsByRegex(lines, regex);
 
     // Log level filter (ERROR, WARN, INFO, DEBUG)
     if (level) {
@@ -355,10 +351,11 @@ router.get('/:id/logs', requireAuth, asyncHandler(async (req, res) => {
       const ts = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="logs-${name}-${ts}.log"`);
+      if (snapshot.truncated) res.setHeader('X-Docker-Dash-Logs-Truncated', 'true');
       return res.send(lines.join('\n'));
     }
 
-  res.json({ lines, stats });
+  res.json({ lines, stats, truncated: snapshot.truncated });
 }));
 
 // Container stats (one-shot)

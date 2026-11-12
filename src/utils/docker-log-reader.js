@@ -1,6 +1,7 @@
 'use strict';
 
 const { StringDecoder } = require('node:string_decoder');
+const { addAbortSignal } = require('node:stream');
 
 const MAX_LINE_LENGTH = 16 * 1024;
 const TIMESTAMP = /^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.(\d{1,9}))?Z /;
@@ -78,4 +79,61 @@ function logReader(tty, emit) {
   };
 }
 
-module.exports = { logReader };
+async function readLogSnapshot(container, { tail = 100, since, until, maxBytes = 2 * 1024 * 1024 } = {}) {
+  const limit = Math.max(0, Math.min(2000, Number.isSafeInteger(tail) ? tail : 100));
+  if (limit === 0) return { entries: [], truncated: false };
+  const options = { stdout: true, stderr: true, follow: false, timestamps: true, tail: limit };
+  for (const [key, value] of [['since', since], ['until', until]]) {
+    if (!value) continue;
+    const time = typeof value === 'string' ? Date.parse(value) : NaN;
+    if (!Number.isFinite(time)) throw Object.assign(new Error('Invalid log date filter'), { status: 400 });
+    options[key] = Math.floor(time / 1000);
+  }
+
+  // dockerode buffers the entire response when follow is false. Ask its
+  // transport for a stream while keeping follow disabled at the Docker API.
+  const signal = AbortSignal.timeout(10_000);
+  const stream = await new Promise((resolve, reject) => {
+    container.modem.dial({
+      path: '/containers/' + encodeURIComponent(container.id) + '/logs?',
+      method: 'GET', isStream: true, abortSignal: signal, options,
+      statusCodes: { 200: true, 404: 'no such container', 500: 'server error' },
+    }, (error, response) => error ? reject(error) : resolve(response));
+  });
+  addAbortSignal(signal, stream);
+
+  const entries = [];
+  let bytes = 0, truncated = false, reader, prefix = Buffer.alloc(0);
+  function append(chunk) {
+    if (!reader) {
+      prefix = Buffer.concat([prefix, chunk]);
+      if (prefix.length < 8) return;
+      const multiplexed = [1, 2].includes(prefix[0]) && !prefix[1] && !prefix[2] && !prefix[3];
+      reader = logReader(!multiplexed, item => {
+        if (entries.length < limit) entries.push(item);
+        else truncated = true;
+      });
+      chunk = prefix;
+      prefix = null;
+    }
+    reader.write(chunk);
+  }
+
+  try {
+    for await (const chunk of stream) {
+      const remaining = maxBytes - bytes;
+      bytes += chunk.length;
+      append(chunk.subarray(0, remaining));
+      if (bytes > maxBytes) { truncated = true; break; }
+    }
+    reader?.end();
+    return { entries, truncated };
+  } catch (error) {
+    if (signal.aborted) throw Object.assign(new Error('Docker log snapshot timed out'), { status: 504 });
+    throw error;
+  } finally {
+    if (!stream.destroyed) stream.destroy();
+  }
+}
+
+module.exports = { logReader, readLogSnapshot };

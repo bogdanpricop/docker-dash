@@ -1,6 +1,8 @@
 'use strict';
 
-const { logReader } = require('../utils/docker-log-reader');
+const { Readable } = require('node:stream');
+const { logReader, readLogSnapshot } = require('../utils/docker-log-reader');
+const filterLogsByRegex = require('../utils/log-regex');
 
 const time = '2026-11-07T12:00:00.123456789Z';
 
@@ -37,6 +39,23 @@ test('bounds oversized TTY lines and preserves the next line', () => {
   expect(output[0].line).toMatch(/^a+ \[truncated\]$/);
   expect(output[0].line.length).toBeLessThan(16400);
   expect(output[1].line).toBe('next');
+});
+
+test('reads a non-follow snapshot from a stream and stops at the byte limit', async () => {
+  const first = frame(1, Buffer.from(time + ' first\n'));
+  const stream = Readable.from([first.subarray(0, 4), first.subarray(4), Buffer.alloc(1024)]);
+  const modem = { dial: jest.fn((_options, callback) => callback(null, stream)) };
+  const result = await readLogSnapshot({ id: 'sample', modem }, { maxBytes: first.length });
+  expect(result).toMatchObject({ entries: [{ line: 'first' }], truncated: true });
+  expect(stream.destroyed).toBe(true);
+  expect(modem.dial.mock.calls[0][0]).toMatchObject({ isStream: true, options: { follow: false } });
+});
+
+test('isolates log regex work and aborts pathological matches', async () => {
+  await expect(filterLogsByRegex(['Info', 'ERROR'], '^error$')).resolves.toEqual(['ERROR']);
+  await expect(filterLogsByRegex(['Info'], '[')).rejects.toMatchObject({ status: 400 });
+  await expect(filterLogsByRegex(['a'.repeat(16000) + '!'], '(a+)+$')).rejects.toMatchObject({ status: 422 });
+  await expect(filterLogsByRegex(['Info'], 'Info')).resolves.toEqual(['Info']);
 });
 
 test('ignores incomplete payloads and rejects invalid Docker frame headers', () => {
