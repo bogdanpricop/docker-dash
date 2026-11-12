@@ -15,6 +15,12 @@ const WhatsNewPage = {
   // Contributors add their entry to _unreleased below; the release process
   // moves those entries into a new numbered release.
   _releases: [
+    { version: '8.96.41', date: '2026-11-12', title: 'Pinned pages and secure image refresh', changes: [
+      { type: 'feature', text: 'Pin and reorder sidebar pages per account across browsers. Thanks to @noone-silent.' },
+      { type: 'improvement', text: 'Open tabs detect frontend updates even when the release version is unchanged. Thanks to @noone-silent.' },
+      { type: 'fix', text: 'Each provider compliance evidence export has its own verifiable identity. Thanks to @noone-silent.' },
+      { type: 'security', text: 'Refresh the Go toolchain, Grype, and Alpine Git and OpenSSH packages. Reject negative archive member sizes in the scanner.' },
+    ] },
     { version: '8.96.40', date: '2026-11-12', title: 'Secondary stacks', changes: [
       { type: 'feature', text: 'Mark stacks as secondary per account and host. Show them and their containers on demand in Stacks and Containers.' },
     ] },
@@ -3348,11 +3354,7 @@ const WhatsNewPage = {
   // cannot know it in advance. The release process moves these entries into a
   // new numbered release at the top of _releases.
   // Types: feature, fix, improvement, security, breaking
-  _unreleased: [
-    { type: 'feature', text: 'Pin and reorder sidebar pages per account across browsers.' },
-    { type: 'improvement', text: 'Open tabs detect frontend updates even when the release version is unchanged.' },
-    { type: 'fix', text: 'Each provider compliance evidence export has its own verifiable identity.' },
-  ],
+  _unreleased: [],
 
   // ─── Render ──────────────────────────────────────
 

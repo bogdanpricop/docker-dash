@@ -1,7 +1,9 @@
 FROM golang:1.27.4-alpine@sha256:0a5f7fe796599ff487605987432e7619ae45beeb2fba4c2ce0b907879932aebf AS build
+RUN apk add --no-cache patch
 COPY docker/scanners/build.sh /build.sh
 WORKDIR /src/grype
 COPY docker/scanners/grype/go.mod docker/scanners/grype/go.sum ./
+COPY docker/scanners/grype/prepare-ar-overlay.sh docker/scanners/grype/ar-negative-size.patch docker/scanners/grype/ar-negative-size_test.go /grype-patches/
 RUN sh /build.sh grype
 WORKDIR /src/trivy
 COPY docker/scanners/trivy/go.mod docker/scanners/trivy/go.sum ./

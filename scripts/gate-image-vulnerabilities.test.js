@@ -7,7 +7,8 @@ const { evaluateReports, validatePolicy } = require('./gate-image-vulnerabilitie
 
 const actualPolicy = JSON.parse(fs.readFileSync(path.join(__dirname, '../docker/scanners/image-vulnerability-policy.json'), 'utf8'));
 validatePolicy(actualPolicy, new Date().toISOString().slice(0, 10));
-assert.equal(actualPolicy.exceptions.length, 6);
+assert.equal(actualPolicy.exceptions.length, 3);
+assert.ok(actualPolicy.exceptions.every(exception => exception.id === 'GO-2026-5932'));
 assert.equal(actualPolicy.exceptions.some((exception) => exception.id === 'CVE-2026-85091'), false);
 
 const rule = { scanner: 'trivy', id: 'CVE-test', severity: 'HIGH', target: 'usr/local/bin/tool',

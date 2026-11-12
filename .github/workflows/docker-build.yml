@@ -96,6 +96,11 @@ jobs:
           CANDIDATE: docker-dash:ci-${{ github.sha }}
         run: |
           IMAGE_ID=$(docker image inspect --format '{{.Id}}' "$CANDIDATE")
+          docker run --rm --network none --read-only --cap-drop=ALL --entrypoint sh "$IMAGE_ID" -ec '
+            sha256sum /usr/local/bin/docker /usr/libexec/docker/cli-plugins/docker-compose /usr/local/bin/trivy /usr/local/bin/grype
+            sha256sum /usr/share/docker-dash/scanners/*.packages.txt /usr/share/docker-dash/scanners/*.build-info.txt /usr/share/docker-dash/scanners/*.source.json
+            apk list --installed git git-init-template openssh-client-default
+          '
           docker run --rm --network none --cap-drop=ALL \
             --security-opt=no-new-privileges --cpus=1 --memory=512m \
             -v /var/run/docker.sock:/var/run/docker.sock:ro \

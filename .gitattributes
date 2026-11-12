@@ -2,6 +2,7 @@
 # even when the repository is edited from Windows.
 *.sh text eol=lf
 docker/observability/prometheus/busybox/patches/*.patch text eol=lf
+docker/scanners/grype/ar-negative-size.patch text eol=lf whitespace=-blank-at-eol,-space-before-tab
 # Vendor files are verified byte-for-byte against the npm lockfile in CI.
 public/lib/** -text
 public/vendor/** -text

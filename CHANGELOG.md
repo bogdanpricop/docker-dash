@@ -4,17 +4,6 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
-- Pin and reorder sidebar pages per account across browsers. Thanks to
-  [@noone-silent](https://github.com/noone-silent) for the
-  [original implementation](https://github.com/bogdanpricop/docker-dash/pull/15).
-- Keep release versions separate from browser cache invalidation and detect
-  frontend updates in open tabs between releases. Thanks to
-  [@noone-silent](https://github.com/noone-silent) for the
-  [release-scoped versioning proposal and implementation](https://github.com/bogdanpricop/docker-dash/pull/16).
-- Give every provider compliance evidence export its own verifiable identity.
-  Thanks to [@noone-silent](https://github.com/noone-silent) for the fix
-  included in both submissions.
-
 - Sort the Stacks table by CPU or RAM and open linked Docker networks and
   volumes. Compact the toolbar and mark expanded stacks with a side accent.
 - Show host-scoped CPU and RAM totals, network and disk rates, sample times,
@@ -166,6 +155,22 @@ All notable changes to Docker Dash are documented here.
   SCIM-managed users/groups; reject local-account/team adoption and unmanaged group
   members. Commit mutations, mapping changes and HTTP audit together; remove group
   ownership mappings on deletion. [Evidence and compatibility](docs/audits/2026-09-20-scim-security.md).
+
+## [8.96.41] - 2026-11-12 — Pinned pages and secure image refresh
+
+- Pin and reorder sidebar pages per account across browsers. Thanks to
+  [@noone-silent](https://github.com/noone-silent) for the
+  [original implementation](https://github.com/bogdanpricop/docker-dash/pull/15).
+- Keep release versions separate from browser cache invalidation and detect
+  frontend updates in open tabs between releases. Thanks to
+  [@noone-silent](https://github.com/noone-silent) for the
+  [release-scoped versioning proposal and implementation](https://github.com/bogdanpricop/docker-dash/pull/16).
+- Give every provider compliance evidence export its own verifiable identity.
+  Thanks to [@noone-silent](https://github.com/noone-silent) for the fix
+  included in both submissions.
+
+- Refresh the Go toolchain, Grype, Git and OpenSSH. Patch the scanner archive
+  reader to reject negative member sizes.
 
 ## [8.96.40] - 2026-11-12 — Secondary stacks
 

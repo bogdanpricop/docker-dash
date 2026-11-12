@@ -6,9 +6,9 @@ set -eu
 case "${1:-}" in
   grype)
     module=github.com/anchore/grype
-    version=v0.120.1
-    checksum='h1:kaO5Vudd1jmjFNYJoOro7AIg10cjrKAy71ZaOFdX0js='
-    flags='-s -w -X main.version=0.120.1+dd.2 -X main.gitCommit=6f8d854af29d3a3086b11a84afa51554a2a245fe -X main.gitDescription=v0.120.1-dependency-security-patch'
+    version=v0.121.3
+    checksum='h1:SBH6qbXbcNVR+1TATH4M4eOxxxKivl+cX1eSHurBgrY='
+    flags='-s -w -X main.version=0.121.3+dd.1 -X main.gitCommit=cd1f23eb50dfb52647090158f453c7359172591f -X main.gitDescription=v0.121.3-dependency-security-patch'
     ;;
   trivy)
     module=github.com/aquasecurity/trivy
@@ -28,14 +28,19 @@ go mod download -json "$module@$version" > "/out/$1.source.json"
 actual=$(sed -n 's/^[[:space:]]*"Sum": "\([^"]*\)",*$/\1/p' "/out/$1.source.json")
 test "$actual" = "$checksum"
 go mod verify
+overlay=
+if [ "$1" = grype ]; then
+  sh /grype-patches/prepare-ar-overlay.sh
+  overlay=/tmp/dd-grype-ar-overlay.json
+fi
 if [ "$1" = trivy ]; then
   # Trivy 0.75 includes the Go team's SkipFunc -> errors.ErrUnsupported
   # migration upstream, so no local source overlay is required.
   go test -mod=readonly -p 2 "$module/pkg/x/json" "$module/pkg/iac/scanners/cloudformation/parser"
   go test -mod=readonly -p 2 google.golang.org/grpc/test -run 'Test/MissingAuthorityAndHostHeader' -count=1
 fi
-go build -mod=readonly -p 2 -trimpath -buildvcs=false -ldflags "$flags" -o "/out/$1" "$module/cmd/$1"
-go list -mod=readonly -deps "$module/cmd/$1" > "/out/$1.packages.txt"
+go build -mod=readonly -p 2 -trimpath -buildvcs=false ${overlay:+-overlay="$overlay"} -ldflags "$flags" -o "/out/$1" "$module/cmd/$1"
+go list -mod=readonly ${overlay:+-overlay="$overlay"} -deps "$module/cmd/$1" > "/out/$1.packages.txt"
 go version -m "/out/$1" > "/out/$1.build-info.txt"
 cp "$(go env GOPATH)/pkg/mod/$module@$version/LICENSE" "/out/$1.LICENSE"
 (cd /out && sha256sum "$1" > "$1.sha256")
