@@ -97,6 +97,8 @@ for (const [, filename] of workflows) {
   app.use('/' + filename, router.mgmt || router);
 }
 app.use('/hosts', require('../routes/hosts'));
+app.use('/git', require('../routes/git'));
+app.use('/registries', require('../routes/registries'));
 app.use('/host-permissions', require('../routes/host-permissions'));
 
 beforeAll(() => {
@@ -252,6 +254,47 @@ test('configuration backup preview lists overwrites, skips API key metadata and 
   const fresh = (await request(app).post('/system/backup/restore/plan').send(backup).expect(200)).body;
   await request(app).post('/system/backup/restore').send({ ...backup, planId: fresh.planId }).expect(200);
   expect(db.prepare("SELECT value FROM settings WHERE key = 'test_restore_setting'").get().value).toBe('next');
+});
+
+test('Git stack reads conceal credentials and do not contact a denied deployment target', async () => {
+  const git = require('../services/git');
+  const stack = {
+    id: 123, stack_name: 'fixture-git', host_id: 71,
+    target_host_ids: [71], webhook_token: 'token-fixture', webhook_secret: 'secret-fixture',
+    env_overrides: { EXAMPLE: 'private-fixture' },
+  };
+  const getStack = jest.spyOn(git, 'getStack').mockReturnValue(stack);
+  const listStacks = jest.spyOn(git, 'listStacks').mockReturnValue([stack]);
+  const remote = jest.spyOn(git, 'getRemoteStatus').mockResolvedValue({ ok: true });
+  hostPermissions.setLegacyDefault(false);
+  try {
+    for (const suffix of ['/stacks', '/stacks/123']) {
+      const { body } = await request(app).get('/git' + suffix).expect(200);
+      const record = Array.isArray(body) ? body[0] : body;
+      expect(record).toMatchObject({ webhook_configured: true, env_override_count: 1 });
+      for (const key of ['webhook_token', 'webhook_secret', 'env_overrides']) {
+        expect(record).not.toHaveProperty(key);
+      }
+    }
+    await request(app).get('/git/stacks/123/remote-status').set('X-Test-Role', 'viewer').expect(403);
+    await request(app).get('/git/stacks/123/webhook-url').set('X-Test-Role', 'viewer').expect(403);
+    expect(remote).not.toHaveBeenCalled();
+  } finally {
+    hostPermissions.setLegacyDefault(true);
+    getStack.mockRestore(); listStacks.mockRestore(); remote.mockRestore();
+  }
+});
+
+test('registry push requires operate permission on the selected Docker host', async () => {
+  const registry = require('../services/registry');
+  const push = jest.spyOn(registry, 'pushImage');
+  hostPermissions.setLegacyDefault(false);
+  try {
+    await request(app).post('/registries/1/push?hostId=71').set('X-Test-Role', 'operator')
+      .send({ sourceImage: 'alpine:latest', targetRepo: 'fixture/image', targetTag: 'latest' })
+      .expect(403);
+    expect(push).not.toHaveBeenCalled();
+  } finally { hostPermissions.setLegacyDefault(true); push.mockRestore(); }
 });
 
 test('stack metrics are host scoped and report rates only between usable samples', async () => {
@@ -533,6 +576,24 @@ test('provider inventory enforces per-host grants before connecting or disclosin
   } finally {
     hostPermissions.setLegacyDefault(true);
   }
+});
+
+test('CSV exports neutralize formulas and preserve numeric values in Node and the browser', () => {
+  const code = fs.readFileSync(path.join(__dirname, '../../public/js/utils.js'), 'utf8');
+  const utils = vm.runInNewContext(code + '\nUtils;', { window: {}, URL });
+  const { csvCell } = require('../utils/csv');
+  for (const escape of [csvCell, utils.csvCell]) {
+    expect(escape('  =1+1')).toBe("'  =1+1");
+    expect(escape('@SUM(1,2)')).toBe('"\'@SUM(1,2)"');
+    expect(escape('\nvalue')).toBe('"\'\nvalue"');
+    expect(escape(-12.5)).toBe('-12.5');
+    expect(escape('normal"field')).toBe('"normal""field"');
+  }
+  for (const link of ['javascript:alert(1)', 'data:text/html,payload', '//example.com', 'https://user:secret@example.com/']) {
+    expect(utils.externalLinkAttributes(link)).toBe('');
+  }
+  expect(utils.externalLinkAttributes('https://example.com/?a=1&b=2'))
+    .toContain('href="https://example.com/?a=1&amp;b=2" target="_blank" rel="noopener noreferrer"');
 });
 
 test('browser does not overwrite an explicit target with the selected host', () => {

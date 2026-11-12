@@ -263,7 +263,7 @@ router.post('/change-password', requireAuth, async (req, res) => {
 });
 
 // Complete initial setup
-router.post('/complete-setup', requireAuth, requireRole('admin'), (req, res) => {
+router.post('/complete-setup', requireAuth, requireRole('admin'), writeable, (req, res) => {
   authService.completeSetup();
   auditService.log({ userId: req.user.id, username: req.user.username, action: 'complete_setup', ip: getClientIp(req) });
   res.json({ ok: true });
@@ -290,7 +290,7 @@ router.get('/users/:id', requireAuth, requireRole('admin'), (req, res) => {
   res.json(user);
 });
 
-router.post('/users', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/users', requireAuth, requireRole('admin'), writeable, async (req, res) => {
   try {
     const result = await authService.createUser(req.body);
     if (result.error) return res.status(400).json({ error: result.error });
@@ -302,7 +302,7 @@ router.post('/users', requireAuth, requireRole('admin'), async (req, res) => {
   }
 });
 
-router.put('/users/:id', requireAuth, requireRole('admin'), (req, res) => {
+router.put('/users/:id', requireAuth, requireRole('admin'), writeable, (req, res) => {
   try {
     const id = parseInt(req.params.id);
     authService.updateUser(id, req.body);
@@ -329,7 +329,7 @@ router.post('/users/:id/reset-password', requireAuth, requireRole('admin'), writ
   }
 });
 
-router.delete('/users/:id', requireAuth, requireRole('admin'), (req, res) => {
+router.delete('/users/:id', requireAuth, requireRole('admin'), writeable, (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (id === req.user.id) return res.status(400).json({ error: 'Cannot delete yourself' });

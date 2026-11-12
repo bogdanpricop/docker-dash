@@ -6,6 +6,22 @@ const http = require('http');
 const config = require('../config');
 const log = require('../utils/logger')('registry');
 const { encrypt, decrypt } = require('../utils/crypto');
+const httpUrl = require('../utils/http-url');
+const { repository, tag: validTag, digest: validDigest } = require('../utils/registry-reference');
+
+function registryEndpoint(value) {
+  const endpoint = httpUrl(value);
+  if (!endpoint || value.length > 2048 || endpoint.search || !/^\/*$/.test(endpoint.pathname)) {
+    throw Object.assign(new Error('Registry URL must be an HTTP(S) origin without credentials, a path or query'), { status: 400 });
+  }
+  return endpoint;
+}
+
+function dockerAuthority(endpoint) {
+  // Docker treats an unqualified first component as a Docker Hub namespace.
+  if (endpoint.host === 'localhost' || /[.:]/.test(endpoint.host)) return endpoint.host;
+  return endpoint.host + (endpoint.protocol === 'https:' ? ':443' : ':80');
+}
 
 class RegistryService {
   constructor() {
@@ -35,7 +51,11 @@ class RegistryService {
   }
 
   list() {
-    return getDb().prepare('SELECT id, name, url, username, is_default, created_at, last_used_at FROM registries ORDER BY name').all();
+    const rows = getDb().prepare('SELECT id, name, url, username, is_default, created_at, last_used_at FROM registries ORDER BY name').all();
+    return rows.map(reg => {
+      const endpoint = httpUrl(reg.url);
+      return { ...reg, dockerHost: endpoint ? dockerAuthority(endpoint) : null };
+    });
   }
 
   get(id) {
@@ -43,22 +63,24 @@ class RegistryService {
   }
 
   create({ name, url, username, password, createdBy }) {
+    const endpoint = registryEndpoint(url);
     const encrypted = password ? encrypt(password) : null;
     const result = getDb().prepare(
       'INSERT INTO registries (name, url, username, password_encrypted, created_by) VALUES (?, ?, ?, ?, ?)'
-    ).run(name, url.replace(/\/+$/, ''), username || null, encrypted, createdBy);
+    ).run(name, endpoint.origin, username || null, encrypted, createdBy);
     return result.lastInsertRowid;
   }
 
   update(id, { name, url, username, password }) {
     const db = getDb();
-    if (password) {
-      db.prepare('UPDATE registries SET name=?, url=?, username=?, password_encrypted=?, last_used_at=NULL WHERE id=?')
-        .run(name, url.replace(/\/+$/, ''), username || null, encrypt(password), id);
-    } else {
-      db.prepare('UPDATE registries SET name=?, url=?, username=? WHERE id=?')
-        .run(name, url.replace(/\/+$/, ''), username || null, id);
-    }
+    const current = this.get(id);
+    if (!current) throw Object.assign(new Error('Registry not found'), { status: 404 });
+    const endpoint = registryEndpoint(url);
+    const user = username || null;
+    const sameAccount = httpUrl(current.url)?.origin === endpoint.origin && current.username === user;
+    const saved = password ? encrypt(password) : sameAccount ? current.password_encrypted : null;
+    db.prepare('UPDATE registries SET name=?, url=?, username=?, password_encrypted=?, last_used_at=NULL WHERE id=?')
+      .run(name, endpoint.origin, user, saved, id);
   }
 
   remove(id) {
@@ -70,7 +92,7 @@ class RegistryService {
     if (!reg) throw new Error('Registry not found');
     try {
       const result = await this._apiCall(reg, '/v2/');
-      return { ok: true, status: result.status };
+      return { ok: result.status >= 200 && result.status < 300, status: result.status };
     } catch (err) {
       return { ok: false, error: err.message };
     }
@@ -79,20 +101,27 @@ class RegistryService {
   async catalog(id, limit = 100) {
     const reg = this.get(id);
     if (!reg) throw new Error('Registry not found');
-    const data = await this._apiCall(reg, `/v2/_catalog?n=${limit}`);
+    const pageSize = Number.isSafeInteger(limit) ? Math.min(1000, Math.max(1, limit)) : 100;
+    const data = await this._apiCall(reg, `/v2/_catalog?n=${pageSize}`);
+    if (data.status < 200 || data.status >= 300) throw new Error(`Registry catalog lookup failed (HTTP ${data.status})`);
     getDb().prepare("UPDATE registries SET last_used_at = datetime('now') WHERE id = ?").run(id);
-    return data.body?.repositories || [];
+    const repositories = data.body?.repositories ?? [];
+    if (!Array.isArray(repositories) || !repositories.every(repository)) throw new Error('Registry returned an invalid repository inventory');
+    return repositories;
   }
 
   async tags(id, repo) {
     const reg = this.get(id);
     if (!reg) throw new Error('Registry not found');
+    if (!repository(repo)) throw new Error('Invalid registry repository');
     const data = await this._apiCall(reg, `/v2/${repo}/tags/list`);
-    if (data.status >= 400) throw new Error(`Tag listing failed (HTTP ${data.status})`);
+    if (data.status < 200 || data.status >= 300) throw new Error(`Tag listing failed (HTTP ${data.status})`);
     if (/rel\s*=\s*["']?next/i.test(data.headers?.link || '')) {
       throw new Error('Registry returned a partial tag inventory; refusing to treat it as complete');
     }
-    return data.body?.tags || [];
+    const tags = data.body?.tags ?? [];
+    if (!Array.isArray(tags) || !tags.every(validTag)) throw new Error('Registry returned an invalid tag inventory');
+    return tags;
   }
 
   /**
@@ -107,9 +136,11 @@ class RegistryService {
   async manifest(id, repo, ref) {
     const reg = this.get(id);
     if (!reg) throw new Error('Registry not found');
+    if (!repository(repo) || (!validTag(ref) && !validDigest(ref))) throw new Error('Invalid registry manifest reference');
     const data = await this._apiCall(reg, `/v2/${repo}/manifests/${ref}`, {
       accept: 'application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.index.v1+json',
     });
+    if (data.status < 200 || data.status >= 300) throw new Error(`Manifest lookup failed (HTTP ${data.status})`);
     return {
       manifest: data.body,
       digest: data.headers?.['docker-content-digest'] || null,
@@ -122,12 +153,12 @@ class RegistryService {
   async blob(id, repo, digest) {
     const reg = this.get(id);
     if (!reg) throw new Error('Registry not found');
-    if (!/^sha256:[a-f0-9]{64}$/i.test(String(digest || ''))) throw new Error('Valid sha256 blob digest required');
+    if (!repository(repo) || !validDigest(digest)) throw new Error('Valid registry repository and sha256 blob digest required');
     const data = await this._apiCall(reg, `/v2/${repo}/blobs/${digest}`, {
       accept: 'application/vnd.oci.image.config.v1+json, application/vnd.docker.container.image.v1+json, application/json',
       maxBytes: 2 * 1024 * 1024,
     });
-    if (data.status >= 400) throw new Error(`Registry blob lookup failed (HTTP ${data.status})`);
+    if (data.status < 200 || data.status >= 300) throw new Error(`Registry blob lookup failed (HTTP ${data.status})`);
     if (!data.body || typeof data.body !== 'object') throw new Error('Registry config blob is not JSON');
     return data.body;
   }
@@ -136,13 +167,13 @@ class RegistryService {
   async referrers(id, repo, digest) {
     const reg = this.get(id);
     if (!reg) throw new Error('Registry not found');
-    if (!/^sha256:[a-f0-9]{64}$/i.test(String(digest || ''))) throw new Error('Valid sha256 subject digest required');
+    if (!repository(repo) || !validDigest(digest)) throw new Error('Valid registry repository and sha256 subject digest required');
     const data = await this._apiCall(reg, `/v2/${repo}/referrers/${digest}`, {
       accept: 'application/vnd.oci.image.index.v1+json, application/json',
       maxBytes: 2 * 1024 * 1024,
     });
     if ([404, 405].includes(data.status)) return [];
-    if (data.status >= 400) throw new Error(`Registry referrers lookup failed (HTTP ${data.status})`);
+    if (data.status < 200 || data.status >= 300) throw new Error(`Registry referrers lookup failed (HTTP ${data.status})`);
     return Array.isArray(data.body?.manifests) ? data.body.manifests.slice(0, 200) : [];
   }
 
@@ -167,8 +198,7 @@ class RegistryService {
   async deleteTag(id, repo, tag, { expectedDigest } = {}) {
     const reg = this.get(id);
     if (!reg) throw new Error('Registry not found');
-    if (!repo) throw new Error('repo required');
-    if (!tag) throw new Error('tag required');
+    if (!repository(repo) || !validTag(tag)) throw new Error('Valid registry repository and tag required');
 
     // Step 1: HEAD the manifest to resolve the digest. We use HEAD (not GET)
     // because we don't need the body and HEAD is cheap; the registry returns
@@ -178,9 +208,9 @@ class RegistryService {
       accept: 'application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.index.v1+json',
     });
     if (head.status === 404) throw new Error(`Tag not found: ${repo}:${tag}`);
-    if (head.status >= 400) throw new Error(`Manifest lookup failed (HTTP ${head.status})`);
+    if (head.status < 200 || head.status >= 300) throw new Error(`Manifest lookup failed (HTTP ${head.status})`);
     const digest = head.headers?.['docker-content-digest'];
-    if (!digest) throw new Error('Registry did not return a digest — refusing to guess');
+    if (!validDigest(digest)) throw new Error('Registry did not return a valid digest — refusing to guess');
     if (expectedDigest && digest !== expectedDigest) {
       throw new Error('Manifest changed since the retention plan; refresh before deleting');
     }
@@ -192,7 +222,7 @@ class RegistryService {
     }
     if (del.status === 404) {
       // Already gone — treat as success (idempotent delete)
-    } else if (del.status >= 400) {
+    } else if (del.status < 200 || del.status >= 300) {
       throw new Error(`Delete failed (HTTP ${del.status})`);
     }
     return { ok: true, digest };
@@ -202,8 +232,8 @@ class RegistryService {
   async deleteManifest(id, repo, digest) {
     const reg = this.get(id);
     if (!reg) throw new Error('Registry not found');
-    if (!repo) throw new Error('repo required');
-    if (!/^sha256:[a-f0-9]{64}$/i.test(String(digest || ''))) {
+    if (!repository(repo)) throw new Error('Invalid registry repository');
+    if (!validDigest(digest)) {
       throw new Error('Valid sha256 manifest digest required');
     }
 
@@ -211,7 +241,7 @@ class RegistryService {
     if (del.status === 405 || del.status === 501) {
       throw new Error('Registry has deletion disabled. Set REGISTRY_STORAGE_DELETE_ENABLED=true and restart it.');
     }
-    if (del.status !== 404 && del.status >= 400) {
+    if (del.status !== 404 && (del.status < 200 || del.status >= 300)) {
       throw new Error(`Delete failed (HTTP ${del.status})`);
     }
     return { ok: true, digest };
@@ -222,11 +252,15 @@ class RegistryService {
    * Returns the dockerode `authconfig` object (NOT the encoded header).
    * Dockerode handles the base64-of-JSON encoding internally.
    */
+  dockerRepository(reg, repo) {
+    return dockerAuthority(registryEndpoint(reg.url)) + '/' + repo;
+  }
+
   _authConfigForRegistry(reg) {
     return {
       username: reg.username || '',
       password: reg.password_encrypted ? this._decryptLegacyOrNew(reg.password_encrypted) : '',
-      serveraddress: reg.url,
+      serveraddress: registryEndpoint(reg.url).origin,
     };
   }
 
@@ -250,19 +284,20 @@ class RegistryService {
   async pushImage(dockerService, hostId, registryId, sourceImage, targetRepo, targetTag) {
     const reg = this.get(registryId);
     if (!reg) throw new Error('Registry not found');
-    if (!sourceImage) throw new Error('sourceImage required');
-    if (!targetRepo) throw new Error('targetRepo required');
-    if (!targetTag) throw new Error('targetTag required');
+    if (typeof sourceImage !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_.:/@\[\]-]{0,511}$/.test(sourceImage)
+      || sourceImage.split('/').includes('..')) throw new Error('Valid sourceImage required');
+    if (!repository(targetRepo)) throw new Error('Valid targetRepo required');
+    if (!validTag(targetTag)) throw new Error('Valid targetTag required');
 
     const docker = dockerService.getDocker(hostId);
-    const registryHost = new URL(reg.url).host;
-    const fullImage = `${registryHost}/${targetRepo}:${targetTag}`;
+    const destination = this.dockerRepository(reg, targetRepo);
+    const fullImage = `${destination}:${targetTag}`;
 
     // 1. Tag the source under the registry host (idempotent — Docker engine
     //    is fine with re-tagging the same source repeatedly).
     const sourceImg = docker.getImage(sourceImage);
     await new Promise((resolve, reject) => {
-      sourceImg.tag({ repo: `${registryHost}/${targetRepo}`, tag: targetTag }, (err) => {
+      sourceImg.tag({ repo: destination, tag: targetTag }, (err) => {
         if (err) return reject(new Error(`Tag failed: ${err.message}`));
         resolve();
       });
@@ -288,18 +323,14 @@ class RegistryService {
   getAuthForImage(imageName) {
     const db = getDb();
     // Match registry URL from image name
-    const registries = db.prepare('SELECT * FROM registries').all();
-    for (const reg of registries) {
-      const host = new URL(reg.url).hostname;
-      if (imageName.startsWith(host + '/') || imageName.startsWith(host + ':')) {
-        return {
-          username: reg.username,
-          password: reg.password_encrypted ? this._decryptLegacyOrNew(reg.password_encrypted) : '',
-          serveraddress: reg.url,
-        };
-      }
-    }
-    return null;
+    const authority = typeof imageName === 'string' && imageName.includes('/') ? imageName.split('/')[0].toLowerCase() : '';
+    if (!authority) return null;
+    const registries = db.prepare('SELECT * FROM registries ORDER BY id').all();
+    const match = registries.find(reg => {
+      const endpoint = httpUrl(reg.url);
+      return endpoint && dockerAuthority(endpoint) === authority;
+    });
+    return match ? this._authConfigForRegistry(match) : null;
   }
 
   /**
@@ -319,11 +350,7 @@ class RegistryService {
     // AES-GCM ciphertext has exactly 3 colon-delimited hex parts
     const parts = stored.split(':');
     if (parts.length === 3 && /^[0-9a-f]+$/i.test(parts[0])) {
-      try {
-        return decrypt(stored);
-      } catch {
-        // Fall through to legacy handling
-      }
+      return decrypt(stored);
     }
     // Legacy XOR format: 'x:<base64>'
     if (stored.startsWith('x:')) {
@@ -498,7 +525,11 @@ class RegistryService {
 
   _apiCall(reg, path, opts = {}) {
     return new Promise((resolve, reject) => {
-      const url = new URL(path, reg.url);
+      const base = registryEndpoint(reg.url);
+      const url = new URL(path, base);
+      if (url.origin !== base.origin || !url.pathname.startsWith('/v2/') || url.hash) {
+        return reject(new Error('Registry request must stay on the configured API origin'));
+      }
       const mod = url.protocol === 'https:' ? https : http;
       const method = opts.method || 'GET';
       const headers = { 'Accept': opts.accept || 'application/json' };
@@ -513,6 +544,7 @@ class RegistryService {
         method,
         headers,
         timeout: 10000,
+        signal: AbortSignal.timeout(10000),
         rejectUnauthorized: true,
       }, (res) => {
         let data = '';

@@ -130,7 +130,7 @@ function filterContainers(containers, userId, globalRole) {
   if (globalRole === 'admin') return containers;
 
   // Preload all user permissions for efficiency
-  const perms = {};
+  const perms = Object.create(null);
   try {
     const db = getDb();
     const rows = db.prepare('SELECT stack_name, permission FROM stack_permissions WHERE user_id = ?').all(userId);

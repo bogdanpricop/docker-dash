@@ -297,7 +297,7 @@ const SystemPageCis = {
     const r = remediations[key];
     return `<div style="font-size:11px;margin-top:5px;padding:5px 8px;background:rgba(56,139,253,.07);border-left:3px solid var(--accent);border-radius:0 var(--radius-sm) var(--radius-sm) 0">
       <i class="fas fa-wrench" style="margin-right:4px;color:var(--accent)"></i><strong>Fix:</strong> ${r.fix}
-      <a href="${r.doc}" target="_blank" rel="noopener" style="margin-left:8px;font-size:10px;color:var(--accent)"><i class="fas fa-external-link-alt"></i> docs</a>
+      <a ${Utils.externalLinkAttributes(r.doc)} style="margin-left:8px;font-size:10px;color:var(--accent)"><i class="fas fa-external-link-alt"></i> docs</a>
     </div>`;
   },
 

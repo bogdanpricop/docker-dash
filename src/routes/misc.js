@@ -1,4 +1,5 @@
 'use strict';
+const { csvCell } = require('../utils/csv');
 
 const express = require('express');
 const { Router } = require('express');
@@ -129,7 +130,7 @@ router.get('/footprint', requireAuth, (req, res) => {
 
 
 
-router.post('/backup/database', requireAuth, requireRole('admin'), (req, res) => {
+router.post('/backup/database', requireAuth, requireRole('admin'), writeable, (req, res) => {
   try {
     const db = getDb();
     const path = require('path');
@@ -164,7 +165,7 @@ router.post('/backup/database', requireAuth, requireRole('admin'), (req, res) =>
 
 const SQLITE_MAGIC = 'SQLite format 3\0';
 
-router.post('/backup/restore', express.json({ limit: '750mb' }), requireAuth, requireRole('admin'), (req, res) => {
+router.post('/backup/restore', requireAuth, requireRole('admin'), writeable, express.json({ limit: '750mb' }), (req, res) => {
   try {
     const crypto = require('crypto');
     const { content } = req.body || {};
@@ -1047,7 +1048,7 @@ router.get('/export/:type', requireAuth, requireRole('admin'), (req, res) => {
       if (data.length === 0) return res.type('text/csv').send('');
       const headers = Object.keys(data[0]);
       const csv = [headers.join(','), ...data.map(r =>
-        headers.map(h => `"${String(r[h] ?? '').replace(/"/g, '""')}"`).join(',')
+        headers.map(h => csvCell(r[h])).join(',')
       )].join('\n');
       res.type('text/csv').attachment(`${type}-export.csv`).send(csv);
     } else {
@@ -1122,7 +1123,7 @@ router.get('/about/file/:name', requireAuth, (req, res) => {
   }
 });
 
-router.put('/about/file/:name', requireAuth, requireRole('admin'), (req, res) => {
+router.put('/about/file/:name', requireAuth, requireRole('admin'), writeable, (req, res) => {
   const name = req.params.name;
   if (!ABOUT_FILES.includes(name)) return res.status(400).json({ error: 'File not allowed' });
   const { content } = req.body;

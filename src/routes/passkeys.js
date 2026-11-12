@@ -6,7 +6,7 @@ const { generateRegistrationOptions, verifyRegistrationResponse,
   generateAuthenticationOptions, verifyAuthenticationResponse } = require('@simplewebauthn/server');
 const { getDb } = require('../db');
 const config = require('../config');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, writeable } = require('../middleware/auth');
 const { rateLimit } = require('../middleware/rateLimit');
 const { generateToken, sha256 } = require('../utils/crypto');
 const { getClientIp } = require('../utils/helpers');
@@ -119,7 +119,7 @@ router.post('/register/options', limit('register-options'), requireAuth, browser
   res.set('Cache-Control', 'no-store').json(createChallenge(req, 'register', options, user, name, handle));
 });
 
-router.post('/register/verify', limit('register-verify'), requireAuth, browserBinding, sessionOnly, async (req, res) => {
+router.post('/register/verify', limit('register-verify'), requireAuth, browserBinding, sessionOnly, writeable, async (req, res) => {
   const challenge = takeChallenge(req, 'register');
   if (!challenge || challenge.user_id !== req.user.id) return res.status(400).json({ error: 'Start a new passkey registration' });
   let verified;

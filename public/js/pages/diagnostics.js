@@ -149,7 +149,7 @@ const DiagnosticsPage = {
           const session = await Api.createDiagnosticSession({
             name: root.querySelector('#diag-name').value || i18n.t('pages.diagnostics.defaultName'),
             from: from.toISOString(), to: to.toISOString(),
-            subjects: picked.map(p => ({ type: 'container', ref: p.value, hostId: 0, displayName: p.dataset.name })),
+            subjects: picked.map(p => ({ type: 'container', ref: p.value, hostId: Api._currentHostId ?? 0, displayName: p.dataset.name })),
           });
           Toast.success(i18n.t('pages.diagnostics.created'));
           await this._loadList();

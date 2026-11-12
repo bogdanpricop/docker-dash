@@ -1420,9 +1420,9 @@ const ContainersPageDetail = {
       if (!hasData) return;
 
       const links = [];
-      if (meta.lan_link) links.push(`<a href="${Utils.escapeHtml(meta.lan_link)}" target="_blank" rel="noopener"><i class="fas fa-home"></i> LAN</a>`);
-      if (meta.web_link) links.push(`<a href="${Utils.escapeHtml(meta.web_link)}" target="_blank" rel="noopener"><i class="fas fa-globe"></i> WEB</a>`);
-      if (meta.docs_url) links.push(`<a href="${Utils.escapeHtml(meta.docs_url)}" target="_blank" rel="noopener"><i class="fas fa-book"></i> Docs</a>`);
+      if (meta.lan_link) links.push(`<a ${Utils.externalLinkAttributes(meta.lan_link)}><i class="fas fa-home"></i> LAN</a>`);
+      if (meta.web_link) links.push(`<a ${Utils.externalLinkAttributes(meta.web_link)}><i class="fas fa-globe"></i> WEB</a>`);
+      if (meta.docs_url) links.push(`<a ${Utils.externalLinkAttributes(meta.docs_url)}><i class="fas fa-book"></i> Docs</a>`);
 
       const customFieldsHtml = userFields.length > 0 ? `
         <tr><td colspan="2" style="padding-top:12px;font-weight:600;color:var(--accent);font-size:11px;text-transform:uppercase">Custom Attributes</td></tr>

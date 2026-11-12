@@ -208,7 +208,7 @@ class StatsService extends EventEmitter {
   }
 
   /** Get overview stats - top CPU, memory consumers */
-  getOverview(hostId = 0) {
+  getOverview(hostId = 0, visibleIds = null) {
     const db = getDb();
     const latest = db.prepare(`
       SELECT container_id, container_name, cpu_percent, mem_usage, mem_limit, mem_percent,
@@ -217,7 +217,7 @@ class StatsService extends EventEmitter {
       WHERE recorded_at = (SELECT MAX(recorded_at) FROM container_stats WHERE host_id = ?)
         AND host_id = ?
       ORDER BY cpu_percent DESC
-    `).all(hostId, hostId);
+    `).all(hostId, hostId).filter(row => !visibleIds || visibleIds.has(row.container_id));
 
     return {
       containers: latest,

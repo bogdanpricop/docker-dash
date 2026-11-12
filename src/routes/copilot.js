@@ -1,7 +1,6 @@
 'use strict';
 
-// v8.9.43-alpha.1 — Ops Copilot routes. Briefing = any authenticated user; ask /
-// config / test = admin + audited. The stored API key is never returned.
+// Ops Copilot can inspect estate-wide state and send a summary to a configured provider.
 
 const { Router } = require('express');
 const copilot = require('../services/copilot');
@@ -17,7 +16,7 @@ const admin = [requireAuth, requireRole('admin'), writeable];
 let _cache = { result: null, ts: 0, running: null };
 const CACHE_MS = 60 * 1000;
 
-router.get('/briefing', requireAuth, asyncHandler(async (req, res) => {
+router.get('/briefing', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
   const now = Date.now();
   if (req.query.fresh !== '1' && _cache.result && (now - _cache.ts) < CACHE_MS) return res.json(_cache.result);
   if (_cache.running) { try { return res.json(await _cache.running); } catch (e) { return res.status(500).json({ error: e.message }); } }

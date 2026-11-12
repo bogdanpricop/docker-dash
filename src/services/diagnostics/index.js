@@ -88,11 +88,12 @@ function create({ name, from, to, subjects }, user) {
   return get(id);
 }
 
-function list() {
+function list(ownerId) {
   const db = getDb();
+  const filter = ownerId === undefined ? '' : 'WHERE s.created_by = ?';
   return db.prepare(`
     SELECT s.*, (SELECT COUNT(*) FROM diagnostic_session_subjects x WHERE x.session_id = s.id) AS subject_count
-    FROM diagnostic_sessions s ORDER BY s.created_at DESC LIMIT 200`).all();
+    FROM diagnostic_sessions s ${filter} ORDER BY s.created_at DESC LIMIT 200`).all(...(ownerId === undefined ? [] : [ownerId]));
 }
 
 function get(id) {
@@ -112,24 +113,25 @@ function remove(id) {
 
 function _containerSeries(db, subject, tier, start, end) {
   const rows = db.prepare(`SELECT ${tier.cols}, ${tier.timeCol} AS t FROM ${tier.table}
-    WHERE container_id = ? AND ${tier.timeCol} >= ? AND ${tier.timeCol} <= ? ORDER BY ${tier.timeCol} ASC`)
-    .all(subject.subject_ref, start, end);
+    WHERE container_id = ? AND host_id = ? AND ${tier.timeCol} >= ? AND ${tier.timeCol} <= ?
+    ORDER BY ${tier.timeCol} ASC LIMIT 12000`)
+    .all(subject.subject_ref, subject.host_id ?? 0, start, end);
   return rows;
 }
 
 function _vmSeries(db, subject, start, end) {
   return db.prepare(`SELECT metric_key, value, sample_at AS t FROM vm_metric_samples
-    WHERE resource_key = ? AND sample_at >= ? AND sample_at <= ? ORDER BY sample_at ASC`)
-    .all(subject.subject_ref, start, end);
+    WHERE resource_key = ? AND provider_host_id = ? AND resource_type = 'vm'
+    AND sample_at >= ? AND sample_at <= ? ORDER BY sample_at ASC LIMIT 12000`)
+    .all(subject.subject_ref, subject.provider_host_id ?? 0, start, end);
 }
 
 /**
  * Build the correlated view. Every series is bucketed onto the SAME axis, which
  * is the entire point — and nothing is interpolated to get there.
  */
-function timeline(id, { buckets = DEFAULT_BUCKETS } = {}) {
+function timeline(id, { buckets = DEFAULT_BUCKETS, includeAudit = true, session = get(id) } = {}) {
   const db = getDb();
-  const session = get(id);
   const start = session.window_start;
   const end = session.window_end;
   const fromMs = new Date(start).getTime();
@@ -179,7 +181,7 @@ function timeline(id, { buckets = DEFAULT_BUCKETS } = {}) {
     };
   });
 
-  const annotations = _annotations(db, session, start, end);
+  const annotations = _annotations(db, session, start, end, includeAudit);
   const skewMs = clockSkewMs(observations);
 
   return {
@@ -195,32 +197,38 @@ function timeline(id, { buckets = DEFAULT_BUCKETS } = {}) {
   };
 }
 
-function _annotations(db, session, start, end) {
-  const refs = session.subjects.map(s => s.subject_ref);
+function _annotations(db, session, start, end, includeAudit) {
   const out = [];
 
   const events = db.prepare(`SELECT action, actor_name, event_type, event_time AS t FROM docker_events
-    WHERE event_time >= ? AND event_time <= ? ORDER BY event_time ASC LIMIT 500`).all(start, end);
+    WHERE event_time >= ? AND event_time <= ? AND event_type = 'container'
+    AND EXISTS (SELECT 1 FROM diagnostic_session_subjects s
+      WHERE s.session_id = ? AND s.subject_type = 'container'
+      AND COALESCE(s.host_id, 0) = docker_events.host_id AND s.subject_ref = docker_events.actor_id)
+    ORDER BY event_time ASC LIMIT 500`).all(start, end, session.id);
   for (const e of events) {
-    if (refs.length && e.actor_name && !refs.some(r => r === e.actor_name || String(e.actor_name).startsWith(r))) continue;
     out.push({ t: e.t, source: 'docker_event', label: `${e.event_type} ${e.action}`, subject: e.actor_name || null });
   }
 
   const health = db.prepare(`SELECT container_name, status, recorded_at AS t FROM health_events
-    WHERE recorded_at >= ? AND recorded_at <= ? ORDER BY recorded_at ASC LIMIT 200`).all(start, end);
+    WHERE recorded_at >= ? AND recorded_at <= ?
+    AND EXISTS (SELECT 1 FROM diagnostic_session_subjects s
+      WHERE s.session_id = ? AND s.subject_type = 'container'
+      AND COALESCE(s.host_id, 0) = health_events.host_id AND s.subject_ref = health_events.container_id)
+    ORDER BY recorded_at ASC LIMIT 200`).all(start, end, session.id);
   for (const h of health) out.push({ t: h.t, source: 'health', label: `health: ${h.status}`, subject: h.container_name });
 
   // Usernames stay; client IPs never enter an annotation. An investigation
   // artifact should not become a data-protection problem (deep-spec §3.1).
-  const audit = db.prepare(`SELECT action, username, target_id, created_at AS t FROM audit_log
-    WHERE created_at >= ? AND created_at <= ? ORDER BY created_at ASC LIMIT 200`).all(start, end);
+  const audit = includeAudit ? db.prepare(`SELECT action, username, target_id, created_at AS t FROM audit_log
+    WHERE created_at >= ? AND created_at <= ? ORDER BY created_at ASC LIMIT 200`).all(start, end) : [];
   for (const a of audit) out.push({ t: a.t, source: 'audit', label: `${a.action} by ${a.username || 'system'}`, subject: a.target_id });
 
   return out.sort((a, b) => new Date(a.t) - new Date(b.t)).slice(0, 800);
 }
 
-function exportSession(id) {
-  const data = timeline(id, {});
+function exportSession(id, options) {
+  const data = timeline(id, options);
   return { exportedAt: new Date().toISOString(), ...data };
 }
 

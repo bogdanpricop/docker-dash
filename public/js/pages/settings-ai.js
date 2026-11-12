@@ -121,7 +121,7 @@ const SettingsPageAi = {
               <input type="password" id="ai-api-key" class="form-control" placeholder="${settings.hasApiKey && settings.provider === p.id ? '(saved — leave blank to keep)' : 'Paste your API key'}" autocomplete="new-password">
               ${settings.hasApiKey && settings.provider === p.id ? `<button class="btn btn-sm btn-secondary" id="ai-clear-key" type="button">Clear</button>` : ''}
             </div>
-            <p class="text-sm text-muted" style="margin-top:4px;font-size:11px">Get a key: <a href="${Utils.escapeHtml(p.apiKeyHelpUrl)}" target="_blank" rel="noopener" style="color:var(--accent)">${Utils.escapeHtml(p.apiKeyHelpUrl)}</a></p>
+            <p class="text-sm text-muted" style="margin-top:4px;font-size:11px">Get a key: <a ${Utils.externalLinkAttributes(p.apiKeyHelpUrl)} style="color:var(--accent)">${Utils.escapeHtml(p.apiKeyHelpUrl)}</a></p>
           </div>
         ` : ''}
         ${p.requiresEndpoint ? `

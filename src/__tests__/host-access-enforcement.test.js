@@ -191,22 +191,27 @@ describe('method-aware middleware', () => {
 describe('Git Compose file route enforcement', () => {
   const gitService = require('../services/git');
 
-  test('requires authentication and stack view access before reading a file', async () => {
+  test('requires an authenticated administrator before reading raw repository files', async () => {
     const getStack = jest.spyOn(gitService, 'getStack');
     const readComposeFile = jest.spyOn(gitService, 'readComposeFile')
       .mockReturnValue({ path: 'compose.yml', content: 'services: {}\n' });
     try {
-      getStack.mockReturnValue({ id: 41, target_host_ids: [visibleHostId] });
+      getStack.mockReturnValue({ id: 41, stack_name: 'fixture-visible', target_host_ids: [visibleHostId] });
       await request(app).get('/api/git/stacks/41/file?path=compose.yml').expect(401);
 
-      const allowed = await request(app).get('/api/git/stacks/41/file?path=compose.yml')
+      await request(app).get('/api/git/stacks/41/file?path=compose.yml')
         .set('Authorization', `Bearer ${viewerToken}`)
+        .expect(403);
+      expect(readComposeFile).not.toHaveBeenCalled();
+
+      const allowed = await request(app).get('/api/git/stacks/41/file?path=compose.yml')
+        .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
       expect(allowed.body).toEqual({ path: 'compose.yml', content: 'services: {}\n' });
       expect(readComposeFile).toHaveBeenCalledWith(41, 'compose.yml');
 
       readComposeFile.mockClear();
-      getStack.mockReturnValue({ id: 42, target_host_ids: [noAccessHostId] });
+      getStack.mockReturnValue({ id: 42, stack_name: 'fixture-hidden', target_host_ids: [noAccessHostId] });
       await request(app).get('/api/git/stacks/42/file?path=compose.yml')
         .set('Authorization', `Bearer ${viewerToken}`)
         .expect(403);

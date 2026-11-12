@@ -374,6 +374,7 @@ const GitStacksPage = {
     try {
       const stack = await Api.getGitStack(this._stackId);
       if (!stack) { container.innerHTML = '<div class="empty-msg">Git stack not found</div>'; return; }
+      const canAdmin = App.user?.role === 'admin';
 
       container.innerHTML = `
         <div class="page-header">
@@ -384,8 +385,10 @@ const GitStacksPage = {
           </h2>
           <div class="page-actions">
             <button class="btn btn-sm btn-secondary" id="gs-back"><i class="fas fa-arrow-left"></i> Back</button>
-            <button class="btn btn-sm btn-secondary" id="gs-edit-push"><i class="fas fa-edit"></i> Edit</button>
-            <button class="btn btn-sm btn-secondary" id="gs-diff"><i class="fas fa-code-branch"></i> Diff</button>
+            ${canAdmin ? `
+              <button class="btn btn-sm btn-secondary" id="gs-edit-push"><i class="fas fa-edit"></i> Edit</button>
+              <button class="btn btn-sm btn-secondary" id="gs-diff"><i class="fas fa-code-branch"></i> Diff</button>
+            ` : ''}
             <button class="btn btn-sm btn-secondary" id="gs-check"><i class="fas fa-search"></i> Check</button>
             <button class="btn btn-sm btn-secondary" id="gs-drift-scan"><i class="fas fa-wave-square"></i> Scan Drift</button>
             <button class="btn btn-sm btn-primary" id="gs-redeploy" ${stack.status === 'deploying' || stack.status === 'cloning' ? 'disabled' : ''}>
@@ -426,7 +429,7 @@ const GitStacksPage = {
             </div>
             <div class="card-body">
               <table class="info-table">
-                <tr><td>Webhook</td><td>${stack.webhook_token ? '<span class="text-green">Configured</span>' : '<span class="text-muted">Not set</span>'}</td></tr>
+                <tr><td>Webhook</td><td>${stack.webhook_configured ? '<span class="text-green">Configured</span>' : '<span class="text-muted">Not set</span>'}</td></tr>
                 <tr><td>Provider</td><td>${Utils.escapeHtml(stack.webhook_provider || 'github')}</td></tr>
                 <tr><td>Polling</td><td>${stack.polling_enabled ? `<span class="text-green">Every ${stack.polling_interval_seconds}s</span>` : '<span class="text-muted">Off</span>'}</td></tr>
                 <tr><td>Auto-deploy</td><td>${stack.deploy_on_push ? '<span class="text-green">Yes</span>' : 'Notify only'}</td></tr>
@@ -482,8 +485,8 @@ const GitStacksPage = {
 
       container.querySelector('#gs-back').addEventListener('click', () => { location.hash = '#/git-stacks'; });
       container.querySelector('#gs-check').addEventListener('click', () => this._checkUpdates(stack));
-      container.querySelector('#gs-edit-push').addEventListener('click', () => this._editAndPush(stack));
-      container.querySelector('#gs-diff').addEventListener('click', () => this._showDiff(stack));
+      container.querySelector('#gs-edit-push')?.addEventListener('click', () => this._editAndPush(stack));
+      container.querySelector('#gs-diff')?.addEventListener('click', () => this._showDiff(stack));
       container.querySelector('#gs-redeploy').addEventListener('click', () => this._redeploy(stack));
       container.querySelector('#gs-delete').addEventListener('click', () => this._deleteStack(stack));
       container.querySelector('#gs-webhook-setup').addEventListener('click', () => this._configureAutoDeploy(stack));
@@ -1048,7 +1051,7 @@ const GitStacksPage = {
       const variables = (config.variables || []).map(item => `${item.key}${item.sensitive ? '!' : ''}=${item.value}`).join('\n');
       const environmentRows = environments.length ? environments.map(item => `
         <tr><td>#${item.pr_number}</td><td><span class="badge ${item.status === 'running' ? 'badge-running' : item.status === 'error' ? 'badge-danger' : 'badge-warning'}">${Utils.escapeHtml(item.status)}</span></td>
-        <td class="mono text-sm">${Utils.escapeHtml((item.head_sha || '').substring(0, 7))}</td><td>${item.url ? `<a href="${Utils.escapeHtml(item.url)}" target="_blank" rel="noopener">Open</a>` : '—'}</td>
+        <td class="mono text-sm">${Utils.escapeHtml((item.head_sha || '').substring(0, 7))}</td><td>${item.url ? `<a ${Utils.externalLinkAttributes(item.url)}>Open</a>` : '—'}</td>
         <td><button type="button" class="action-btn" data-preview-delete="${item.id}" title="Delete preview"><i class="fas fa-trash"></i></button></td></tr>`).join('')
         : '<tr><td colspan="5" class="text-muted">No preview environments.</td></tr>';
       const result = await Modal.form(`

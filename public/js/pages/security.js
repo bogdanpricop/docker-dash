@@ -857,7 +857,7 @@ Please:
               <tbody>${sortedVulns.slice(0, 100).map(v => `
                 <tr>
                   <td class="mono text-sm" style="color:${sevColor(v.severity)};font-weight:600">${v.severity.toUpperCase()}</td>
-                  <td class="mono text-sm">${v.url ? `<a href="${Utils.escapeHtml(v.url)}" target="_blank" style="color:var(--accent)">${Utils.escapeHtml(v.id)}</a>` : Utils.escapeHtml(v.id)}</td>
+                  <td class="mono text-sm">${v.url ? `<a ${Utils.externalLinkAttributes(v.url)} style="color:var(--accent)">${Utils.escapeHtml(v.id)}</a>` : Utils.escapeHtml(v.id)}</td>
                   <td class="text-sm">${Utils.escapeHtml(v.package)}</td>
                   <td class="text-sm">${Utils.escapeHtml(v.version)}</td>
                   <td class="text-sm">${v.fixedIn ? `<span style="color:var(--green)">${Utils.escapeHtml(v.fixedIn)}</span>` : '<span class="text-muted">—</span>'}</td>

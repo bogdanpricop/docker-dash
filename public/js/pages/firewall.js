@@ -723,8 +723,7 @@ const FirewallPage = {
     let content, mime, ext;
     if (format === 'csv') {
       const cols = ['rule_uuid', 'backend', 'scope', 'action', 'source_ip', 'destination_port', 'protocol', 'reason', 'created_by', 'created_at', 'expires_at', 'is_temporary', 'is_active', 'removed_by', 'removed_at'];
-      const esc = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
-      content = [cols.join(',')].concat(rules.map(r => cols.map(c => esc(r[c])).join(','))).join('\n');
+      content = [cols.join(',')].concat(rules.map(r => cols.map(c => Utils.csvCell(r[c])).join(','))).join('\n');
       mime = 'text/csv'; ext = 'csv';
     } else {
       content = JSON.stringify({ host, exportedAt: new Date().toISOString(), rules, snapshots: (this._auditData && this._auditData.snapshots) || [] }, null, 2);

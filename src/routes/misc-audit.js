@@ -5,6 +5,7 @@
 // Mounted at /audit.
 
 const { Router } = require('express');
+const { csvCell } = require('../utils/csv');
 const auditService = require('../services/audit');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { getDb } = require('../db');
@@ -36,9 +37,7 @@ router.get('/export', requireAuth, requireRole('admin'), (req, res) => {
 
     const csv = [
       'ID,Username,Action,Target Type,Target ID,IP,Timestamp',
-      ...rows.map(r =>
-        `${r.id},"${(r.username || '').replace(/"/g, '""')}","${r.action}","${r.target_type || ''}","${(r.target_id || '').replace(/"/g, '""')}","${r.ip || ''}","${r.created_at}"`
-      ),
+      ...rows.map(r => [r.id, r.username, r.action, r.target_type, r.target_id, r.ip, r.created_at].map(csvCell).join(',')),
     ].join('\n');
 
     const ts = new Date().toISOString().substring(0, 10);

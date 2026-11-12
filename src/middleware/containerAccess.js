@@ -10,7 +10,7 @@ module.exports = function requireContainerAccess(level = 'view', parameter = 'id
     if (req.user?.role === 'admin') return next();
     let inspection;
     try {
-      inspection = await docker.inspectContainer(req.params[parameter], req.hostId);
+      inspection = await docker.inspectContainer(req.params[parameter], req.resolvedHostId ?? req.hostId);
     } catch (error) {
       return res.status(error.statusCode === 404 ? 404 : 503).json({
         error: error.statusCode === 404 ? 'Container not found' : 'Container access could not be verified',
@@ -21,6 +21,7 @@ module.exports = function requireContainerAccess(level = 'view', parameter = 'id
     if (!permissions.hasPermission(role, level)) {
       return res.status(403).json({ error: 'Insufficient stack permissions for this container' });
     }
+    req.authorizedContainerId = inspection.id;
     next();
   });
 };

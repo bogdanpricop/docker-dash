@@ -2,7 +2,10 @@
 
 const { Router } = require('express');
 const statsService = require('../services/stats');
-const { requireAuth } = require('../middleware/auth');
+const docker = require('../services/docker');
+const permissions = require('../services/permissions');
+const requireContainerAccess = require('../middleware/containerAccess');
+const { requireAuth, requireRole, writeable } = require('../middleware/auth');
 const { extractHostId } = require('../middleware/hostId');
 const { requireHostAccess, requireHostAccessForMethod } = require('../middleware/hostAccess');
 const asyncHandler = require('../utils/asyncHandler');
@@ -10,11 +13,18 @@ const asyncHandler = require('../utils/asyncHandler');
 const router = Router();
 router.use(extractHostId);
 
-router.get('/overview', requireAuth, requireHostAccessForMethod(), asyncHandler((req, res) => {
-  res.json(statsService.getOverview(req.hostId));
+async function visibleContainerIds(req, hostId) {
+  if (req.user.role === 'admin') return null;
+  const inventory = await docker.listContainers(hostId);
+  return new Set(permissions.filterContainers(inventory, req.user.id, req.user.role).map(container => container.id));
+}
+
+router.get('/overview', requireAuth, requireHostAccessForMethod(), asyncHandler(async (req, res) => {
+  const hostId = req.resolvedHostId ?? req.hostId;
+  res.json(statsService.getOverview(hostId, await visibleContainerIds(req, hostId)));
 }));
 
-router.post('/stack-metrics', requireAuth, requireHostAccess('view'), asyncHandler((req, res) => {
+router.post('/stack-metrics', requireAuth, requireHostAccess('view'), asyncHandler(async (req, res) => {
   const { ids, historyIds } = req.body || {};
   if (!Array.isArray(ids) || !ids.length || ids.length > 200
     || !ids.every(id => typeof id === 'string' && /^[a-f0-9]{12,64}$/.test(id))
@@ -23,28 +33,36 @@ router.post('/stack-metrics', requireAuth, requireHostAccess('view'), asyncHandl
   }
   const selected = new Set(ids);
   if (!historyIds.every(id => selected.has(id))) return res.status(400).json({ error: 'Invalid container history selection' });
-  res.set('Cache-Control', 'no-store').json(statsService.getStackMetrics(req.resolvedHostId ?? req.hostId, [...selected], historyIds));
+  const hostId = req.resolvedHostId ?? req.hostId;
+  const allowed = await visibleContainerIds(req, hostId);
+  if (allowed && [...selected].some(id => !allowed.has(id))) {
+    return res.status(403).json({ error: 'Container metrics selection exceeds your stack permissions' });
+  }
+  res.set('Cache-Control', 'no-store').json(statsService.getStackMetrics(hostId, [...selected], historyIds));
 }));
 
-router.get('/container/:id', requireAuth, requireHostAccessForMethod(), asyncHandler((req, res) => {
+router.get('/container/:id', requireAuth, requireHostAccessForMethod(), requireContainerAccess('view'), asyncHandler((req, res) => {
   const { range } = req.query;
-  res.json(statsService.query(req.params.id, { range, hostId: req.hostId }));
+  res.json(statsService.query(req.authorizedContainerId ?? req.params.id, { range, hostId: req.resolvedHostId ?? req.hostId }));
 }));
 
 // ─── Sparklines (mini 1h CPU/RAM data for all containers) ────
 
-router.get('/sparklines', requireAuth, requireHostAccessForMethod(), asyncHandler((req, res) => {
+router.get('/sparklines', requireAuth, requireHostAccessForMethod(), asyncHandler(async (req, res) => {
   const db = require('../db').getDb();
+  const hostId = req.resolvedHostId ?? req.hostId;
+  const allowed = await visibleContainerIds(req, hostId);
   const rows = db.prepare(`
     SELECT container_id, cpu_percent, mem_percent, recorded_at
     FROM container_stats
     WHERE host_id = ? AND recorded_at > datetime('now', '-1 hour')
     ORDER BY recorded_at ASC
-  `).all(req.hostId || 0);
+  `).all(hostId);
 
   // Group by container, keep max 20 points
   const map = {};
   rows.forEach(r => {
+    if (allowed && !allowed.has(r.container_id)) return;
     if (!map[r.container_id]) map[r.container_id] = [];
     map[r.container_id].push({ cpu: r.cpu_percent, mem: r.mem_percent });
   });
@@ -61,9 +79,10 @@ router.get('/sparklines', requireAuth, requireHostAccessForMethod(), asyncHandle
 
 // ─── Uptime Report ────────────────────────────────────
 
-router.get('/uptime', requireAuth, requireHostAccessForMethod(), asyncHandler((req, res) => {
+router.get('/uptime', requireAuth, requireHostAccessForMethod(), asyncHandler(async (req, res) => {
   const db = require('../db').getDb();
-  const hostId = req.hostId || 0;
+  const hostId = req.resolvedHostId ?? req.hostId;
+  const allowed = await visibleContainerIds(req, hostId);
 
   // Get all containers with their event history
   const containers = db.prepare(`
@@ -72,12 +91,12 @@ router.get('/uptime', requireAuth, requireHostAccessForMethod(), asyncHandler((r
     ORDER BY container_name
   `).all(hostId);
 
-  const results = containers.map(c => {
+  const results = containers.filter(c => !allowed || allowed.has(c.container_id)).map(c => {
     // Count restarts from docker events
     const restarts = db.prepare(`
       SELECT COUNT(*) AS cnt FROM docker_events
-      WHERE actor_name = ? AND action = 'start' AND host_id = ?
-    `).get(c.container_name, hostId)?.cnt || 0;
+      WHERE actor_id = ? AND action = 'start' AND host_id = ?
+    `).get(c.container_id, hostId)?.cnt || 0;
 
     // Get first and last seen
     const first = db.prepare(
@@ -112,10 +131,10 @@ router.get('/uptime', requireAuth, requireHostAccessForMethod(), asyncHandler((r
 
 // ─── Resource Trends ──────────────────────────────────
 
-router.get('/trends/:id', requireAuth, requireHostAccessForMethod(), asyncHandler((req, res) => {
+router.get('/trends/:id', requireAuth, requireHostAccessForMethod(), requireContainerAccess('view'), asyncHandler((req, res) => {
   const db = require('../db').getDb();
-  const hostId = req.hostId || 0;
-  const containerId = req.params.id;
+  const hostId = req.resolvedHostId ?? req.hostId;
+  const containerId = req.authorizedContainerId ?? req.params.id;
 
   // Get hourly averages for the last 7 days
   const hourly = db.prepare(`
@@ -158,15 +177,16 @@ router.get('/trends/:id', requireAuth, requireHostAccessForMethod(), asyncHandle
 
 // ─── Cost Estimation ──────────────────────────────────
 
-router.get('/cost', requireAuth, requireHostAccessForMethod(), asyncHandler((req, res) => {
-  const hostId = req.hostId || 0;
+router.get('/cost', requireAuth, requireHostAccessForMethod(), asyncHandler(async (req, res) => {
+  const hostId = req.resolvedHostId ?? req.hostId;
+  const allowed = await visibleContainerIds(req, hostId);
   const monthlyCost = parseFloat(req.query.monthly_cost || '0');
 
   if (monthlyCost <= 0) {
     return res.json({ error: 'Set monthly_cost query param (your VPS/server monthly cost in USD)' });
   }
 
-  const overview = statsService.getOverview(hostId);
+  const overview = statsService.getOverview(hostId, allowed);
   const totalCpu = Math.max(overview.totals.cpu, 1);
   const totalMem = Math.max(overview.totals.memory, 1);
 
@@ -197,9 +217,10 @@ router.get('/cost', requireAuth, requireHostAccessForMethod(), asyncHandler((req
 
 // ─── Resource Recommendations ─────────────────────────
 
-router.get('/recommendations', requireAuth, requireHostAccessForMethod(), asyncHandler((req, res) => {
+router.get('/recommendations', requireAuth, requireHostAccessForMethod(), asyncHandler(async (req, res) => {
   const db = require('../db').getDb();
-  const hostId = req.hostId || 0;
+  const hostId = req.resolvedHostId ?? req.hostId;
+  const allowed = await visibleContainerIds(req, hostId);
 
   // Get 24h average stats per container
   const stats = db.prepare(`
@@ -216,6 +237,7 @@ router.get('/recommendations', requireAuth, requireHostAccessForMethod(), asyncH
   const recommendations = [];
 
   for (const s of stats) {
+    if (allowed && !allowed.has(s.container_id)) continue;
     const recs = [];
     const avgMemPct = s.mem_limit > 0 ? (s.avg_mem / s.mem_limit) * 100 : 0;
     const maxMemPct = s.mem_limit > 0 ? (s.max_mem / s.mem_limit) * 100 : 0;
@@ -311,9 +333,10 @@ function _linearRegression(points) {
 
 // ─── Cost Analysis (enhanced) ────────────────────────
 
-router.get('/cost-analysis', requireAuth, requireHostAccessForMethod(), asyncHandler((req, res) => {
+router.get('/cost-analysis', requireAuth, requireHostAccessForMethod(), asyncHandler(async (req, res) => {
   const db = require('../db').getDb();
-  const hostId = req.hostId || 0;
+  const hostId = req.resolvedHostId ?? req.hostId;
+  const allowed = await visibleContainerIds(req, hostId);
 
   // Get monthly cost from settings or query param
   let monthlyCost = parseFloat(req.query.monthly_cost || '0');
@@ -325,7 +348,7 @@ router.get('/cost-analysis', requireAuth, requireHostAccessForMethod(), asyncHan
   }
   if (monthlyCost <= 0) monthlyCost = 50; // default fallback
 
-  const overview = statsService.getOverview(hostId);
+  const overview = statsService.getOverview(hostId, allowed);
   const totalCpu = Math.max(overview.totals.cpu, 1);
   const totalMem = Math.max(overview.totals.memory, 1);
 
@@ -363,6 +386,7 @@ router.get('/cost-analysis', requireAuth, requireHostAccessForMethod(), asyncHan
     `).all(hostId);
 
     for (const s of stats) {
+      if (allowed && !allowed.has(s.container_id)) continue;
       const avgMemPct = s.mem_limit > 0 ? (s.avg_mem / s.mem_limit) * 100 : 0;
       const containerCost = containers.find(c => c.container_id === s.container_id);
       const containerMonthlyCost = containerCost?.estimated_monthly_cost || 0;
@@ -438,14 +462,16 @@ router.get('/cost-analysis', requireAuth, requireHostAccessForMethod(), asyncHan
 
 // ─── Cost Settings ───────────────────────────────────
 
-router.post('/cost-settings', requireAuth, requireHostAccessForMethod(), asyncHandler((req, res) => {
+router.post('/cost-settings', requireAuth, requireRole('admin'), requireHostAccessForMethod(), writeable, asyncHandler((req, res) => {
   const db = require('../db').getDb();
-  const { monthly_cost } = req.body;
-  if (monthly_cost === undefined || isNaN(parseFloat(monthly_cost))) {
-    return res.status(400).json({ error: 'monthly_cost required (number)' });
+  const { monthly_cost: input } = req.body || {};
+  const monthlyCost = typeof input === 'number' || (typeof input === 'string' && /^\d+(?:\.\d+)?$/.test(input.trim()))
+    ? Number(input) : NaN;
+  if (!Number.isFinite(monthlyCost) || monthlyCost < 0 || monthlyCost > 1_000_000_000) {
+    return res.status(400).json({ error: 'monthly_cost must be between 0 and 1,000,000,000' });
   }
-  db.prepare("INSERT INTO settings (key, value) VALUES ('monthly_server_cost', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(String(monthly_cost));
-  res.json({ ok: true, monthly_cost: parseFloat(monthly_cost) });
+  db.prepare("INSERT INTO settings (key, value) VALUES ('monthly_server_cost', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(String(monthlyCost));
+  res.json({ ok: true, monthly_cost: monthlyCost });
 }));
 
 module.exports = router;
