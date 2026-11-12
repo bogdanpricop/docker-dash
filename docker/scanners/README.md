@@ -38,7 +38,7 @@ licenses under `/usr/share/docker-dash/scanners`, and binaries under
 publishing the candidate image.
 
 Grype 0.121.3 replaces the legacy Docker module with Moby client and API
-modules. Its build also applies a checked overlay to the pinned ar reader for
+modules. Its build also applies a checked patch to the pinned ar reader for
 [GO-2026-6905](https://pkg.go.dev/vuln/GO-2026-6905). The build tests the guard
 against negative sizes and records the patch checksum with the scanner evidence.
 

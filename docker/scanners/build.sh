@@ -28,10 +28,10 @@ go mod download -json "$module@$version" > "/out/$1.source.json"
 actual=$(sed -n 's/^[[:space:]]*"Sum": "\([^"]*\)",*$/\1/p' "/out/$1.source.json")
 test "$actual" = "$checksum"
 go mod verify
-overlay=
+modfile=
 if [ "$1" = grype ]; then
-  sh /grype-patches/prepare-ar-overlay.sh
-  overlay=/tmp/dd-grype-ar-overlay.json
+  modfile=/tmp/dd-grype.mod
+  sh /grype-patches/prepare-ar-patch.sh "$modfile"
 fi
 if [ "$1" = trivy ]; then
   # Trivy 0.75 includes the Go team's SkipFunc -> errors.ErrUnsupported
@@ -39,8 +39,8 @@ if [ "$1" = trivy ]; then
   go test -mod=readonly -p 2 "$module/pkg/x/json" "$module/pkg/iac/scanners/cloudformation/parser"
   go test -mod=readonly -p 2 google.golang.org/grpc/test -run 'Test/MissingAuthorityAndHostHeader' -count=1
 fi
-go build -mod=readonly -p 2 -trimpath -buildvcs=false ${overlay:+-overlay="$overlay"} -ldflags "$flags" -o "/out/$1" "$module/cmd/$1"
-go list -mod=readonly ${overlay:+-overlay="$overlay"} -deps "$module/cmd/$1" > "/out/$1.packages.txt"
+go build -mod=readonly -p 2 -trimpath -buildvcs=false ${modfile:+-modfile="$modfile"} -ldflags "$flags" -o "/out/$1" "$module/cmd/$1"
+go list -mod=readonly ${modfile:+-modfile="$modfile"} -deps "$module/cmd/$1" > "/out/$1.packages.txt"
 go version -m "/out/$1" > "/out/$1.build-info.txt"
 cp "$(go env GOPATH)/pkg/mod/$module@$version/LICENSE" "/out/$1.LICENSE"
 (cd /out && sha256sum "$1" > "$1.sha256")

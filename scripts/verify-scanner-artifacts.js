@@ -43,15 +43,16 @@ function assessArtifact(name, binary, metadata, lock = reviewed) {
   const packages = metadata['packages.txt'].text.trim().split('\n');
   assert.ok(packages.length > 100 && packages.every(p => p && !/\s/.test(p)), 'Incomplete compiled package inventory');
   const info = metadata['build-info.txt'].text;
-  assert.match(info.split('\n')[0], /go1\.27\.1$/);
+  assert.match(lock.goVersion, /^go\d+\.\d+\.\d+$/);
+  assert.ok(info.split('\n')[0].endsWith(' ' + lock.goVersion), 'Go compiler does not match reviewed evidence');
   const openpgp = packages.filter(p => p === 'golang.org/x/crypto/openpgp' || p.startsWith('golang.org/x/crypto/openpgp/'));
   assert.deepEqual(openpgp, [], 'Deprecated OpenPGP package is compiled into this artifact');
   const result = { path: expected.path, binarySha256: binary.sha256, bytes: binary.bytes,
     metadataSha256: expected.metadata, compiledPackages: packages.length, deprecatedOpenpgpPresent: false };
   if (name === 'grype') {
     const docker = packages.filter(p => /^(github\.com\/(docker\/docker|moby\/moby)(\/v2)?)(\/|$)/.test(p));
-    assert.ok(docker.includes('github.com/docker/docker/client'));
-    assert.ok(docker.every(p => /^github\.com\/(docker\/docker|moby\/moby)\/(client($|\/)|api($|\/types($|\/)))/.test(p)),
+    assert.ok(docker.includes('github.com/moby/moby/client'));
+    assert.ok(docker.every(p => /^github\.com\/moby\/moby\/(client($|\/)|api($|\/types($|\/)))/.test(p)),
       'Engine implementation package is present');
     result.dockerPackages = docker;
     result.engineImplementationPresent = false;

@@ -3,7 +3,7 @@ RUN apk add --no-cache patch
 COPY docker/scanners/build.sh /build.sh
 WORKDIR /src/grype
 COPY docker/scanners/grype/go.mod docker/scanners/grype/go.sum ./
-COPY docker/scanners/grype/prepare-ar-overlay.sh docker/scanners/grype/ar-negative-size.patch docker/scanners/grype/ar-negative-size_test.go /grype-patches/
+COPY docker/scanners/grype/prepare-ar-patch.sh docker/scanners/grype/ar-negative-size.patch docker/scanners/grype/ar-negative-size_test.go /grype-patches/
 RUN sh /build.sh grype
 WORKDIR /src/trivy
 COPY docker/scanners/trivy/go.mod docker/scanners/trivy/go.sum ./

@@ -101,6 +101,13 @@ jobs:
             sha256sum /usr/share/docker-dash/scanners/*.packages.txt /usr/share/docker-dash/scanners/*.build-info.txt /usr/share/docker-dash/scanners/*.source.json
             apk list --installed git git-init-template openssh-client-default
           '
+          AR_PATCH_SHA=$(sha256sum docker/scanners/grype/ar-negative-size.patch | cut -d ' ' -f 1)
+          docker run --rm --network none --read-only --cap-drop=ALL -e AR_PATCH_SHA="$AR_PATCH_SHA" --entrypoint node "$IMAGE_ID" -e '
+            const assert = require("node:assert/strict"), fs = require("node:fs");
+            const evidence = fs.readFileSync("/usr/share/docker-dash/scanners/grype-ar-patch.sha256", "utf8");
+            assert.equal(evidence.split(/\s+/)[0], process.env.AR_PATCH_SHA);
+            assert.ok(fs.readFileSync("/usr/local/bin/grype").includes(Buffer.from("ar: negative member size")));
+          '
           docker run --rm --network none --cap-drop=ALL \
             --security-opt=no-new-privileges --cpus=1 --memory=512m \
             -v /var/run/docker.sock:/var/run/docker.sock:ro \

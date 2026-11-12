@@ -1,5 +1,6 @@
 {
   "schema": 1,
+  "goVersion": "go1.27.4",
   "scope": "Reviewed Linux amd64 source builds; evidence only, never a scan ignore policy",
   "basis": [
     "docs/audits/2026-09-20-scanner-rebuild-evidence.json",

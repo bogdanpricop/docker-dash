@@ -19,6 +19,8 @@ patch -d "$patched" -p1 < /grype-patches/ar-negative-size.patch
 cp /grype-patches/ar-negative-size_test.go "$patched/"
 printf 'module %s\n\ngo 1.27.4\n' "$module" > "$patched/go.mod"
 (cd "$patched" && go test -run '^TestNegativeMemberSize$' .)
-printf '{"Replace":{"%s/reader.go":"%s/reader.go"}}\n' "$module_dir" "$patched" > /tmp/dd-grype-ar-overlay.json
+cp go.mod "$1"
+cp go.sum "${1%.mod}.sum"
+go mod edit -modfile="$1" -replace="$module=$patched"
 cp "$module_dir/COPYING" /out/grype-ar.LICENSE
 sha256sum /grype-patches/ar-negative-size.patch > /out/grype-ar-patch.sha256
