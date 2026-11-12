@@ -17,7 +17,7 @@ cp "$module_dir"/common.go "$module_dir"/reader.go "$module_dir"/writer.go "$pat
 chmod u+w "$patched/reader.go"
 patch -d "$patched" -p1 < /grype-patches/ar-negative-size.patch
 cp /grype-patches/ar-negative-size_test.go "$patched/"
-printf 'module %s\n\ngo 1.27.4\n' "$module" > "$patched/go.mod"
+printf 'module %s\n\ngo 1.27.1\n' "$module" > "$patched/go.mod"
 (cd "$patched" && go test -run '^TestNegativeMemberSize$' .)
 cp go.mod "$1"
 cp go.sum "${1%.mod}.sum"
