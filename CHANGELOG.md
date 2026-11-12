@@ -156,6 +156,11 @@ All notable changes to Docker Dash are documented here.
   members. Commit mutations, mapping changes and HTTP audit together; remove group
   ownership mappings on deletion. [Evidence and compatibility](docs/audits/2026-09-20-scim-security.md).
 
+## [8.96.40] - 2026-11-12 — Secondary stacks
+
+- Mark stacks as secondary per account and host. Reveal them and their containers
+  on demand from the Stacks and Containers lists.
+
 ## [8.96.13] - 2026-10-07 — Toolchain and HTTPS image refresh
 
 - Align local, Docker and CI installs on npm 12.2.0 and require the reviewed

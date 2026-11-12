@@ -451,6 +451,9 @@ const Api = {
   reorderGroups(order) { return this.put('/groups/order', { order }); },
 
   // ─── Compose (Stacks) ─────────────────────────────
+  setStackVisibility(stack, secondary, hostId) {
+    return this.put(`/system/stacks/${encodeURIComponent(stack)}/visibility?hostId=${hostId}`, { secondary });
+  },
   composeAction(stack, action) { return this.post(`/system/compose/${encodeURIComponent(stack)}/${action}`); },
   composePlan(stack, action) { return this.post(`/system/compose/${encodeURIComponent(stack)}/${encodeURIComponent(action)}/plan`); },
   checkComposeStack(stack) { return this.post(`/system/compose/${encodeURIComponent(stack)}/check`); },

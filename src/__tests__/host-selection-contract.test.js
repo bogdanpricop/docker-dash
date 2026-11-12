@@ -150,11 +150,46 @@ test('Containers can request the resolved host without changing the legacy list 
     const local = await request(app).get('/containers?context=1&hostId=0').expect(200);
     expect(local.body).toMatchObject({ containers: rows, host: { id: 1, connectionType: 'socket' } });
     const selected = await request(app).get('/containers?context=1&hostId=71').expect(200);
-    expect(selected.body).toEqual({ containers: rows, host: { id: 71, name: 'secondary-fixture', connectionType: 'socket' } });
+    expect(selected.body).toEqual({ containers: rows, host: { id: 71, name: 'secondary-fixture', connectionType: 'socket' }, secondaryStacks: [] });
     expect(list.mock.calls.map(([id]) => id)).toEqual([1, 1, 71]);
     await request(app).get('/containers?context=1&hostId=72').expect(400);
     expect(list).toHaveBeenCalledTimes(3);
   } finally {
+    list.mockRestore();
+  }
+});
+
+test('secondary stack preferences are shared by list views and isolated by host and account', async () => {
+  const rows = [
+    { id: 'demo', name: 'demo-api', state: 'running', labels: { 'com.docker.compose.project': 'demo' } },
+    { id: 'standalone', name: 'standalone', state: 'running', labels: {} },
+  ];
+  const list = jest.spyOn(docker, 'listContainers').mockResolvedValue(rows);
+  const endpoint = '/system-stacks/stacks/demo/visibility';
+  const containers = (host, role) => request(app).get('/containers?context=1&hostId=' + host).set('X-Test-Role', role);
+  const stacks = host => request(app).get('/system-stacks/stacks?context=1&hostId=' + host);
+  hostPermissions.setLegacyDefault(false);
+  const grantId = hostPermissions.grant({ hostId: 71, userId: 7, permission: 'view' }, 8);
+  try {
+    await request(app).put(endpoint + '?hostId=0').set('X-Test-Role', 'viewer').send({ secondary: true }).expect(403);
+    await request(app).put(endpoint + '?hostId=0').send({ secondary: 'true' }).expect(400);
+    await request(app).put(endpoint + '?hostId=0').send({ secondary: true }).expect(200, { name: 'demo', secondary: true, hostId: 1 });
+    await request(app).put(endpoint + '?hostId=71').set('X-Test-Role', 'viewer').send({ secondary: true })
+      .expect(200, { name: 'demo', secondary: true, hostId: 71 });
+
+    expect((await stacks(1).expect(200)).body.secondaryStacks).toEqual(['demo']);
+    expect((await stacks(71).expect(200)).body.secondaryStacks).toEqual([]);
+    expect((await containers(0, 'admin').expect(200)).body).toMatchObject({ containers: rows, secondaryStacks: ['demo'] });
+    expect((await containers(71, 'admin').expect(200)).body.secondaryStacks).toEqual([]);
+    expect((await containers(71, 'viewer').expect(200)).body.secondaryStacks).toEqual(['demo']);
+
+    await request(app).put(endpoint + '?hostId=1').send({ secondary: false }).expect(200);
+    expect((await containers(1, 'admin').expect(200)).body.secondaryStacks).toEqual([]);
+    expect((await containers(71, 'viewer').expect(200)).body.secondaryStacks).toEqual(['demo']);
+  } finally {
+    getDb().prepare("DELETE FROM user_preferences WHERE pref_key LIKE 'stack-secondary:%'").run();
+    hostPermissions.revoke(grantId);
+    hostPermissions.setLegacyDefault(true);
     list.mockRestore();
   }
 });

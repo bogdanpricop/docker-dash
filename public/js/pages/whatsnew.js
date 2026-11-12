@@ -9,6 +9,9 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.96.40', date: '2026-11-12', title: 'Secondary stacks', changes: [
+      { type: 'feature', text: 'Mark stacks as secondary per account and host. Show them and their containers on demand in Stacks and Containers.' },
+    ] },
     { version: '8.96.39', date: '2026-11-08', title: 'Stacks sorting and resource links', changes: [
       { type: 'improvement', text: 'Sort by CPU or RAM, open stack networks and volumes, and use a more compact Stacks toolbar.' },
     ] },
