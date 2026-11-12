@@ -102,6 +102,30 @@ describe('registry service — service layer (v8.2.0 audit)', () => {
     expect(() => makeRegistry({ url: 'https://user:password@registry.local' })).toThrow(/origin/);
   });
 
+  it('qualifies single-label registry hosts to avoid Docker Hub namespace resolution', async () => {
+    const id = makeRegistry({ url: 'https://private' });
+    const reg = registryService.get(id);
+    expect(registryService.list()[0].dockerHost).toBe('private:443');
+    expect(registryService.getAuthForImage('private/team/app:latest')).toBeNull();
+    expect(registryService.getAuthForImage('private:443/team/app:latest')?.password).toBe('s3cret');
+    expect(registryService.dockerRepository(reg, 'team/app')).toBe('private:443/team/app');
+    const docker = makeFakeDockerService();
+    const result = await registryService.pushImage(docker, 1, id, 'alpine:latest', 'team/app', 'latest');
+    expect(result.fullImage).toBe('private:443/team/app:latest');
+    expect(docker._calls.push[0].name).toBe(result.fullImage);
+  });
+
+  it('rejects untrusted inventory entries that cannot be used as Docker references', async () => {
+    const id = makeRegistry();
+    const api = jest.spyOn(registryService, '_apiCall')
+      .mockResolvedValueOnce({ status: 200, body: { repositories: ['team/service;echo vulnerable'] } })
+      .mockResolvedValueOnce({ status: 200, body: { tags: ['$(echo vulnerable)'] } });
+    try {
+      await expect(registryService.catalog(id)).rejects.toThrow(/invalid repository inventory/);
+      await expect(registryService.tags(id, 'team/service')).rejects.toThrow(/invalid tag inventory/);
+    } finally { api.mockRestore(); }
+  });
+
   // ── _authConfigForRegistry ───────────────────────────────────────────
 
   describe('_authConfigForRegistry', () => {

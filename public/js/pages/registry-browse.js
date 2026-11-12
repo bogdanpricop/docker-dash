@@ -555,7 +555,8 @@ const RegistryBrowsePage = {
       this._pullManifest(registryId, repo, tag, data).catch(error => Toast.error(error.message)));
     document.getElementById('rb-copy-pull')?.addEventListener('click', () => {
       const reg = this._registries.find(r => String(r.id) === String(this._selectedId));
-      const host = reg ? new URL(reg.url).host : '';
+      const host = reg?.dockerHost;
+      if (!host) return Toast.error('Registry address is unavailable');
       const cmd = `docker pull ${host}/${repo}:${tag}`;
       navigator.clipboard.writeText(cmd).then(
         () => Toast.success('Pull command copied'),

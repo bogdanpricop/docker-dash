@@ -220,8 +220,7 @@ router.post('/:id/pull', requireAuth, extractHostId, requireHostAccess('operate'
   if (!registry) return res.status(404).json({ error: 'Registry not found' });
 
   // Build full image name with registry prefix
-  const registryHost = new URL(registry.url).host;
-  const fullImage = `${registryHost}/${image}:${tag || 'latest'}`;
+  const fullImage = `${registryService.dockerRepository(registry, image)}:${tag || 'latest'}`;
 
   // Get Docker and pull with auth
   const dockerService = require('../services/docker');
@@ -250,7 +249,7 @@ router.post('/:id/pull-stream', requireAuth, extractHostId, requireHostAccess('o
   if (!registry) return res.status(404).json({ error: 'Registry not found' });
   const hostId = req.resolvedHostId ?? req.hostId;
   const docker = require('../services/docker').getDocker(hostId);
-  const repo = new URL(registry.url).host + '/' + repository;
+  const repo = registryService.dockerRepository(registry, repository);
   const reference = repo + '@' + digest;
   const auth = registryService._authConfigForRegistry(registry);
   const controller = new AbortController();

@@ -17,6 +17,12 @@ function registryEndpoint(value) {
   return endpoint;
 }
 
+function dockerAuthority(endpoint) {
+  // Docker treats an unqualified first component as a Docker Hub namespace.
+  if (endpoint.host === 'localhost' || /[.:]/.test(endpoint.host)) return endpoint.host;
+  return endpoint.host + (endpoint.protocol === 'https:' ? ':443' : ':80');
+}
+
 class RegistryService {
   constructor() {
     // v8.7.22 — was: setImmediate(() => this._rewrapLegacy()).
@@ -45,7 +51,11 @@ class RegistryService {
   }
 
   list() {
-    return getDb().prepare('SELECT id, name, url, username, is_default, created_at, last_used_at FROM registries ORDER BY name').all();
+    const rows = getDb().prepare('SELECT id, name, url, username, is_default, created_at, last_used_at FROM registries ORDER BY name').all();
+    return rows.map(reg => {
+      const endpoint = httpUrl(reg.url);
+      return { ...reg, dockerHost: endpoint ? dockerAuthority(endpoint) : null };
+    });
   }
 
   get(id) {
@@ -95,7 +105,9 @@ class RegistryService {
     const data = await this._apiCall(reg, `/v2/_catalog?n=${pageSize}`);
     if (data.status < 200 || data.status >= 300) throw new Error(`Registry catalog lookup failed (HTTP ${data.status})`);
     getDb().prepare("UPDATE registries SET last_used_at = datetime('now') WHERE id = ?").run(id);
-    return data.body?.repositories || [];
+    const repositories = data.body?.repositories ?? [];
+    if (!Array.isArray(repositories) || !repositories.every(repository)) throw new Error('Registry returned an invalid repository inventory');
+    return repositories;
   }
 
   async tags(id, repo) {
@@ -107,7 +119,9 @@ class RegistryService {
     if (/rel\s*=\s*["']?next/i.test(data.headers?.link || '')) {
       throw new Error('Registry returned a partial tag inventory; refusing to treat it as complete');
     }
-    return data.body?.tags || [];
+    const tags = data.body?.tags ?? [];
+    if (!Array.isArray(tags) || !tags.every(validTag)) throw new Error('Registry returned an invalid tag inventory');
+    return tags;
   }
 
   /**
@@ -238,6 +252,10 @@ class RegistryService {
    * Returns the dockerode `authconfig` object (NOT the encoded header).
    * Dockerode handles the base64-of-JSON encoding internally.
    */
+  dockerRepository(reg, repo) {
+    return dockerAuthority(registryEndpoint(reg.url)) + '/' + repo;
+  }
+
   _authConfigForRegistry(reg) {
     return {
       username: reg.username || '',
@@ -272,14 +290,14 @@ class RegistryService {
     if (!validTag(targetTag)) throw new Error('Valid targetTag required');
 
     const docker = dockerService.getDocker(hostId);
-    const registryHost = registryEndpoint(reg.url).host;
-    const fullImage = `${registryHost}/${targetRepo}:${targetTag}`;
+    const destination = this.dockerRepository(reg, targetRepo);
+    const fullImage = `${destination}:${targetTag}`;
 
     // 1. Tag the source under the registry host (idempotent — Docker engine
     //    is fine with re-tagging the same source repeatedly).
     const sourceImg = docker.getImage(sourceImage);
     await new Promise((resolve, reject) => {
-      sourceImg.tag({ repo: `${registryHost}/${targetRepo}`, tag: targetTag }, (err) => {
+      sourceImg.tag({ repo: destination, tag: targetTag }, (err) => {
         if (err) return reject(new Error(`Tag failed: ${err.message}`));
         resolve();
       });
@@ -308,7 +326,10 @@ class RegistryService {
     const authority = typeof imageName === 'string' && imageName.includes('/') ? imageName.split('/')[0].toLowerCase() : '';
     if (!authority) return null;
     const registries = db.prepare('SELECT * FROM registries ORDER BY id').all();
-    const match = registries.find(reg => httpUrl(reg.url)?.host === authority);
+    const match = registries.find(reg => {
+      const endpoint = httpUrl(reg.url);
+      return endpoint && dockerAuthority(endpoint) === authority;
+    });
     return match ? this._authConfigForRegistry(match) : null;
   }
 

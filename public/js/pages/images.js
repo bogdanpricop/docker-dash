@@ -934,7 +934,7 @@ const ImagesPage = {
     const updatePreview = () => {
       const sel = document.getElementById('push-registry-id');
       const reg = registries.find(r => String(r.id) === String(sel.value));
-      const host = reg ? new URL(reg.url).host : '<host>';
+      const host = reg?.dockerHost || '<host>';
       const repo = document.getElementById('push-repo').value.trim() || '<repo>';
       const tag = document.getElementById('push-tag').value.trim() || 'latest';
       document.getElementById('push-preview').textContent = `${host}/${repo}:${tag}`;
@@ -1738,8 +1738,6 @@ const ImagesPage = {
               tagBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
               try {
                 const tags = await Api.getRegistryTags(rid, repoName);
-                const reg = registries.find(r => r.id === rid);
-                const registryHost = reg ? new URL(reg.url).host : '';
 
                 // Replace the catalog content with tags + pull buttons
                 catalog.innerHTML = `
@@ -1771,8 +1769,8 @@ const ImagesPage = {
                     pullBtn.disabled = true;
                     pullBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Pulling...';
                     try {
-                      await Api.pullFromRegistry(parseInt(pullBtn.dataset.reg), pullBtn.dataset.image, pullBtn.dataset.tag);
-                      Toast.success(`Pulled ${registryHost}/${pullBtn.dataset.image}:${pullBtn.dataset.tag}`);
+                      const result = await Api.pullFromRegistry(parseInt(pullBtn.dataset.reg), pullBtn.dataset.image, pullBtn.dataset.tag);
+                      Toast.success(`Pulled ${result.image}`);
                       pullBtn.innerHTML = '<i class="fas fa-check"></i> Done';
                     } catch (err) {
                       Toast.error('Pull failed: ' + err.message);
