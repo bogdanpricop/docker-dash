@@ -156,6 +156,20 @@ All notable changes to Docker Dash are documented here.
   members. Commit mutations, mapping changes and HTTP audit together; remove group
   ownership mappings on deletion. [Evidence and compatibility](docs/audits/2026-09-20-scim-security.md).
 
+## [8.96.43] - 2026-11-13 — Security across Git, Docker and diagnostics
+
+- Keep Git webhook credentials and environment overrides out of stack metadata.
+  Reserve raw files, diffs and secret settings for administrators and check
+  stack and deployment-target grants before remote requests.
+- Scope diagnostic sessions and container metrics to the current user's
+  access. Match historical data by host and immutable subject identity.
+- Validate registry origins and image references. Bind credentials to the
+  selected registry and enforce Docker host access for image pushes.
+- Apply the write policy consistently across administrative actions. Restrict
+  estate-wide Blueprint documents and Copilot briefings to administrators.
+- Validate external links and neutralize formulas in CSV downloads. Bound
+  container file previews and validate upload names and contents.
+
 ## [8.96.42] - 2026-11-12 — Webhook, log and HTTP security
 
 - Protect API responses against caching, redact webhook tokens from request
