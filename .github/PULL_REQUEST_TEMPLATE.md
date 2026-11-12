@@ -1,6 +1,11 @@
 ## What does this PR do?
 Brief description of changes.
 
+## Related contributions
+
+If this change builds on an earlier issue, pull request, or discussion, name
+the contributor and link to the original contribution.
+
 ## Type
 - [ ] Bug fix
 - [ ] New feature
