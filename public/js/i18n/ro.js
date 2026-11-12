@@ -5,6 +5,7 @@ i18n.register('ro', 'RO', "Română", {
     remoteSecretExecution: 'Transmite si executa prin SSH verificat, fara salvarea unui script temporar. La intrerupere, verifica hostul inainte de a repeta. Configureaza accesul SSH in pagina Hosts.',
     replacementCleanup: 'Inlocuitorul este activ, dar resursele pastrate pentru recuperare necesita curatare de catre administrator. Operatie: {{operation}}. Consulta ghidul de recuperare rollback.',
     newVersionAvailable: "Versiune nouă {{version}} disponibilă",
+    newBuildAvailable: 'Este disponibilă o actualizare a tabloului de bord',
     reload: "Reîncarcă",
     close: "Inchide",
     cancel: "Anuleaza",

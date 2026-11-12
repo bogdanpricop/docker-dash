@@ -29,6 +29,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Verify the release tag and read the application version
+        id: version
+        run: |
+          version=$(jq -er '.version' package.json)
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match application version $version"
+            exit 1
+          fi
+          printf 'value=%s\n' "$version" >> "$GITHUB_OUTPUT"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
@@ -37,6 +47,8 @@ jobs:
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          flavor: latest=false
+          labels: org.opencontainers.image.version=${{ steps.version.outputs.value }}
           # `latest` added explicitly so install.sh can pull a known-good image
           # instead of falling back to git-clone+local-build (the fallback path
           # was the trigger for the Ubuntu 25.10 restart-loop bug — see history).
@@ -54,6 +66,7 @@ jobs:
         with:
           context: .
           target: production
+          build-args: APP_VERSION=${{ steps.version.outputs.value }}
           load: true
           push: false
           tags: docker-dash:ci-${{ github.sha }}
@@ -64,7 +77,13 @@ jobs:
       - name: Verify production startup and secret persistence
         env:
           CANDIDATE: docker-dash:ci-${{ github.sha }}
+          APP_VERSION: ${{ steps.version.outputs.value }}
         run: |
+          label_version=$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.version" }}' "$CANDIDATE")
+          if [ "$label_version" != "$APP_VERSION" ]; then
+            echo "::error::Image label $label_version does not match application version $APP_VERSION"
+            exit 1
+          fi
           docker run --rm --network none --cap-drop=ALL \
             --security-opt=no-new-privileges --cpus=1 --memory=512m \
             -v /var/run/docker.sock:/var/run/docker.sock:ro \

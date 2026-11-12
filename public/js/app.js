@@ -1731,7 +1731,8 @@ const App = {
     const el = document.getElementById('sidebar-version');
     const raw = el ? (el.textContent || '').trim() : '';
     this._loadedVersion = raw.replace(/^v/, '');
-    if (!this._loadedVersion) return; // unknown → no baseline to compare
+    this._loadedBuild = document.querySelector('meta[name="dd-build"]')?.content || '';
+    if (!this._loadedVersion && !this._loadedBuild) return;
     this._newVersionNotified = false;
 
     // First check 30s after boot (avoid racing initial API calls / login).
@@ -1754,12 +1755,16 @@ const App = {
       if (!resp.ok) return;
       const data = await resp.json();
       const serverVersion = String(data.version || '').trim();
-      if (!serverVersion) return;
-      if (serverVersion === this._loadedVersion) return;
+      const serverBuild = String(data.buildId || '').trim();
+      const versionChanged = serverVersion && this._loadedVersion && serverVersion !== this._loadedVersion;
+      const buildChanged = serverBuild && this._loadedBuild && serverBuild !== this._loadedBuild;
+      if (!versionChanged && !buildChanged) return;
       // Server has moved on. Persistent toast (duration=0) with an
       // inline Reload button that force-reloads the page.
       this._newVersionNotified = true;
-      const msg = i18n.t('common.newVersionAvailable', { version: serverVersion });
+      const msg = versionChanged
+        ? i18n.t('common.newVersionAvailable', { version: serverVersion })
+        : i18n.t('common.newBuildAvailable');
       Toast.info(msg, 0, {
         action: {
           label: i18n.t('common.reload'),

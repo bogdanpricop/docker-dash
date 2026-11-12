@@ -127,7 +127,7 @@ Open [`examples/sample-feature/README.md`](../examples/sample-feature/README.md)
 9. **Sidebar entry** in `public/index.html`
 10. **i18n keys** in `public/js/i18n/en.js` + `ro.js`
 11. **Tests** — `src/__tests__/<feature>.test.js`
-12. **Bump version + CHANGELOG + What's New**
+12. **CHANGELOG + What's New** (unreleased — no version bump)
 
 **Most features don't need all 12.** A read-only stats page might skip 4, 5, 9. A CLI-only utility might be just 1 + 11.
 
@@ -216,40 +216,77 @@ For new features:
 
 Docker Dash uses **semver-ish**: bug-fix patches bump the patch (`x.y.Z`), new features bump the minor (`x.Y.0`), breaking changes bump the major.
 
+### As a contributor: do not bump the version
+
+The version number is the identity of a *published release*, so it is
+assigned when the release is cut — not per commit. A PR that bumps it will
+conflict with every other PR and with every upstream release, and you would
+have to renumber it each time.
+
+Your PR touches two files for release notes, and nothing else:
+
 ```bash
-# 1. Bump the version in package.json
-npm version patch        # or minor, or major
+# 1. Add your entry to CHANGELOG.md under the existing "## [Unreleased]" heading.
+#    (See existing entries for format — prose bullets, most recent first.)
+
+# 2. Add your entry to the _unreleased list in public/js/pages/whatsnew.js:
+#    _unreleased: [
+#      { type: 'feature', text: 'Pin left navigation entries to a Pinned group …' },
+#    ],
+#    Types: feature, fix, improvement, security, breaking.
+#    This is what the in-app What's New page shows as "Not yet released".
+
+# 3. Run tests + lint one more time
+npm test && npm run lint
+
+# 4. Commit + push
+git add -A
+git commit -m "feat(<area>): <one-line summary>"
+git push origin <your-branch>
+```
+
+Do **not** edit `package.json`, `package-lock.json`, `src/version.js`, or the
+`APP_VERSION` defaults in `docker-compose.yml`. CI checks that all the
+version locations agree (`npm run check:version-consistency`).
+
+The asset cache-busting token (`?v=__BUILD__` in `public/index.html`) is
+computed automatically from the served files' contents, so you never touch it
+either.
+
+### As a maintainer: cutting a release
+
+```bash
+# 1. Bump the version
+npm version patch --no-git-tag-version  # or minor, or major
 # (This runs scripts/sync-version.js automatically, syncing src/version.js
-#  and docker-compose.yml.)
+#  and docker-compose.yml. npm updates package-lock.json.)
 
-# 2. Add a new section to CHANGELOG.md at the top
-# (See existing entries for format — date, title, ## Added/Fixed/Changed.)
+# 2. Move the _unreleased entries from public/js/pages/whatsnew.js into a
+#    new numbered entry at the top of _releases, and add the matching
+#    CHANGELOG.md section.
 
-# 3. Add an entry to public/js/pages/whatsnew.js _releases array (top)
-#    so the in-app What's New page reflects the change.
+# 3. Verify the version locations agree
+npm run check:version-consistency
 
 # 4. Run tests + lint one more time
 npm test && npm run lint
 
 # 5. Commit + push + tag
-git add -A
-git commit -m "feat(<area>): <one-line summary>"
+git add -- package.json package-lock.json src/version.js docker-compose.yml CHANGELOG.md public/js/pages/whatsnew.js
+git commit -m "release: v<X.Y.Z>"
 git push origin main
-git tag v<X.Y.Z>
+git tag -a v<X.Y.Z> -m "Docker Dash v<X.Y.Z>"
 git push origin v<X.Y.Z>
 
-# 6. Create the GitHub Release
-gh release create v<X.Y.Z> --latest --title "v<X.Y.Z> — <title>" \
-  --notes "$(cat <<EOF
-## What's new
-...
-## Tests
-931 passing / 60 suites
-EOF
-)"
+# 6. Create the GitHub Release using the prepared release notes
+gh release create v<X.Y.Z> --verify-tag --latest --title "v<X.Y.Z> — <title>" \
+  --notes-file release-notes.md
 ```
 
-**Maintainers handle the release flow** for merged PRs — you just bump the version + CHANGELOG and we'll tag/release after merge.
+**Maintainers handle the release flow** for merged PRs — you add the CHANGELOG
+entry + the What's New entry, and we assign the version and tag the release
+after merge. Docker images published from the default branch continue to roll
+under `latest`. Use the versioned image tag for a specific release.
 
 ### Commit message style
 
@@ -293,8 +330,9 @@ Conventional commits: `feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `test:`. 
 
 - [ ] `npm test` green
 - [ ] `npm run lint` clean
-- [ ] CHANGELOG.md updated
-- [ ] What's New entry added
+- [ ] CHANGELOG.md updated (under `## [Unreleased]`)
+- [ ] What's New entry added (to `_unreleased` in `public/js/pages/whatsnew.js`)
+- [ ] Version files **not** touched (`package.json`, `package-lock.json`, `src/version.js`, `docker-compose.yml`)
 - [ ] i18n keys added in en.js + ro.js
 - [ ] No `console.log` left in production code
 - [ ] No hardcoded secrets / tokens

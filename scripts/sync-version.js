@@ -7,7 +7,7 @@
  *   - docker-compose.yml   (fallback version tag for docker image)
  *
  * Runs automatically via the "version" npm lifecycle hook:
- *   npm version 5.4.0   →  updates package.json + runs this + commits
+ *   npm version 5.4.0 --no-git-tag-version  →  updates release metadata
  *
  * index.html does NOT need touching — server.js replaces __VERSION__ at startup.
  */
@@ -35,7 +35,7 @@ console.log(`✓ synced version ${version} → src/version.js`);
 const composePath = path.join(root, 'docker-compose.yml');
 const compose = fs.readFileSync(composePath, 'utf8');
 const updatedCompose = compose.replace(
-  /\$\{APP_VERSION:-[\d.]+\}/g,
+  /\$\{APP_VERSION:-[^}\s]+\}/g,
   `\${APP_VERSION:-${version}}`
 );
 fs.writeFileSync(composePath, updatedCompose);

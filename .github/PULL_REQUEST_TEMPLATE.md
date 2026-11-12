@@ -13,6 +13,9 @@ Brief description of changes.
 - [ ] No `console.log` in production code
 - [ ] i18n keys added for user-facing strings (EN at minimum)
 - [ ] No `execSync` with template literals (use `execFileSync` with arg arrays)
+- [ ] CHANGELOG.md updated under `## [Unreleased]`
+- [ ] What's New entry added to `_unreleased` in `public/js/pages/whatsnew.js`
+- [ ] Version files NOT touched — the maintainer assigns the version at release time
 
 ## Screenshots
 If UI changes, add before/after screenshots.

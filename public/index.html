@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="dd-build" content="__BUILD__">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="Lightweight Docker management dashboard with vulnerability scanning, Git integration, and agentless multi-host. Self-hosted Portainer alternative. MIT license.">
 <meta name="keywords" content="docker, dashboard, management, portainer, self-hosted, containers, devops">
@@ -15,9 +16,9 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐳</text></svg>">
 <!-- v8.2.x post-audit: Google Fonts dropped to keep CSP strict 'self' + privacy.
      JetBrains Mono and Inter degrade to system monospace and sans-serif. -->
-<link rel="stylesheet" href="/lib/fontawesome.min.css?v=__VERSION__">
-<link rel="stylesheet" href="/lib/xterm.min.css?v=__VERSION__">
-<link rel="stylesheet" href="/css/app.css?v=__VERSION__">
+<link rel="stylesheet" href="/lib/fontawesome.min.css?v=__BUILD__">
+<link rel="stylesheet" href="/lib/xterm.min.css?v=__BUILD__">
+<link rel="stylesheet" href="/css/app.css?v=__BUILD__">
 </head>
 <body>
   <!-- Login Screen -->
@@ -57,7 +58,7 @@
             <button type="button" id="login-reset-submit" class="btn btn-primary btn-sm"><i class="fas fa-paper-plane" aria-hidden="true"></i> Send reset link</button>
           </div>
         </div>
-        <script src="/js/login-reset.js?v=__VERSION__"></script>
+        <script src="/js/login-reset.js?v=__BUILD__"></script>
       </form>
       <div id="oidc-section" class="hidden" style="margin-top:16px">
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
@@ -358,130 +359,130 @@
   </div>
 
   <!-- Scripts (all self-hosted as of v8.2.x post-audit) -->
-  <script src="/lib/chart.umd.min.js?v=__VERSION__"></script>
-  <script src="/lib/xterm.min.js?v=__VERSION__"></script>
-  <script src="/lib/xterm-addon-fit.min.js?v=__VERSION__"></script>
-  <script src="/vendor/codemirror/codemirror.min.js?v=__VERSION__"></script>
-  <script src="/vendor/js-yaml/js-yaml.min.js?v=__VERSION__"></script>
-  <script src="/js/i18n.js?v=__VERSION__"></script>
+  <script src="/lib/chart.umd.min.js?v=__BUILD__"></script>
+  <script src="/lib/xterm.min.js?v=__BUILD__"></script>
+  <script src="/lib/xterm-addon-fit.min.js?v=__BUILD__"></script>
+  <script src="/vendor/codemirror/codemirror.min.js?v=__BUILD__"></script>
+  <script src="/vendor/js-yaml/js-yaml.min.js?v=__BUILD__"></script>
+  <script src="/js/i18n.js?v=__BUILD__"></script>
   <!-- Language files: add new languages here (order doesn't matter) -->
-  <script src="/js/i18n/en.js?v=__VERSION__"></script>
-  <script src="/js/i18n/ro.js?v=__VERSION__"></script>
-  <script src="/js/i18n/de.js?v=__VERSION__"></script>
-  <script src="/js/i18n/it.js?v=__VERSION__"></script>
-  <script src="/js/i18n/fr.js?v=__VERSION__"></script>
-  <script src="/js/i18n/es.js?v=__VERSION__"></script>
-  <script src="/js/i18n/pt.js?v=__VERSION__"></script>
-  <script src="/js/i18n/zh.js?v=__VERSION__"></script>
-  <script src="/js/i18n/ja.js?v=__VERSION__"></script>
-  <script src="/js/i18n/ko.js?v=__VERSION__"></script>
-  <script src="/js/i18n/tlh.js?v=__VERSION__"></script>
-  <script src="/js/klingon.js?v=__VERSION__"></script>
-  <script src="/js/qr.js?v=__VERSION__"></script>
-  <script src="/js/utils.js?v=__VERSION__"></script>
-  <script src="/js/utils/yaml-editor.js?v=__VERSION__"></script>
-  <script src="/js/components/compose-service-form.js?v=__VERSION__"></script>
-  <script src="/js/api.js?v=__VERSION__"></script>
-  <script src="/js/ws.js?v=__VERSION__"></script>
+  <script src="/js/i18n/en.js?v=__BUILD__"></script>
+  <script src="/js/i18n/ro.js?v=__BUILD__"></script>
+  <script src="/js/i18n/de.js?v=__BUILD__"></script>
+  <script src="/js/i18n/it.js?v=__BUILD__"></script>
+  <script src="/js/i18n/fr.js?v=__BUILD__"></script>
+  <script src="/js/i18n/es.js?v=__BUILD__"></script>
+  <script src="/js/i18n/pt.js?v=__BUILD__"></script>
+  <script src="/js/i18n/zh.js?v=__BUILD__"></script>
+  <script src="/js/i18n/ja.js?v=__BUILD__"></script>
+  <script src="/js/i18n/ko.js?v=__BUILD__"></script>
+  <script src="/js/i18n/tlh.js?v=__BUILD__"></script>
+  <script src="/js/klingon.js?v=__BUILD__"></script>
+  <script src="/js/qr.js?v=__BUILD__"></script>
+  <script src="/js/utils.js?v=__BUILD__"></script>
+  <script src="/js/utils/yaml-editor.js?v=__BUILD__"></script>
+  <script src="/js/components/compose-service-form.js?v=__BUILD__"></script>
+  <script src="/js/api.js?v=__BUILD__"></script>
+  <script src="/js/ws.js?v=__BUILD__"></script>
   <!-- Theme toggle on login page (before app loads) -->
-  <script src="/js/theme-init.js?v=__VERSION__"></script>
-  <script src="/js/components/error-boundary.js?v=__VERSION__"></script>
-  <script src="/js/components/toast.js?v=__VERSION__"></script>
-  <script src="/js/components/modal.js?v=__VERSION__"></script>
-  <script src="/js/components/cli-preview.js?v=__VERSION__"></script>
-  <script src="/js/help-content.js?v=__VERSION__"></script>
-  <script src="/js/components/page-help.js?v=__VERSION__"></script>
-  <script src="/js/components/template-configurator.js?v=__VERSION__"></script>
-  <script src="/js/components/table.js?v=__VERSION__"></script>
-  <script src="/js/components/context-menu.js?v=__VERSION__"></script>
-  <script src="/js/components/taskbar.js?v=__VERSION__"></script>
-  <script src="/js/components/remediate-wizard.js?v=__VERSION__"></script>
-  <script src="/js/components/wizard.js?v=__VERSION__"></script>
-  <script src="/js/components/detail-shell.js?v=__VERSION__"></script>
-  <script src="/js/components/deployment-configurator.js?v=__VERSION__"></script>
-  <script src="/js/pages/ssh-key-deployer.js?v=__VERSION__"></script>
-  <script src="/js/update-notifier.js?v=__VERSION__"></script>
-  <script src="/js/pages/dashboard.js?v=__VERSION__"></script>
-  <script src="/js/pages/diagnostics.js?v=__VERSION__"></script>
-  <script src="/js/components/log-viewer.js?v=__VERSION__"></script>
-  <script src="/js/pages/container-inspector.js?v=__VERSION__"></script>
-  <script src="/js/pages/containers.js?v=__VERSION__"></script>
-  <script src="/js/pages/images.js?v=__VERSION__"></script>
-  <script src="/js/pages/security-triage.js?v=__VERSION__"></script>
-  <script src="/js/pages/security.js?v=__VERSION__"></script>
-  <script src="/js/pages/volumes.js?v=__VERSION__"></script>
-  <script src="/js/pages/networks.js?v=__VERSION__"></script>
-  <script src="/js/pages/alerts.js?v=__VERSION__"></script>
-  <script src="/js/pages/storage-backup.js?v=__VERSION__"></script>
-  <script src="/js/pages/system-backup.js?v=__VERSION__"></script>
-  <script src="/js/pages/system-cis.js?v=__VERSION__"></script>
-  <script src="/js/pages/system-egress.js?v=__VERSION__"></script>
-  <script src="/js/pages/system-secrets.js?v=__VERSION__"></script>
-  <script src="/js/pages/system-ssl.js?v=__VERSION__"></script>
-  <script src="/js/pages/system-templates.js?v=__VERSION__"></script>
-  <script src="/js/pages/system-translations.js?v=__VERSION__"></script>
-  <script src="/js/pages/system.js?v=__VERSION__"></script>
-  <script src="/js/pages/observability-wizard.js?v=__VERSION__"></script>
-  <script src="/js/pages/sample-feature.js?v=__VERSION__"></script>
-  <script src="/js/pages/registry-browse.js?v=__VERSION__"></script>
-  <script src="/js/pages/settings-access.js?v=__VERSION__"></script>
-  <script src="/js/pages/settings-ai.js?v=__VERSION__"></script>
-  <script src="/js/pages/settings-git.js?v=__VERSION__"></script>
-  <script src="/js/pages/settings-ldap.js?v=__VERSION__"></script>
-  <script src="/js/pages/settings-logforwarding.js?v=__VERSION__"></script>
-  <script src="/js/pages/settings-registries.js?v=__VERSION__"></script>
-  <script src="/js/pages/settings-users.js?v=__VERSION__"></script>
-  <script src="/js/pages/settings-workflows.js?v=__VERSION__"></script>
-  <script src="/js/pages/settings.js?v=__VERSION__"></script>
-  <script src="/js/pages/firewall.js?v=__VERSION__"></script>
-  <script src="/js/pages/posture.js?v=__VERSION__"></script>
-  <script src="/js/pages/blueprints.js?v=__VERSION__"></script>
-  <script src="/js/pages/copilot.js?v=__VERSION__"></script>
-  <script src="/js/pages/hosts.js?v=__VERSION__"></script>
-  <script src="/js/pages/onboarding.js?v=__VERSION__"></script>
-  <script src="/js/pages/governance.js?v=__VERSION__"></script>
-  <script src="/js/pages/governance-controls.js?v=__VERSION__"></script>
-  <script src="/js/pages/self-service.js?v=__VERSION__"></script>
-  <script src="/js/pages/edge-platform.js?v=__VERSION__"></script>
-  <script src="/js/pages/workstation-fleet.js?v=__VERSION__"></script>
-  <script src="/js/pages/about.js?v=__VERSION__"></script>
-  <script src="/js/pages/whatsnew.js?v=__VERSION__"></script>
-  <script src="/js/pages/profile.js?v=__VERSION__"></script>
-  <script src="/js/pages/git-stacks.js?v=__VERSION__"></script>
-  <script src="/js/pages/compose-catalog.js?v=__VERSION__"></script>
-  <script src="/js/pages/procedures.js?v=__VERSION__"></script>
-  <script src="/js/pages/compare.js?v=__VERSION__"></script>
-  <script src="/js/pages/insights.js?v=__VERSION__"></script>
-  <script src="/js/pages/timeline.js?v=__VERSION__"></script>
-  <script src="/js/pages/cost-optimizer.js?v=__VERSION__"></script>
-  <script src="/js/pages/dependency-map.js?v=__VERSION__"></script>
-  <script src="/js/pages/notifications.js?v=__VERSION__"></script>
-  <script src="/js/components/stack-metrics.js?v=__VERSION__"></script>
-  <script src="/js/pages/stacks.js?v=__VERSION__"></script>
-  <script src="/js/pages/swarm.js?v=__VERSION__"></script>
-  <script src="/js/pages/incus-instances.js?v=__VERSION__"></script>
-  <script src="/js/pages/proxmox-resources.js?v=__VERSION__"></script>
-  <script src="/js/pages/kubernetes-resources.js?v=__VERSION__"></script>
-  <script src="/js/pages/nomad-jobs.js?v=__VERSION__"></script>
-  <script src="/js/pages/vsphere-resources.js?v=__VERSION__"></script>
-  <script src="/js/pages/xen-resources.js?v=__VERSION__"></script>
-  <script src="/js/pages/virtual-machines.js?v=__VERSION__"></script>
-  <script src="/js/pages/high-availability.js?v=__VERSION__"></script>
-  <script src="/js/pages/storage-posture.js?v=__VERSION__"></script>
-  <script src="/js/pages/network-posture.js?v=__VERSION__"></script>
-  <script src="/js/pages/provider-security-posture.js?v=__VERSION__"></script>
-  <script src="/js/pages/placement-advisor.js?v=__VERSION__"></script>
-  <script src="/js/pages/recovery-points.js?v=__VERSION__"></script>
-  <script src="/js/pages/backup-policies.js?v=__VERSION__"></script>
-  <script src="/js/pages/disaster-recovery.js?v=__VERSION__"></script>
-  <script src="/js/pages/virtualization-catalog.js?v=__VERSION__"></script>
-  <script src="/js/pages/activity-center.js?v=__VERSION__"></script>
-  <script src="/js/pages/migration-vm.js?v=__VERSION__"></script>
-  <script src="/js/pages/api-playground.js?v=__VERSION__"></script>
-  <script src="/js/pages/multihost.js?v=__VERSION__"></script>
-  <script src="/js/pages/logs.js?v=__VERSION__"></script>
-  <script src="/js/pages/howto.js?v=__VERSION__"></script>
-  <script src="/js/passkeys.js?v=__VERSION__"></script>
-  <script src="/js/app.js?v=__VERSION__"></script>
+  <script src="/js/theme-init.js?v=__BUILD__"></script>
+  <script src="/js/components/error-boundary.js?v=__BUILD__"></script>
+  <script src="/js/components/toast.js?v=__BUILD__"></script>
+  <script src="/js/components/modal.js?v=__BUILD__"></script>
+  <script src="/js/components/cli-preview.js?v=__BUILD__"></script>
+  <script src="/js/help-content.js?v=__BUILD__"></script>
+  <script src="/js/components/page-help.js?v=__BUILD__"></script>
+  <script src="/js/components/template-configurator.js?v=__BUILD__"></script>
+  <script src="/js/components/table.js?v=__BUILD__"></script>
+  <script src="/js/components/context-menu.js?v=__BUILD__"></script>
+  <script src="/js/components/taskbar.js?v=__BUILD__"></script>
+  <script src="/js/components/remediate-wizard.js?v=__BUILD__"></script>
+  <script src="/js/components/wizard.js?v=__BUILD__"></script>
+  <script src="/js/components/detail-shell.js?v=__BUILD__"></script>
+  <script src="/js/components/deployment-configurator.js?v=__BUILD__"></script>
+  <script src="/js/pages/ssh-key-deployer.js?v=__BUILD__"></script>
+  <script src="/js/update-notifier.js?v=__BUILD__"></script>
+  <script src="/js/pages/dashboard.js?v=__BUILD__"></script>
+  <script src="/js/pages/diagnostics.js?v=__BUILD__"></script>
+  <script src="/js/components/log-viewer.js?v=__BUILD__"></script>
+  <script src="/js/pages/container-inspector.js?v=__BUILD__"></script>
+  <script src="/js/pages/containers.js?v=__BUILD__"></script>
+  <script src="/js/pages/images.js?v=__BUILD__"></script>
+  <script src="/js/pages/security-triage.js?v=__BUILD__"></script>
+  <script src="/js/pages/security.js?v=__BUILD__"></script>
+  <script src="/js/pages/volumes.js?v=__BUILD__"></script>
+  <script src="/js/pages/networks.js?v=__BUILD__"></script>
+  <script src="/js/pages/alerts.js?v=__BUILD__"></script>
+  <script src="/js/pages/storage-backup.js?v=__BUILD__"></script>
+  <script src="/js/pages/system-backup.js?v=__BUILD__"></script>
+  <script src="/js/pages/system-cis.js?v=__BUILD__"></script>
+  <script src="/js/pages/system-egress.js?v=__BUILD__"></script>
+  <script src="/js/pages/system-secrets.js?v=__BUILD__"></script>
+  <script src="/js/pages/system-ssl.js?v=__BUILD__"></script>
+  <script src="/js/pages/system-templates.js?v=__BUILD__"></script>
+  <script src="/js/pages/system-translations.js?v=__BUILD__"></script>
+  <script src="/js/pages/system.js?v=__BUILD__"></script>
+  <script src="/js/pages/observability-wizard.js?v=__BUILD__"></script>
+  <script src="/js/pages/sample-feature.js?v=__BUILD__"></script>
+  <script src="/js/pages/registry-browse.js?v=__BUILD__"></script>
+  <script src="/js/pages/settings-access.js?v=__BUILD__"></script>
+  <script src="/js/pages/settings-ai.js?v=__BUILD__"></script>
+  <script src="/js/pages/settings-git.js?v=__BUILD__"></script>
+  <script src="/js/pages/settings-ldap.js?v=__BUILD__"></script>
+  <script src="/js/pages/settings-logforwarding.js?v=__BUILD__"></script>
+  <script src="/js/pages/settings-registries.js?v=__BUILD__"></script>
+  <script src="/js/pages/settings-users.js?v=__BUILD__"></script>
+  <script src="/js/pages/settings-workflows.js?v=__BUILD__"></script>
+  <script src="/js/pages/settings.js?v=__BUILD__"></script>
+  <script src="/js/pages/firewall.js?v=__BUILD__"></script>
+  <script src="/js/pages/posture.js?v=__BUILD__"></script>
+  <script src="/js/pages/blueprints.js?v=__BUILD__"></script>
+  <script src="/js/pages/copilot.js?v=__BUILD__"></script>
+  <script src="/js/pages/hosts.js?v=__BUILD__"></script>
+  <script src="/js/pages/onboarding.js?v=__BUILD__"></script>
+  <script src="/js/pages/governance.js?v=__BUILD__"></script>
+  <script src="/js/pages/governance-controls.js?v=__BUILD__"></script>
+  <script src="/js/pages/self-service.js?v=__BUILD__"></script>
+  <script src="/js/pages/edge-platform.js?v=__BUILD__"></script>
+  <script src="/js/pages/workstation-fleet.js?v=__BUILD__"></script>
+  <script src="/js/pages/about.js?v=__BUILD__"></script>
+  <script src="/js/pages/whatsnew.js?v=__BUILD__"></script>
+  <script src="/js/pages/profile.js?v=__BUILD__"></script>
+  <script src="/js/pages/git-stacks.js?v=__BUILD__"></script>
+  <script src="/js/pages/compose-catalog.js?v=__BUILD__"></script>
+  <script src="/js/pages/procedures.js?v=__BUILD__"></script>
+  <script src="/js/pages/compare.js?v=__BUILD__"></script>
+  <script src="/js/pages/insights.js?v=__BUILD__"></script>
+  <script src="/js/pages/timeline.js?v=__BUILD__"></script>
+  <script src="/js/pages/cost-optimizer.js?v=__BUILD__"></script>
+  <script src="/js/pages/dependency-map.js?v=__BUILD__"></script>
+  <script src="/js/pages/notifications.js?v=__BUILD__"></script>
+  <script src="/js/components/stack-metrics.js?v=__BUILD__"></script>
+  <script src="/js/pages/stacks.js?v=__BUILD__"></script>
+  <script src="/js/pages/swarm.js?v=__BUILD__"></script>
+  <script src="/js/pages/incus-instances.js?v=__BUILD__"></script>
+  <script src="/js/pages/proxmox-resources.js?v=__BUILD__"></script>
+  <script src="/js/pages/kubernetes-resources.js?v=__BUILD__"></script>
+  <script src="/js/pages/nomad-jobs.js?v=__BUILD__"></script>
+  <script src="/js/pages/vsphere-resources.js?v=__BUILD__"></script>
+  <script src="/js/pages/xen-resources.js?v=__BUILD__"></script>
+  <script src="/js/pages/virtual-machines.js?v=__BUILD__"></script>
+  <script src="/js/pages/high-availability.js?v=__BUILD__"></script>
+  <script src="/js/pages/storage-posture.js?v=__BUILD__"></script>
+  <script src="/js/pages/network-posture.js?v=__BUILD__"></script>
+  <script src="/js/pages/provider-security-posture.js?v=__BUILD__"></script>
+  <script src="/js/pages/placement-advisor.js?v=__BUILD__"></script>
+  <script src="/js/pages/recovery-points.js?v=__BUILD__"></script>
+  <script src="/js/pages/backup-policies.js?v=__BUILD__"></script>
+  <script src="/js/pages/disaster-recovery.js?v=__BUILD__"></script>
+  <script src="/js/pages/virtualization-catalog.js?v=__BUILD__"></script>
+  <script src="/js/pages/activity-center.js?v=__BUILD__"></script>
+  <script src="/js/pages/migration-vm.js?v=__BUILD__"></script>
+  <script src="/js/pages/api-playground.js?v=__BUILD__"></script>
+  <script src="/js/pages/multihost.js?v=__BUILD__"></script>
+  <script src="/js/pages/logs.js?v=__BUILD__"></script>
+  <script src="/js/pages/howto.js?v=__BUILD__"></script>
+  <script src="/js/passkeys.js?v=__BUILD__"></script>
+  <script src="/js/app.js?v=__BUILD__"></script>
 </body>
 </html>
