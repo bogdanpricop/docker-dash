@@ -74,6 +74,7 @@ jobs:
           node scripts/check-ldap-tls-browser.js
           node scripts/check-notification-channels-browser.js
           node scripts/check-rollback-history-browser.js
+          node scripts/check-operator-workflows-browser.js
           npm run check:inventory-browser
 
       - name: Check for high and critical vulnerabilities (production deps only)

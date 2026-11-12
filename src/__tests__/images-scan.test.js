@@ -67,6 +67,45 @@ describe('GET /api/images', () => {
 });
 
 
+describe('GET /api/images/scan-status', () => {
+  it('returns verified reports for the current image and host, independent of tags or the history limit', async () => {
+    const db = getDb();
+    const host = require('../utils/host-id').defaultHost(db)?.id ?? 0;
+    const first = 'sha256:' + 'a'.repeat(64);
+    const second = 'sha256:' + 'b'.repeat(64);
+    const removed = 'sha256:' + 'c'.repeat(64);
+    const docker = require('../services/docker');
+    const images = [{ id: first, repoTags: ['new:latest'] }, { id: second, repoTags: [] }];
+    const listing = jest.spyOn(docker, 'listImages').mockResolvedValue(images);
+    const insert = db.prepare(`
+      INSERT INTO scan_results (image_id, verified_image_id, image_name, scanner, host_id, scanned_at)
+      VALUES (?, ?, ?, 'trivy', ?, ?)
+    `);
+    try {
+      const older = Number(insert.run(first, first, 'old:latest', host, '2026-01-01').lastInsertRowid);
+      insert.run(first, first, 'old:latest', host, '2025-01-01');
+      insert.run(first, first, 'old:latest', host + 100, '2026-02-01');
+      insert.run(second, null, 'second:old', host, '2026-02-01');
+      insert.run(removed, null, 'new:latest', host, '2026-02-01');
+      insert.run(second, second, 'second:old', host + 100, '2026-02-01');
+      db.transaction(() => {
+        for (let i = 0; i < 501; i++) insert.run(removed, removed, 'new:latest', host, '2026-03-01');
+      })();
+
+      const response = await request(app).get('/api/images/scan-status')
+        .set('Authorization', `Bearer ${adminToken}`).expect(200);
+      expect(listing).toHaveBeenCalledWith(host);
+      expect(response.body).toEqual({ hostId: host, images, legacyImageIds: [second], legacyTags: ['new:latest'], scans: [expect.objectContaining({
+        id: older, verified_image_id: first, scanner: 'trivy',
+      })] });
+      await request(app).get('/api/images/scan-status').expect(401);
+    } finally {
+      listing.mockRestore();
+      db.prepare('DELETE FROM scan_results WHERE image_id IN (?, ?, ?)').run(first, second, removed);
+    }
+  });
+});
+
 describe('temporarily excluded Docker Scout', () => {
   beforeEach(() => jest.clearAllMocks());
 

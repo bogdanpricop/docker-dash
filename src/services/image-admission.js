@@ -251,16 +251,29 @@ async function scanImageReport(docker, imageId, preferred) {
   };
   const names = preferred === 'auto' ? ['trivy', 'grype'] : [preferred];
   return withVerifiedArchive(docker, imageId, async (archive, directory, signal, identity) => {
+    const failures = [];
     for (const scanner of names) {
+      if (signal.aborted) break;
+      const [run, verify] = engines[scanner];
+      let output;
       try {
-        const [run, verify] = engines[scanner];
-        const output = await run(archive, directory, signal, identity.platform);
-        if (signal.aborted) break;
+        output = await run(archive, directory, signal, identity.platform);
+      } catch (error) {
+        const reason = error.code === 'ENOENT' ? 'scanner executable unavailable' : 'scanner process failed';
+        failures.push(`${scanner}: ${reason}`);
+        continue;
+      }
+      if (signal.aborted) break;
+      try {
         verify(output, imageId, identity.configId);
         return { scanner, data: JSON.parse(output) };
-      } catch { /* try the next requested scanner */ }
+      } catch (error) {
+        const reason = error instanceof SyntaxError ? 'invalid report JSON' : error.message;
+        failures.push(`${scanner}: ${reason}`);
+      }
     }
-    throw new Error('No scanner could verify a complete report for this image');
+    if (signal.aborted) failures.push('scan deadline exceeded');
+    throw new Error(`No scanner could verify a complete report for this image (${failures.join(' · ')})`);
   });
 }
 

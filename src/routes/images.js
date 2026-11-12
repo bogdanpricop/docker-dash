@@ -480,6 +480,35 @@ router.get('/:id/scan', requireAuth, asyncHandler(async (req, res) => {
   res.json(result);
 }));
 
+// Current inventory with the latest verified report for each immutable image ID.
+router.get('/scan-status', requireAuth, asyncHandler(async (req, res) => {
+  const hostId = req.resolvedHostId ?? req.hostId;
+  const images = await dockerService.listImages(hostId);
+  const db = getDb();
+  const installed = JSON.stringify(images.map(image => image.id));
+  const scans = db.prepare(`
+    SELECT scan.id, scan.verified_image_id, scan.scanner, scan.scanned_at,
+      scan.summary_critical, scan.summary_high, scan.summary_medium,
+      scan.summary_low, scan.summary_total, scan.fixable_count
+    FROM json_each(?) AS installed
+    JOIN scan_results AS scan ON scan.id = (
+      SELECT id FROM scan_results WHERE host_id = ? AND verified_image_id = installed.value
+      ORDER BY scanned_at DESC, id DESC LIMIT 1
+    )
+  `).all(installed, hostId);
+  const legacyImageIds = db.prepare(`
+    SELECT DISTINCT image_id FROM scan_results
+    WHERE (host_id = ? OR (host_id = 0 AND ? = 1)) AND verified_image_id IS NULL
+      AND image_id IN (SELECT value FROM json_each(?))
+  `).all(...scanHostScope(req), installed).map(row => row.image_id);
+  const legacyTags = db.prepare(`
+    SELECT DISTINCT image_name FROM scan_results
+    WHERE (host_id = ? OR (host_id = 0 AND ? = 1)) AND verified_image_id IS NULL
+      AND image_name IN (SELECT value FROM json_each(?))
+  `).all(...scanHostScope(req), JSON.stringify(images.flatMap(image => image.repoTags))).map(row => row.image_name);
+  res.json({ hostId, images, scans, legacyImageIds, legacyTags });
+}));
+
 // Scan history
 router.get('/scan-history', requireAuth, asyncHandler((req, res) => {
   const db = getDb();

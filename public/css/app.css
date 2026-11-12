@@ -592,6 +592,11 @@ textarea { resize: vertical; min-height: 80px; }
 .data-table .mono, .table .mono { font-family: var(--mono); font-size: 12px; }
 .data-table .truncate, .table .truncate { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+.security-scan-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.security-scan-group-toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.data-table .security-scan-group th { text-align: left; background: var(--surface2); }
+.security-scan-failure { display: block; max-width: 48ch; overflow-wrap: anywhere; color: var(--yellow); }
+
 /* ── Badge ───────────────────────────────────────── */
 .badge {
   display: inline-flex; align-items: center; gap: 6px;

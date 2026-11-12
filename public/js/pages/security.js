@@ -57,32 +57,38 @@ const SecurityPage = {
   async _renderTab() {
     const el = document.getElementById('sec-content');
     if (!el) return;
+    const tab = this._tab;
+    const hostId = Api.getHostId();
     try {
       if (this._tab === 'overview') await this._renderOverview(el);
       else if (this._tab === 'triage') await SecurityTriage.render(el);
       else if (this._tab === 'history') await this._renderHistory(el);
       else if (this._tab === 'scanners') await this._renderScanners(el);
     } catch (err) {
-      el.innerHTML = `<div class="empty-msg">Error: ${Utils.escapeHtml(err.message)}</div>`;
+      if (el.isConnected && this._tab === tab && Api.getHostId() === hostId) {
+        el.innerHTML = `<div class="empty-msg">Error: ${Utils.escapeHtml(err.message)}</div>`;
+      }
     }
   },
 
   async _renderOverview(el) {
     el.innerHTML = `<div class="text-muted"><i class="fas fa-spinner fa-spin"></i> Loading scan data...</div>`;
 
-    const [history, images, scannersData] = await Promise.all([
-      Api.get('/images/scan-history?limit=500'),
-      Api.getImages(),
-      Api.getScanners().catch(() => ({ scanners: [] })),
-    ]);
+    const selectedHost = Api.getHostId();
+    const request = this._overviewRequest = Symbol();
+    const { hostId, images, scans, legacyImageIds, legacyTags } = await Api.get(`/images/scan-status?hostId=${selectedHost}`);
+    if (request !== this._overviewRequest || !el.isConnected ||
+        this._tab !== 'overview' || Api.getHostId() !== selectedHost) return;
 
-    // Latest scan per image
-    const latestByImage = {};
-    for (const scan of history) {
-      if (!latestByImage[scan.image_name]) latestByImage[scan.image_name] = scan;
-    }
-    const latestScans = Object.values(latestByImage);
-
+    const byImage = new Map(scans.map(scan => [scan.verified_image_id, scan]));
+    const legacyIds = new Set(legacyImageIds);
+    const oldTags = new Set(legacyTags);
+    const rows = images.map(image => ({
+      image, scan: byImage.get(image.id),
+      legacy: legacyIds.has(image.id),
+      legacyTag: image.repoTags?.some(tag => oldTags.has(tag)),
+    }));
+    const latestScans = rows.flatMap(row => row.scan ? [row.scan] : []);
     const totalImages = images.length;
     const scannedImages = latestScans.length;
     const unscannedImages = totalImages - scannedImages;
@@ -122,57 +128,21 @@ const SecurityPage = {
       <div class="card" style="margin-bottom:16px;border-left:3px solid var(--yellow)">
         <div class="card-body" style="padding:12px 16px">
           <i class="fas fa-exclamation-triangle" style="color:var(--yellow);margin-right:8px"></i>
-          <strong>${unscannedImages} image(s)</strong> have not been scanned yet.
+          <strong>${unscannedImages} image(s)</strong> have no verified scan on this host.
           <button class="btn btn-sm btn-warning" style="margin-left:12px" id="sec-scan-all-btn">Scan Now</button>
         </div>
       </div>` : ''}
 
       <!-- Per-Image Results -->
       <div class="card">
-        <div class="card-header"><h3><i class="fas fa-layer-group" style="margin-right:8px"></i>Image Security Status</h3></div>
-        <div class="card-body" style="padding:0">
-          <table class="data-table">
-            <thead><tr>
-              <th style="text-align:left">Image</th>
-              <th>Critical</th><th>High</th><th>Medium</th><th>Low</th><th>Total</th><th>Fixable</th>
-              <th>Last Scan</th><th></th>
-            </tr></thead>
-            <tbody>
-              ${images.map(img => {
-                const name = (img.repoTags || [])[0] || '<none>';
-                const eName = Utils.escapeHtml(name);
-                const scan = latestByImage[name];
-                const scanMenu = `<div class="action-btns" style="position:relative">
-                  <button class="action-btn scan-menu-trigger" data-image="${eName}" title="Scan"><i class="fas fa-search"></i></button>
-                </div>`;
-                if (!scan) {
-                  return `<tr>
-                    <td style="text-align:left" class="mono text-sm">${eName}</td>
-                    <td colspan="6" class="text-muted text-sm">Not scanned</td>
-                    <td></td>
-                    <td>${scanMenu}</td>
-                  </tr>`;
-                }
-                return `<tr>
-                  <td style="text-align:left" class="mono text-sm">${eName}</td>
-                  <td style="${scan.summary_critical > 0 ? 'color:var(--red);font-weight:700' : ''}">${scan.summary_critical}</td>
-                  <td style="${scan.summary_high > 0 ? 'color:#f97316;font-weight:600' : ''}">${scan.summary_high}</td>
-                  <td>${scan.summary_medium}</td>
-                  <td>${scan.summary_low}</td>
-                  <td><strong>${scan.summary_total}</strong></td>
-                  <td style="color:var(--green)">${scan.fixable_count}</td>
-                  <td class="text-sm text-muted">${Utils.timeAgo(scan.scanned_at)}</td>
-                  <td>
-                    <div class="action-btns">
-                      <button class="action-btn" data-action="view-scan" data-scan-id="${scan.id}" title="View Details"><i class="fas fa-eye"></i></button>
-                      <button class="action-btn" data-action="image-containers" data-image="${eName}" title="Containers using this image — remediate per container" style="color:#a78bfa"><i class="fas fa-tools"></i></button>
-                      <button class="action-btn scan-menu-trigger" data-image="${eName}" title="Re-scan"><i class="fas fa-sync-alt"></i></button>
-                    </div>
-                  </td>
-                </tr>`;
-              }).join('')}
-            </tbody>
-          </table>
+        <div class="card-header security-scan-header">
+          <h3><i class="fas fa-layer-group" style="margin-right:8px"></i>Image Security Status</h3>
+          <label class="security-scan-group-toggle text-sm">
+            <input type="checkbox" id="security-group-scan-status">
+            ${Utils.escapeHtml(i18n.t('pages.security.groupScanStatus'))}
+          </label>
+        </div>
+        <div class="card-body" style="padding:0" id="security-scan-table">
         </div>
       </div>
 
@@ -203,15 +173,11 @@ const SecurityPage = {
           <p class="text-muted" style="margin-bottom:12px">If you're using an AI assistant (Claude, ChatGPT, Copilot) for development and deployment, you can paste the following prompt to get automated fix instructions:</p>
           <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:16px;position:relative">
             <button class="btn btn-sm btn-secondary" id="copy-overview-prompt" style="position:absolute;top:8px;right:8px"><i class="fas fa-copy"></i></button>
-            <pre id="ai-prompt" class="mono text-sm" style="margin:0;white-space:pre-wrap;color:var(--text)">I have a Docker image "${images[0] ? (images[0].repoTags || ['unknown'])[0] : 'my-image'}" with the following vulnerability scan results:
+            <pre id="ai-prompt" class="mono text-sm" style="margin:0;white-space:pre-wrap;color:var(--text)">I have Docker images with the following combined vulnerability scan results:
 
 Critical: ${totalCritical}, High: ${totalHigh}, Medium: ${totalMedium}, Low: ${totalLow}
 Total vulnerabilities: ${totalVulns}, Fixable: ${totalFixable}
 
-${latestScans.length > 0 ? 'Top critical/high vulnerabilities:\n' + latestScans.flatMap(s => {
-              const scan = latestByImage[s.image_name];
-              return scan ? [] : [];
-            }).join('') : ''}
 Please:
 1. Update my Dockerfile to fix all fixable vulnerabilities
 2. Add "apk upgrade --no-cache" or "apt-get upgrade -y" as appropriate for the base image
@@ -279,26 +245,107 @@ Please:
     // Scan All button
     el.querySelector('#sec-scan-all-btn')?.addEventListener('click', () => this._scanAll());
 
-    // View scan detail buttons
-    el.querySelectorAll('[data-action="view-scan"]').forEach(btn => {
-      btn.addEventListener('click', () => this._viewScanDetail(parseInt(btn.dataset.scanId)));
-    });
+    this._bindScanStatus(el, rows, hostId);
+  },
 
-    // v6.9.4: Containers using this image — drill-down to per-container remediation
-    el.querySelectorAll('[data-action="image-containers"]').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this._showImageContainersModal(btn.dataset.image);
-      });
+  _bindScanStatus(el, rows, hostId) {
+    const table = el.querySelector('#security-scan-table');
+    const toggle = el.querySelector('#security-group-scan-status');
+    const storageKey = 'dd-security-group-scan-status';
+    toggle.checked = localStorage.getItem(storageKey) === '1';
+    const draw = () => this._renderScanStatus(table, rows, hostId, toggle.checked);
+    draw();
+    toggle.addEventListener('change', () => {
+      localStorage.setItem(storageKey, toggle.checked ? '1' : '0');
+      draw();
     });
+    table.addEventListener('click', event => {
+      const button = event.target.closest('button[data-action]');
+      if (!button) return;
+      const { action, image, imageId, scanId } = button.dataset;
+      if (action === 'view-scan') this._viewScanDetail(Number(scanId));
+      if (action === 'image-containers') this._showImageContainersModal(image);
+      if (action === 'scan') this._showScanDropdown(event, imageId, image, hostId);
+    });
+  },
 
-    // Scan menu dropdowns
-    el.querySelectorAll('.scan-menu-trigger').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this._showScanDropdown(e, btn.dataset.image);
-      });
-    });
+  _renderScanStatus(table, rows, hostId, grouped) {
+    const t = key => Utils.escapeHtml(i18n.t('pages.security.' + key));
+    const failures = this._scanFailuresFor(hostId);
+    const empty = `<tr><td colspan="9" class="text-muted text-sm">${t('noImagesInGroup')}</td></tr>`;
+    const renderRows = items => items.length
+      ? items.map(row => this._scanStatusRow(row, failures.get(row.image.id))).join('')
+      : empty;
+    const groups = grouped ? [
+      { label: t('scannedGroup'), items: rows.filter(row => row.scan) },
+      { label: t('notScannedGroup'), items: rows.filter(row => !row.scan) },
+    ] : [];
+
+    table.innerHTML = `
+      <table class="data-table">
+        <thead><tr>
+          <th scope="col" style="text-align:left">Image</th>
+          <th scope="col">Critical</th><th scope="col">High</th><th scope="col">Medium</th>
+          <th scope="col">Low</th><th scope="col">Total</th><th scope="col">Fixable</th>
+          <th scope="col">Last Scan</th><th scope="col"></th>
+        </tr></thead>
+        ${grouped ? groups.map(group => `<tbody>
+          <tr class="security-scan-group"><th scope="rowgroup" colspan="9">${group.label} (${group.items.length})</th></tr>
+          ${renderRows(group.items)}
+        </tbody>`).join('') : `<tbody>${renderRows(rows)}</tbody>`}
+      </table>`;
+  },
+
+  _scanStatusRow({ image, scan, legacy, legacyTag }, failure) {
+    const tag = image.repoTags?.find(value => value && value !== '<none>:<none>');
+    const name = Utils.escapeHtml(tag || image.shortId || image.id);
+    const id = Utils.escapeHtml(image.id);
+    const detail = failure ? `<span class="security-scan-failure text-sm">
+      ${Utils.escapeHtml(i18n.t('pages.security.latestScanFailed'))} · ${Utils.escapeHtml(failure)}
+    </span>` : '';
+    const scanButton = `<button type="button" class="action-btn scan-menu-trigger" data-action="scan"
+      data-image="${name}" data-image-id="${id}" title="${scan ? 'Re-scan' : 'Scan'}" aria-label="${scan ? 'Re-scan' : 'Scan'}">
+      <i class="fas ${scan ? 'fa-sync-alt' : 'fa-search'}" aria-hidden="true"></i></button>`;
+    const actions = scan ? `
+      <button type="button" class="action-btn" data-action="view-scan" data-scan-id="${Number(scan.id)}" title="View Details"><i class="fas fa-eye"></i></button>
+      <button type="button" class="action-btn" data-action="image-containers" data-image="${name}" title="Containers using this image" style="color:#a78bfa"><i class="fas fa-tools"></i></button>` : '';
+    const missing = legacy ? 'legacyScan' : legacyTag ? 'legacyTagScan' : 'noVerifiedScan';
+    const counts = scan ? `
+      <td style="${scan.summary_critical > 0 ? 'color:var(--red);font-weight:700' : ''}">${Number(scan.summary_critical)}</td>
+      <td style="${scan.summary_high > 0 ? 'color:#f97316;font-weight:600' : ''}">${Number(scan.summary_high)}</td>
+      <td>${Number(scan.summary_medium)}</td><td>${Number(scan.summary_low)}</td>
+      <td><strong>${Number(scan.summary_total)}</strong></td>
+      <td style="color:var(--green)">${Number(scan.fixable_count)}</td>
+      <td class="text-sm text-muted">${Utils.timeAgo(scan.scanned_at)}${detail}</td>` :
+      `<td colspan="7" class="text-muted text-sm">${Utils.escapeHtml(i18n.t('pages.security.' + missing))}${detail}</td>`;
+    return `<tr data-scan-image-id="${id}">
+      <td style="text-align:left" class="mono text-sm">${name}</td>${counts}
+      <td><div class="action-btns">${actions}${scanButton}</div></td>
+    </tr>`;
+  },
+
+  _scanFailuresFor(hostId) {
+    if (this._scanFailureUser !== App.user || !this._scanFailures) {
+      this._scanFailureUser = App.user;
+      this._scanFailures = new Map();
+    }
+    if (!this._scanFailures.has(hostId)) this._scanFailures.set(hostId, new Map());
+    return this._scanFailures.get(hostId);
+  },
+
+  async _runImageScan(hostId, imageId, scanner) {
+    const failures = this._scanFailuresFor(hostId);
+    try {
+      const result = await Api.scanImage(encodeURIComponent(imageId), scanner, hostId);
+      if (!Number.isInteger(result.scanId)) {
+        throw new Error(result.message || i18n.t('pages.security.scanUnavailable'));
+      }
+      failures.delete(imageId);
+      this._historyData = [];
+    } catch (err) {
+      failures.set(imageId, err.message);
+      throw err;
+    }
   },
 
   // v6.9.4: Bridges the image-focused Security page with the container-focused
@@ -390,7 +437,7 @@ Please:
     }
   },
 
-  _showScanDropdown(event, imageName) {
+  _showScanDropdown(event, imageId, imageName, hostId) {
     document.querySelectorAll('.scan-context-menu').forEach(m => m.remove());
 
     const rect = event.currentTarget.getBoundingClientRect();
@@ -410,7 +457,7 @@ Please:
     menu.querySelectorAll('.scan-menu-item').forEach(item => {
       item.addEventListener('click', () => {
         menu.remove();
-        this._scanImageWithScanner(imageName, item.dataset.scanner);
+        this._scanImageWithScanner(hostId, imageId, imageName, item.dataset.scanner);
       });
     });
 
@@ -421,14 +468,17 @@ Please:
     setTimeout(() => document.addEventListener('click', close, true), 10);
   },
 
-  async _scanImageWithScanner(imageName, scanner) {
+  async _scanImageWithScanner(hostId, imageId, imageName, scanner) {
+    const selectedHost = Api.getHostId();
+    const user = App.user;
     Toast.info(`Scanning ${imageName} with ${scanner}...`);
     try {
-      await Api.scanImage(encodeURIComponent(imageName), scanner);
-      Toast.success(`Scan complete for ${imageName}`);
-      this._renderTab();
+      await this._runImageScan(hostId, imageId, scanner);
+      if (App.user === user) Toast.success(`Scan complete for ${imageName}`);
     } catch (err) {
-      Toast.error(err.message);
+      if (App.user === user) Toast.error(err.message);
+    } finally {
+      if (App.user === user && Api.getHostId() === selectedHost) this._renderTab();
     }
   },
 
@@ -949,36 +999,40 @@ Generate a professional report with:
     }
   },
 
-  async _scanImage(imageId, imageName) {
-    Toast.info(`Scanning ${imageName}...`);
+  async _scanAll() {
+    if (this._scanBatch) return;
+    const selectedHost = Api.getHostId();
+    const user = App.user;
+    const stillSelected = () => App.user === user && Api.getHostId() === selectedHost;
+    this._scanBatch = true;
     try {
-      await Api.scanImage(encodeURIComponent(imageId), 'auto');
-      Toast.success(`Scan complete for ${imageName}`);
+      const ok = await Modal.confirm('Scan all images for vulnerabilities? This may take several minutes.', { confirmText: 'Scan All' });
+      if (!ok || !stillSelected()) return;
+      const images = await Api.get(`/images?hostId=${selectedHost}`);
+      if (!images.length) return;
+      const hostId = images[0].hostId ?? selectedHost;
+      Toast.info(`Scanning ${images.length} images...`);
+      let completed = 0;
+      let failed = 0;
+      for (const img of images) {
+        if (!stillSelected()) break;
+        try {
+          await this._runImageScan(hostId, img.id, 'auto');
+          completed++;
+        } catch {
+          failed++;
+        }
+      }
+      if (!stillSelected()) return;
+      const summary = `Scan complete: ${completed}/${images.length} images scanned`;
+      if (failed) Toast.warning(`${summary} · ${failed} failed`);
+      else Toast.success(summary);
       this._renderTab();
     } catch (err) {
-      Toast.error(err.message);
+      if (stillSelected()) Toast.error(err.message);
+    } finally {
+      this._scanBatch = false;
     }
-  },
-
-  async _scanAll() {
-    const ok = await Modal.confirm('Scan all images for vulnerabilities? This may take several minutes.', { confirmText: 'Scan All' });
-    if (!ok) return;
-
-    const images = await Api.getImages();
-    Toast.info(`Scanning ${images.length} images...`);
-
-    let completed = 0;
-    for (const img of images) {
-      const name = (img.repoTags || [])[0] || img.id;
-      try {
-        await Api.scanImage(encodeURIComponent(name), 'auto');
-        completed++;
-        Toast.info(`Scanned ${completed}/${images.length}: ${name}`);
-      } catch { /* continue scanning others */ }
-    }
-
-    Toast.success(`Scan complete: ${completed}/${images.length} images scanned`);
-    this._renderTab();
   },
 
   _cisBriefHtml(data) {

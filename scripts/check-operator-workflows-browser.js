@@ -23,7 +23,7 @@ async function main() {
     const base = `http://127.0.0.1:${server.address().port}`;
     await page.goto(base + '/smoke');
     for (const script of ['utils.js', 'components/log-viewer.js', 'components/compose-service-form.js',
-      'components/stack-metrics.js', 'pages/stacks.js', 'pages/security-triage.js']) {
+      'components/stack-metrics.js', 'pages/stacks.js', 'pages/security-triage.js', 'pages/security.js']) {
       await page.addScriptTag({ url: `${base}/js/${script}` });
     }
     await page.evaluate(() => {
@@ -214,8 +214,55 @@ async function main() {
     assert.equal(report.version, '2.1.0');
     assert.equal(report.runs[0].results.length, 1);
     assert.equal(report.runs[0].results[0].properties.hostId, 17);
+
+    await page.evaluate(async () => {
+      const scanned = { id: 'sha256:' + 'a'.repeat(64), repoTags: ['retagged:latest'], hostId: 17 };
+      const untagged = { id: 'sha256:' + 'b'.repeat(64), shortId: 'bbbbbbbbbbbb', repoTags: ['<none>:<none>'], hostId: 17 };
+      window.scanRequests = [];
+      window.scanToasts = [];
+      window.Toast = Object.fromEntries(['info', 'success', 'warning', 'error'].map(level =>
+        [level, message => scanToasts.push({ level, message })]));
+      window.Modal = { confirm: async () => true };
+      window.Api = {
+        getHostId: () => 17,
+        get: async url => {
+          if (url === '/images?hostId=17') return [scanned, untagged];
+          if (url !== '/images/scan-status?hostId=17') throw new Error('Overview was not scoped to the selected host');
+          return { hostId: 17, images: [untagged, scanned], legacyImageIds: [untagged.id], scans: [{
+            verified_image_id: scanned.id, id: 4, scanner: 'trivy', scanned_at: '2026-11-12',
+            summary_critical: 0, summary_high: 0, summary_medium: 0, summary_low: 0,
+            summary_total: 0, fixable_count: 0,
+          }] };
+        },
+        scanImage: async (id, scanner, hostId) => {
+          scanRequests.push([decodeURIComponent(id), scanner, hostId]);
+          return decodeURIComponent(id) === untagged.id
+            ? { scanner: 'none', message: 'Archive failed <img src=x>' }
+            : { scanner: 'trivy', scanId: 5 };
+        },
+      };
+      await SecurityPage.render(document.getElementById('test'));
+    });
+    assert.equal(await page.$('.security-scan-group'), null);
+    await page.click('#security-group-scan-status');
+    assert.deepEqual(await page.$$eval('.security-scan-group', rows => rows.map(row => row.textContent)),
+      ['scannedGroup (1)', 'notScannedGroup (1)']);
+    assert.match(await page.$eval('.security-scan-group + tr', row => row.textContent), /retagged:latest/);
+    assert.match(await page.$eval('#security-scan-table', table => table.textContent), /legacyScan/);
+    await page.click('[data-scan-image-id="sha256:' + 'b'.repeat(64) + '"] [data-action="scan"]');
+    await page.click('.scan-menu-item[data-scanner="trivy"]');
+    await page.waitForSelector('.security-scan-failure');
+    assert.match(await page.$eval('.security-scan-failure', node => node.textContent), /Archive failed <img src=x>/);
+    assert.equal(await page.$('.security-scan-failure img'), null);
+    assert.deepEqual(await page.evaluate(() => scanRequests), [['sha256:' + 'b'.repeat(64), 'trivy', 17]]);
+    assert.equal(await page.$eval('#security-group-scan-status', input => input.checked), true);
+    await page.evaluate(() => SecurityPage._scanAll());
+    await page.waitForFunction(() => scanToasts.some(toast => toast.level === 'warning' && toast.message.includes('1/2 images scanned')));
+    await page.waitForSelector('#security-group-scan-status');
+    await page.click('#security-group-scan-status');
+    assert.equal(await page.$('.security-scan-group'), null);
     assert.deepEqual(errors, []);
-    console.log('Operator browser checks passed for grouped logs, Compose graph, Stacks views and filters, triage and SARIF');
+    console.log('Operator browser checks passed for logs, Stacks, triage and Security scan grouping');
   } finally {
     await browser?.close();
     await new Promise(resolve => server.close(resolve));

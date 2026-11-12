@@ -1484,6 +1484,11 @@ i18n.register('ro', 'RO', "Română", {
       themeDark: "Inchisa"
     },
     security: {
+      groupScanStatus: 'Grupează după starea scanării', scannedGroup: 'Scanate', notScannedGroup: 'Nescanate',
+      noVerifiedScan: 'Nicio scanare verificată pentru această imagine pe acest host', noImagesInGroup: 'Nicio imagine',
+      legacyScan: 'Există un raport vechi. Rulează o scanare nouă pentru a verifica imaginea.',
+      legacyTagScan: 'Există un raport vechi pentru acest tag. Scanează imaginea curentă.',
+      latestScanFailed: 'Ultima scanare a eșuat', scanUnavailable: 'Scannerul nu a returnat un raport verificat.',
       title: "Securitate",
       subtitle: "Scanare vulnerabilitati si securitatea imaginilor",
       tabOverview: "Prezentare",

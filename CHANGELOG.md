@@ -4,6 +4,9 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Group images by scan status in Security, match reports by image ID and host,
+  and show scan failures with the reason returned by the scanner.
+
 - Sort the Stacks table by CPU or RAM and open linked Docker networks and
   volumes. Compact the toolbar and mark expanded stacks with a side accent.
 - Show host-scoped CPU and RAM totals, network and disk rates, sample times,

@@ -1110,6 +1110,11 @@ i18n.register('en', 'EN', 'English', {
     },
     // ── Security ──────────────────────────────────
     security: {
+      groupScanStatus: 'Group by scan status', scannedGroup: 'Scanned', notScannedGroup: 'Not scanned',
+      noVerifiedScan: 'No verified scan for this image on this host', noImagesInGroup: 'No images',
+      legacyScan: 'Legacy report available. Run a new scan to verify this image.',
+      legacyTagScan: 'An older report matches this tag. Run a scan for the current image.',
+      latestScanFailed: 'Latest scan failed', scanUnavailable: 'The scanner did not return a verified report.',
       title: 'Security', subtitle: 'Vulnerability scanning and image security',
       tabOverview: 'Overview', tabScanHistory: 'Scan History', tabRecommendations: 'Recommendations',
       scanImage: 'Scan Image', scanAll: 'Scan All', scanning: 'Scanning...',
