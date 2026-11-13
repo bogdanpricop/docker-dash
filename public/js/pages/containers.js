@@ -87,8 +87,8 @@ const ContainersPage = {
           <label class="toggle-label">
             <input type="checkbox" id="show-all" checked> ${i18n.t('pages.containers.showStopped')}
           </label>
-          <label class="toggle-label">
-            <input type="checkbox" id="containers-show-secondary"> ${i18n.t('common.showSecondaryStacks')}<span id="containers-secondary-count"></span>
+          <label class="toggle-label" title="${i18n.t('common.secondaryStacksHint')}">
+            <input type="checkbox" id="containers-show-secondary" aria-label="${i18n.t('common.secondaryStacksHint')}"> ${i18n.t('common.showSecondaryStacks')}<span id="containers-secondary-count"></span>
           </label>
           <label class="container-column-mode"><span class="sr-only">Table columns</span><select id="container-column-mode" class="form-control" aria-label="Table columns">
             ${tableModes.map(mode => `<option value="${mode}" ${mode === tableMode ? 'selected' : ''}>${mode[0].toUpperCase() + mode.slice(1)} columns</option>`).join('')}

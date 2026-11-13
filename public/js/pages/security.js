@@ -7,11 +7,17 @@ const SecurityPage = {
   _tab: 'overview',
 
   async render(container, params = {}) {
+    this._showSecondaryStacks = false;
+    this._historyData = [];
+    this._scanIds = [];
     container.innerHTML = `
       <div class="page-header">
         <h2><i class="fas fa-shield-alt"></i> Security</h2>
         ${Api.getHostId() > 0 ? '<span class="badge badge-info" style="margin-left:8px;font-size:11px"><i class="fas fa-server"></i> Remote Host</span>' : ''}
         <div class="page-actions">
+          <label class="toggle-label" title="${i18n.t('common.secondaryStacksHint')}">
+            <input type="checkbox" id="security-show-secondary" aria-label="${i18n.t('common.secondaryStacksHint')}"> ${i18n.t('common.showSecondaryStacks')}
+          </label>
           <button class="btn btn-sm btn-primary" id="scan-all-btn">
             <i class="fas fa-search"></i> Scan All Images
           </button>
@@ -28,6 +34,7 @@ const SecurityPage = {
         <button class="tab" data-tab="triage">Triage</button>
         <button class="tab" data-tab="history">Scan History</button>
         <button class="tab" data-tab="scanners">Scanners</button>
+        ${App.user?.role === 'admin' ? '<button class="tab" data-tab="schedules">Scheduled scans</button>' : ''}
       </div>
       <div id="sec-content">Loading...</div>
     `;
@@ -41,7 +48,16 @@ const SecurityPage = {
       });
     });
 
-    container.querySelector('#sec-refresh').addEventListener('click', () => this._renderTab());
+    container.querySelector('#security-show-secondary').addEventListener('change', event => {
+      this._showSecondaryStacks = event.target.checked;
+      this._historyData = [];
+      this._scanIds = [];
+      this._renderTab();
+    });
+    container.querySelector('#sec-refresh').addEventListener('click', () => {
+      this._historyData = [];
+      this._renderTab();
+    });
     container.querySelector('#scan-all-btn').addEventListener('click', () => this._scanAll());
     container.querySelector('#cis-header-btn').addEventListener('click', () => {
       App.navigate('/system');
@@ -49,7 +65,9 @@ const SecurityPage = {
     });
 
     const tabs = [...container.querySelectorAll('#sec-tabs [data-tab]')];
-    this._tab = tabs.find(tab => tab.dataset.tab === (params.id || this._tab))?.dataset.tab || 'overview';
+    const [requestedTab, runId] = (params.id || '').split('/');
+    this._scheduledRun = requestedTab === 'schedules' && /^[0-9]+$/.test(runId || '') ? Number(runId) : null;
+    this._tab = tabs.find(tab => tab.dataset.tab === (requestedTab || this._tab))?.dataset.tab || 'overview';
     tabs.forEach(tab => tab.classList.toggle('active', tab.dataset.tab === this._tab));
     await this._renderTab();
   },
@@ -57,31 +75,46 @@ const SecurityPage = {
   async _renderTab() {
     const el = document.getElementById('sec-content');
     if (!el) return;
+    document.getElementById('security-show-secondary').closest('label').hidden = !['overview','triage','history'].includes(this._tab);
     try {
       if (this._tab === 'overview') await this._renderOverview(el);
-      else if (this._tab === 'triage') await SecurityTriage.render(el);
+      else if (this._tab === 'triage') await SecurityTriage.render(el, this._showSecondaryStacks);
       else if (this._tab === 'history') await this._renderHistory(el);
       else if (this._tab === 'scanners') await this._renderScanners(el);
+      else if (this._tab === 'schedules') {
+        const runId = this._scheduledRun;
+        this._scheduledRun = null;
+        await SecuritySchedules.render(el, runId);
+      }
     } catch (err) {
       el.innerHTML = `<div class="empty-msg">Error: ${Utils.escapeHtml(err.message)}</div>`;
     }
   },
 
+  _secondaryFilter(path) {
+    return path + (this._showSecondaryStacks ? '' : (path.includes('?') ? '&' : '?') + 'secondary=hide');
+  },
+
   async _renderOverview(el) {
     el.innerHTML = `<div class="text-muted"><i class="fas fa-spinner fa-spin"></i> Loading scan data...</div>`;
 
+    const showSecondary = this._showSecondaryStacks;
+    const host = Api.getHostId();
     const [history, images, scannersData] = await Promise.all([
-      Api.get('/images/scan-history?limit=500'),
-      Api.getImages(),
+      Api.get(this._secondaryFilter('/images/scan-history?limit=500')),
+      Api.get(this._secondaryFilter('/images')),
       Api.getScanners().catch(() => ({ scanners: [] })),
     ]);
 
-    // Latest scan per image
-    const latestByImage = {};
+    if (!el.isConnected || this._tab !== 'overview' || showSecondary !== this._showSecondaryStacks || host !== Api.getHostId()) return;
+
+    const installed = new Set(images.map(image => image.id));
+    const latestByImage = new Map();
     for (const scan of history) {
-      if (!latestByImage[scan.image_name]) latestByImage[scan.image_name] = scan;
+      const id = scan.verified_image_id || scan.image_id;
+      if (installed.has(id) && !latestByImage.has(id)) latestByImage.set(id, scan);
     }
-    const latestScans = Object.values(latestByImage);
+    const latestScans = [...latestByImage.values()];
 
     const totalImages = images.length;
     const scannedImages = latestScans.length;
@@ -141,7 +174,7 @@ const SecurityPage = {
               ${images.map(img => {
                 const name = (img.repoTags || [])[0] || '<none>';
                 const eName = Utils.escapeHtml(name);
-                const scan = latestByImage[name];
+                const scan = latestByImage.get(img.id);
                 const scanMenu = `<div class="action-btns" style="position:relative">
                   <button class="action-btn scan-menu-trigger" data-image="${eName}" title="Scan"><i class="fas fa-search"></i></button>
                 </div>`;
@@ -439,7 +472,11 @@ Please:
   async _renderHistory(el) {
     if (!this._historyData.length) {
       el.innerHTML = `<div class="text-muted"><i class="fas fa-spinner fa-spin"></i> Loading...</div>`;
-      this._historyData = await Api.get('/images/scan-history?limit=500');
+      const showSecondary = this._showSecondaryStacks;
+      const host = Api.getHostId();
+      const history = await Api.get(this._secondaryFilter('/images/scan-history?limit=500'));
+      if (!el.isConnected || this._tab !== 'history' || showSecondary !== this._showSecondaryStacks || host !== Api.getHostId()) return;
+      this._historyData = history;
     }
 
     const history = this._historyData;
@@ -491,7 +528,7 @@ Please:
     });
 
     el.querySelector('#hist-refresh')?.addEventListener('click', async () => {
-      this._historyData = await Api.get('/images/scan-history?limit=500');
+      this._historyData = [];
       this._renderHistory(el);
     });
 
@@ -735,22 +772,23 @@ docker compose up -d</pre>
 
   _scanIds: [],
 
-  async _viewScanDetail(scanId) {
+  async _viewScanDetail(scanId, hostId) {
     try {
       // Load scan IDs list for navigation if not already loaded
-      if (!this._scanIds.length) {
-        const history = await Api.get('/images/scan-history?limit=500');
+      if (hostId === undefined && !this._scanIds.length) {
+        const history = await Api.get(this._secondaryFilter('/images/scan-history?limit=500'));
         this._scanIds = history.map(r => r.id);
       }
 
-      const data = await Api.get(`/images/scan-history/${scanId}`);
+      const query = hostId === undefined ? '' : '?hostId=' + encodeURIComponent(hostId);
+      const data = await Api.get(`/images/scan-history/${scanId}${query}`);
       const vulns = data.vulnerabilities || [];
       const recs = data.recommendations || [];
       const s = { critical: data.summary_critical, high: data.summary_high, medium: data.summary_medium, low: data.summary_low, total: data.summary_total };
 
-      const currentIdx = this._scanIds.indexOf(scanId);
+      const currentIdx = hostId === undefined ? this._scanIds.indexOf(scanId) : -1;
       const prevId = currentIdx > 0 ? this._scanIds[currentIdx - 1] : null;
-      const nextId = currentIdx < this._scanIds.length - 1 ? this._scanIds[currentIdx + 1] : null;
+      const nextId = currentIdx >= 0 && currentIdx < this._scanIds.length - 1 ? this._scanIds[currentIdx + 1] : null;
 
       const sevColor = sev => ({ critical: 'var(--red)', high: '#f97316', medium: 'var(--yellow)', low: 'var(--text-dim)' }[sev] || 'var(--text)');
 
@@ -788,7 +826,7 @@ Please:
           <button class="btn btn-sm btn-secondary" id="scan-prev" ${!prevId ? 'disabled' : ''} title="Previous scan"><i class="fas fa-chevron-left"></i></button>
           <button class="btn btn-sm btn-secondary" id="scan-next" ${!nextId ? 'disabled' : ''} title="Next scan"><i class="fas fa-chevron-right"></i></button>
           <h3 style="flex:1;margin:0"><i class="fas fa-shield-alt" style="color:var(--accent);margin-right:8px"></i>Scan: ${Utils.escapeHtml(data.image_name)}</h3>
-          <span class="text-sm text-muted">${currentIdx + 1}/${this._scanIds.length}</span>
+          ${currentIdx >= 0 ? `<span class="text-sm text-muted">${currentIdx + 1}/${this._scanIds.length}</span>` : ''}
           <button class="modal-close-btn" id="scan-detail-close-x"><i class="fas fa-times"></i></button>
         </div>
         <div class="modal-body">
@@ -964,14 +1002,15 @@ Generate a professional report with:
     const ok = await Modal.confirm('Scan all images for vulnerabilities? This may take several minutes.', { confirmText: 'Scan All' });
     if (!ok) return;
 
-    const images = await Api.getImages();
+    const images = await Api.get(this._secondaryFilter('/images'));
     Toast.info(`Scanning ${images.length} images...`);
 
     let completed = 0;
     for (const img of images) {
       const name = (img.repoTags || [])[0] || img.id;
       try {
-        await Api.scanImage(encodeURIComponent(name), 'auto');
+        const result = await Api.scanImage(encodeURIComponent(img.id), 'auto');
+        if (!result.scanId) continue;
         completed++;
         Toast.info(`Scanned ${completed}/${images.length}: ${name}`);
       } catch { /* continue scanning others */ }

@@ -783,6 +783,8 @@ router.get('/compare', (req, res) => {
     { feature: 'Per-Container Webhook Triggers', dockerDash: 'API', portainerCE: 'BE only', portainerBE: 'Non-Edge',
       dockerDashNote: 'Admin-managed tokens can trigger restart, image pull or guarded replacement on the registered host.',
       source: { label: 'Portainer container webhook documentation', url: 'https://docs.portainer.io/user/docker/containers/webhooks' } },
+    { feature: 'Scheduled Image Vulnerability and CIS Reports', dockerDash: true,
+      dockerDashNote: 'Schedule per Docker host and receive scan coverage, available image fixes, or CIS results through a notification channel.' },
     { feature: 'Host-Bound Scheduled Container Actions', dockerDash: true,
       dockerDashNote: 'New schedules store the original host so changing the default cannot retarget them.' },
     { feature: 'Deployment Rollback',               dockerDash: true,              portainerCE: false,            portainerBE: false,         coolify: true,          yacht: false,      rancher: true,         dockge: false,          dockhand: false },

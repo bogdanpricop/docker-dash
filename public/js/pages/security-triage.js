@@ -1,7 +1,7 @@
 'use strict';
 
 const SecurityTriage = {
-  async render(element) {
+  async render(element, showSecondary = false) {
     const escape = Utils.escapeHtml;
     const activeHost = Api.getHostId();
     element.innerHTML = `<div class="card" style="padding:12px">
@@ -82,7 +82,7 @@ const SecurityTriage = {
       compare.disabled = exportButton.disabled = true;
       status.textContent = 'Loading verified scan results…';
       try {
-        const response = await Api.get('/images/scan-triage?hostId=' + host.value);
+        const response = await Api.get('/images/scan-triage?hostId=' + host.value + (showSecondary ? '' : '&secondary=hide'));
         if (!list.isConnected || id !== request) return;
         data = response;
         scanMap = new Map(data.scans.map(scan => [scan.id, scan]));
@@ -96,7 +96,7 @@ const SecurityTriage = {
     };
     host.addEventListener('change', load);
     [stack, image, severity, fix].forEach(control => control.addEventListener('change', () => { page = 0; paint(); }));
-    compare.addEventListener('click', () => this.compare(data.host.id).catch(error => Toast.error(error.message)));
+    compare.addEventListener('click', () => this.compare(data.host.id, showSecondary).catch(error => Toast.error(error.message)));
     exportButton.addEventListener('click', () => this.exportSarif(filtered, scanMap, data.host));
     try {
       const hosts = (await Api.getHosts()).filter(item => item.isActive && ['docker', 'podman'].includes(item.daemonType || 'docker'));
@@ -106,9 +106,9 @@ const SecurityTriage = {
     if (list.isConnected) await load();
   },
 
-  async compare(hostId) {
+  async compare(hostId, showSecondary = false) {
     const escape = Utils.escapeHtml;
-    const history = (await Api.get(`/images/scan-history?hostId=${hostId}&limit=200`)).filter(scan => scan.verified_image_id);
+    const history = (await Api.get(`/images/scan-history?hostId=${hostId}&limit=200${showSecondary ? '' : '&secondary=hide'}`)).filter(scan => scan.verified_image_id);
     if (history.length < 2) { Toast.info('Two verified scans on this host are needed for comparison'); return; }
     const options = history.map(scan => `<option value="${scan.id}">${escape(scan.image_name)} · ${Utils.shortImageId(scan.verified_image_id)} · ${escape(scan.scanner)} · ${escape(scan.scanned_at)}</option>`).join('');
     const choice = await Modal.form(`<div class="form-group"><label for="compare-base-scan">Baseline</label><select class="form-control" id="compare-base-scan">${options}</select></div>

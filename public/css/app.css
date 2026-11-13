@@ -405,10 +405,11 @@ textarea { resize: vertical; min-height: 80px; }
 .main-content:has(.stacks-page-header) { padding-top: 12px; }
 .page-header.stacks-page-header { margin-bottom: 8px; gap: 6px 14px; padding-block: 0; }
 .stacks-page-header .page-actions { gap: 6px; justify-content: flex-start; }
-.stacks-filters { display: flex; flex: 1 1 248px; align-items: center; gap: 6px; min-width: 0; }
-.stacks-filters .search-box { flex: 1; min-width: 0; }
+.stacks-filters { display: flex; flex: 1 1 300px; align-items: center; gap: 6px; min-width: min(100%, 270px); max-width: 420px; }
+.stacks-filters .search-box { flex: 1 1 180px; min-width: 0; }
 .stacks-filters .search-box input, .stacks-filters .search-box input:focus { min-width: 0; width: 100%; }
-.stacks-state-filter { width: auto; }
+.stacks-filters .stacks-state-filter { flex: 0 0 auto; width: auto; max-width: 10rem; padding-block: 5px; }
+.toggle-label[hidden] { display: none; }
 .stack-table-scroll { overflow-x: auto; }
 .stack-table-scroll .stack-table { display: table; min-width: 1050px; }
 .stack-table th:first-child { width: 36px; }

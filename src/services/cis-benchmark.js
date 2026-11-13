@@ -25,8 +25,9 @@ const PRIV_PORT_THRESHOLD = 1024;
  * @param {object} docker — dockerode instance
  * @returns {Promise<{checks: Array, summary: object, score: number}>}
  */
-async function runBenchmark(docker) {
+async function runBenchmark(docker, { deadline = Infinity } = {}) {
   const results = [];
+  const coverage = { selected: 0, checked: 0, error: null };
 
   // ── Daemon checks ──────────────────────────────────────────
   let info = {};
@@ -38,7 +39,8 @@ async function runBenchmark(docker) {
       id: 'D-0', title: 'Docker daemon unreachable', category: 'Daemon',
       status: 'fail', details: err.message, remediation: 'Verify Docker socket access.',
     });
-    return _summarize(results);
+    coverage.error = 'Docker daemon unreachable';
+    return { ..._summarize(results), coverage };
   }
 
   // D-1: Logging level
@@ -95,12 +97,15 @@ async function runBenchmark(docker) {
   let containers = [];
   try {
     containers = await docker.listContainers({ all: false });
+    coverage.selected = containers.length;
   } catch (err) {
+    coverage.error = 'Container inventory unavailable';
     log.warn('Cannot list containers for CIS benchmark', err.message);
   }
 
   const containerResults = [];
   for (const c of containers) {
+    if (Date.now() >= deadline) break;
     try {
       const inspect = await docker.getContainer(c.Id).inspect();
       const name = (inspect.Name || c.Names?.[0] || c.Id.slice(0, 12)).replace(/^\//, '');
@@ -207,6 +212,7 @@ async function runBenchmark(docker) {
         image: inspect.Config?.Image || '',
         findings,
       });
+      coverage.checked++;
     } catch (err) {
       log.warn(`Cannot inspect container ${c.Id} for CIS benchmark`, err.message);
     }
@@ -214,7 +220,7 @@ async function runBenchmark(docker) {
 
   results.push(...containerResults);
 
-  return _summarize(results);
+  return { ..._summarize(results), coverage };
 }
 
 function _summarize(checks) {

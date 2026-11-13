@@ -156,6 +156,13 @@ All notable changes to Docker Dash are documented here.
   members. Commit mutations, mapping changes and HTTP audit together; remove group
   ownership mappings on deletion. [Evidence and compatibility](docs/audits/2026-09-20-scim-security.md).
 
+## [8.96.45] - 2026-11-13 — Scheduled security scans and secondary stacks
+
+- Schedule image vulnerability scans and CIS benchmarks per Docker host.
+  Review run history, available fixes, incomplete scans and notification delivery.
+- Keep the Stacks search field wider than the status filter. Use the same
+  secondary-stack toggle across Stacks, Containers, Images, Security and Log Explorer.
+
 ## [8.96.44] - 2026-11-13 — Jest dependency security
 
 - Fix CVE-2026-93753 in the object merge used by Jest configuration. Keep the
