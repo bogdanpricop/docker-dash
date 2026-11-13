@@ -1,0 +1,8 @@
+{
+  "name": "@docker-dash/deepmerge",
+  "version": "4.3.1-docker-dash.1",
+  "private": true,
+  "description": "Jest configuration merge with a local fix for CVE-2026-93753",
+  "license": "MIT",
+  "main": "index.js"
+}

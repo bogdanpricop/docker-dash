@@ -15,6 +15,9 @@ const WhatsNewPage = {
   // Contributors add their entry to _unreleased below; the release process
   // moves those entries into a new numbered release.
   _releases: [
+    { version: '8.96.44', date: '2026-11-13', title: 'Jest dependency security', changes: [
+      { type: 'security', text: 'Fix CVE-2026-93753 in Jest configuration merging and require a clean audit for all npm dependencies.' },
+    ] },
     { version: '8.96.43', date: '2026-11-13', title: 'Security across Git, Docker and diagnostics', changes: [
       { type: 'security', text: 'Protect Git credentials and environment values, and check deployment and diagnostic access.' },
       { type: 'security', text: 'Keep registry credentials with their configured origin and apply stack permissions to metrics.' },

@@ -156,6 +156,11 @@ All notable changes to Docker Dash are documented here.
   members. Commit mutations, mapping changes and HTTP audit together; remove group
   ownership mappings on deletion. [Evidence and compatibility](docs/audits/2026-09-20-scim-security.md).
 
+## [8.96.44] - 2026-11-13 — Jest dependency security
+
+- Fix CVE-2026-93753 in the object merge used by Jest configuration. Keep the
+  current Jest runner and require a clean npm audit for all dependencies.
+
 ## [8.96.43] - 2026-11-13 — Security across Git, Docker and diagnostics
 
 - Keep Git webhook credentials and environment overrides out of stack metadata.
