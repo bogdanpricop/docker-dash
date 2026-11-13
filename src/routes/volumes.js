@@ -9,6 +9,8 @@ const { getClientIp } = require('../utils/helpers');
 const { extractHostId } = require('../middleware/hostId');
 const { requireHostAccessForMethod } = require('../middleware/hostAccess');
 const asyncHandler = require('../utils/asyncHandler');
+const permissions = require('../services/permissions');
+const { listSecondaryStacks } = require('../services/stack-display-preferences');
 
 const router = Router();
 router.use(requireAuth);
@@ -16,7 +18,21 @@ router.use(extractHostId);
 router.use(requireHostAccessForMethod());
 
 router.get('/', requireAuth, asyncHandler(async (req, res) => {
-  res.json(await dockerService.listVolumes(req.resolvedHostId ?? req.hostId));
+  const hostId = req.resolvedHostId ?? req.hostId;
+  const secondary = req.query.secondary === 'hide' ? new Set(listSecondaryStacks(req.user.id, hostId)) : new Set();
+  if (!secondary.size) return res.json(await dockerService.listVolumes(hostId));
+
+  const [volumes, containers] = await Promise.all([dockerService.listVolumes(hostId), dockerService.listContainers(hostId)]);
+  const primaryMounts = new Set();
+  const secondaryMounts = new Set();
+  for (const container of permissions.filterContainers(containers, req.user.id, req.user.role)) {
+    const names = secondary.has(container.stack) ? secondaryMounts : primaryMounts;
+    for (const mount of container.mounts || []) {
+      if (mount.type === 'volume' && mount.name) names.add(mount.name);
+    }
+  }
+  res.json(volumes.filter(volume => primaryMounts.has(volume.name) ||
+    (!secondaryMounts.has(volume.name) && !secondary.has(volume.labels?.['com.docker.compose.project']))));
 }));
 
 router.get('/:name/inspect', requireAuth, asyncHandler(async (req, res) => {

@@ -22,8 +22,9 @@ async function main() {
     page.on('pageerror', error => errors.push(error.message));
     const base = `http://127.0.0.1:${server.address().port}`;
     await page.goto(base + '/smoke');
-    for (const script of ['utils.js', 'components/log-viewer.js', 'components/compose-service-form.js',
-      'components/stack-metrics.js', 'pages/stacks.js', 'pages/security-triage.js']) {
+    for (const script of ['utils.js', 'components/table.js', 'components/log-viewer.js', 'components/compose-service-form.js',
+      'components/stack-metrics.js', 'pages/stacks.js', 'pages/security-triage.js', 'pages/images.js', 'pages/volumes.js',
+      'pages/security.js', 'pages/security-schedules.js']) {
       await page.addScriptTag({ url: `${base}/js/${script}` });
     }
     await page.evaluate(() => {
@@ -143,16 +144,25 @@ async function main() {
     await page.hover('.stack-table-services:not([hidden]) .stack-service-card');
     assert.equal(await serviceBackground(), beforeHover);
     const names = () => page.$$eval('[data-stack-row]', rows => rows.map(row => row.cells[1].textContent.trim()));
+    const stackSort = key => '.stack-table [data-sort-column="' + key + '"]';
     await page.evaluate(() => window.scrollTo(0, 0));
-    await page.click('[data-stack-sort="ram"]');
-    assert.equal(await page.$eval('[data-stack-sort="ram"]', el => el.closest('th').getAttribute('aria-sort')), 'descending');
+    await page.click(stackSort('name'));
+    assert.deepEqual(await names(), ['analytics', 'billing', 'offline']);
+    await page.keyboard.press('Enter');
+    assert.deepEqual(await names(), ['offline', 'billing', 'analytics']);
+    await page.click(stackSort('volumes'));
+    assert.deepEqual(await names(), ['offline', 'analytics', 'billing']);
+    await page.click(stackSort('network'));
+    assert.deepEqual(await names(), ['billing', 'analytics', 'offline']);
+    await page.click(stackSort('ram'));
+    assert.equal(await page.$eval(stackSort('ram'), el => el.closest('th').getAttribute('aria-sort')), 'descending');
     assert.deepEqual(await names(), ['analytics', 'billing', 'offline']);
     assert.equal(await page.$eval('.stack-row-expanded', row => row.nextElementSibling.hidden), false);
-    await page.click('[data-stack-sort="cpu"]');
+    await page.click(stackSort('cpu'));
     assert.deepEqual(await names(), ['billing', 'analytics', 'offline']);
-    await page.click('[data-stack-sort="cpu"]');
+    await page.click(stackSort('cpu'));
     assert.deepEqual(await names(), ['analytics', 'billing', 'offline']);
-    await page.click('[data-stack-sort="cpu"]');
+    await page.click(stackSort('cpu'));
     assert.deepEqual(await names(), ['billing', 'offline', 'analytics']);
     await page.click('.stack-row-expanded [data-stack-expand]');
     await page.select('#stacks-state', 'partial');
@@ -223,7 +233,7 @@ async function main() {
         getHostId: () => 0,
         getHosts: async () => [host],
         get: async url => {
-          if (!url.endsWith('hostId=17')) throw new Error('Host was not pinned');
+          if (url !== '/images/scan-triage?hostId=17&secondary=hide') throw new Error('Host and secondary filter were not applied');
           return {
             host, scans: [{ id: 4, image_name: 'fixture:1', verified_image_id: image, scanner: 'trivy',
               consumers: [{ id: 'abc', name: 'api', stack: 'demo', state: 'running' }] }],
@@ -242,6 +252,9 @@ async function main() {
       HTMLAnchorElement.prototype.click = () => {};
       await SecurityTriage.render(document.getElementById('test'));
     });
+    await page.click('[data-triage-list] [data-sort-column="severity"]');
+    await page.keyboard.press('Enter');
+    assert.match(await page.$eval('[data-triage-list] tbody tr', el => el.textContent), /CVE-TEST-2/);
     await page.select('[data-triage-stack]', 'demo');
     await page.select('[data-triage-fix]', 'fixed');
     assert.match(await page.$eval('[data-triage-list]', el => el.textContent), /CVE-TEST-1/);
@@ -251,8 +264,79 @@ async function main() {
     assert.equal(report.version, '2.1.0');
     assert.equal(report.runs[0].results.length, 1);
     assert.equal(report.runs[0].results[0].properties.hostId, 17);
+
+    await page.evaluate(async () => {
+      const images = [
+        { id: 'sha256:' + 'a'.repeat(64), repoTags: ['web:10'], created: 100, size: 10 },
+        { id: 'sha256:' + 'b'.repeat(64), repoTags: ['web:2'], created: 200, size: 2 },
+        { id: 'sha256:' + 'c'.repeat(64), repoTags: ['z-unscanned:1'], created: 300, size: 5 },
+      ];
+      const scans = [
+        { id: 1, image_id: images[0].id, image_name: 'web:10', scanner: 'trivy', scanned_at: '2026-01-01 10:00:00', summary_total: 10 },
+        { id: 2, image_id: images[1].id, image_name: 'web:2', scanner: 'grype', scanned_at: '2026-01-01T11:00:00+02:00', summary_total: 2 },
+      ].map(scan => ({ summary_critical: 0, summary_high: 0, summary_medium: 0, summary_low: 0, fixable_count: 0, ...scan }));
+      window.App = { user: { role: 'admin' } };
+      window.Toast = { error: error => { throw new Error(error); } };
+      window.Api = {
+        getHostId: () => 17,
+        getScanners: async () => ({ scanners: [] }),
+        get: async url => {
+          if (url.startsWith('/images/scan-history')) return scans;
+          if (url === '/security-schedules') return { timeZone: 'UTC', schedules: [
+            { id: 1, name: 'Weekly 10', kind: 'images', enabled: false, hostName: 'Docker2' },
+            { id: 2, name: 'Weekly 2', kind: 'cis', enabled: true, nextRunAt: '2026-01-01T02:00:00Z', hostName: 'VPS' },
+          ] };
+          if (url === '/security-schedules/2/history') return [
+            { id: 1, queuedAt: '2026-01-02T02:00:00Z', kind: 'cis', status: 'error', trigger: 'manual' },
+            { id: 2, queuedAt: '2026-01-01T02:00:00Z', kind: 'cis', status: 'success', trigger: 'automatic' },
+          ];
+          return structuredClone(images);
+        },
+        getVolumes: async ({ showSecondary }) => [
+          { name: 'primary', size: 20, created: '2026-01-01T11:00:00+02:00' },
+          { name: 'shared', size: -1, created: '2026-01-01T10:00:00Z' },
+          ...(showSecondary ? [{ name: 'secondary', size: 2, created: '2026-01-01T12:00:00Z' }] : []),
+        ],
+      };
+      await ImagesPage.render(document.getElementById('test'));
+    });
+    const column = (table, index = 0) => page.$$eval(`${table} tbody tr`, (rows, i) => rows.map(row => row.cells[i].textContent.trim()), index);
+    await page.click('#images-table [data-sort-column="size"]');
+    assert.deepEqual(await column('#images-table', 1), ['2', '1', '10']);
+    await page.click('#image-group-repos');
+    await page.click('[data-repository="web"] summary');
+    await page.click('[data-repository="web"] [data-sort-column="tag"]');
+    assert.deepEqual(await column('[data-repository="web"]'), ['2', '10']);
+    await page.evaluate(async () => { ImagesPage.destroy(); await VolumesPage.render(document.getElementById('test')); });
+    assert.deepEqual(await column('#vol-table'), ['primary', 'shared']);
+    await page.click('#vol-table [data-sort-column="size"]');
+    await page.click('#vol-show-secondary');
+    assert.deepEqual(await column('#vol-table'), ['secondary', 'primary', 'shared']);
+    await page.click('#vol-table [data-sort-column="size"]');
+    assert.deepEqual(await column('#vol-table'), ['primary', 'secondary', 'shared']);
+    await page.click('#vol-table [data-sort-column="created"]');
+    assert.deepEqual(await column('#vol-table'), ['primary', 'shared', 'secondary']);
+    await page.click('#vol-show-secondary');
+    assert.deepEqual(await column('#vol-table'), ['primary', 'shared']);
+    await page.evaluate(async () => { VolumesPage.destroy(); await SecurityPage.render(document.getElementById('test')); });
+    await page.click('#sec-image-status [data-sort-column="summary_total"]');
+    assert.deepEqual(await column('#sec-image-status'), ['web:2', 'web:10', 'z-unscanned:1']);
+    await page.keyboard.press('Enter');
+    assert.deepEqual(await column('#sec-image-status'), ['web:10', 'web:2', 'z-unscanned:1']);
+    await page.click('#sec-tabs [data-tab="history"]');
+    await page.click('#hist-body [data-sort-column="scanned_at"]');
+    assert.deepEqual(await column('#hist-body'), ['web:2', 'web:10']);
+    await page.click('[data-view="date"]');
+    await page.click('.hist-group [data-sort-column="summary_total"]');
+    assert.deepEqual(await column('.hist-group'), ['web:2', 'web:10']);
+    await page.click('#sec-tabs [data-tab="schedules"]');
+    await page.click('[data-scan-schedules] [data-sort-column="next"]');
+    assert.deepEqual(await page.$$eval('[data-scan-schedules] tbody strong', cells => cells.map(cell => cell.textContent)), ['Weekly 2', 'Weekly 10']);
+    await page.click('[data-scan-action="history"][data-id="2"]');
+    await page.click('#security-schedule-history [data-sort-column="queued"]');
+    assert.deepEqual(await column('#security-schedule-history', 1), ['automatic', 'manual']);
     assert.deepEqual(errors, []);
-    console.log('Operator browser checks passed for grouped logs, Compose graph, Stacks views and filters, triage and SARIF');
+    console.log('Operator browser checks passed for grouped logs, Compose graph, inventory sorting and visibility, security triage and SARIF');
   } finally {
     await browser?.close();
     await new Promise(resolve => server.close(resolve));

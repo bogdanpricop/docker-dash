@@ -9,7 +9,9 @@ const StacksPage = {
   _filter: localStorage.getItem('dd-stacks-search') || '',
   _stateFilter: localStorage.getItem('dd-stacks-state') || '',
   _listView: localStorage.getItem('dd-stacks-view') === 'table' ? 'table' : 'cards',
-  _metricSort: localStorage.getItem('dd-stacks-sort') || '',
+  _sortPreference: localStorage.getItem('dd-stacks-sort') || '',
+  _metricColumns: ['cpu', 'ram', 'network', 'disk', 'updated'],
+  _inventoryColumns: ['name', 'status', 'source', 'running', 'networks', 'volumes'],
   _stackHost: null,
   _listStacks: [],
   _expandedServices: new Set(),
@@ -316,12 +318,13 @@ const StacksPage = {
         });
       });
       if (this._listView === 'table' && this._stackHostReady) {
-        this._stackMetrics = new StackMetrics(el, this._stackHost.id, unified, this._stackSort());
+        this._stackMetrics = new StackMetrics(el, this._stackHost.id, unified, this._stackSort(), stack => this._stackSortValues(stack));
       }
-      el.querySelectorAll('[data-stack-sort]').forEach(button => {
-        button.addEventListener('click', () => this._toggleStackSort(el, button.dataset.stackSort));
-      });
-      this._syncStackSort(el);
+      const head = el.querySelector('.stack-table thead');
+      if (head) {
+        TableSort.onClick(head, key => this._toggleStackSort(head, key));
+        TableSort.update(head, this._stackSort());
+      }
       el.querySelectorAll('[data-stack-review]').forEach(button => {
         button.addEventListener('click', () => this._reviewStack(button.dataset.stackName, button.dataset.stackReview, button));
       });
@@ -563,18 +566,15 @@ const StacksPage = {
   _renderStackTable(stacks) {
     const esc = Utils.escapeHtml;
     const t = key => i18n.t('pages.stacks.' + key);
+    const header = (key, label, title) => TableSort.header(key, label, { title });
     return `<div class="card stack-table-scroll" data-stacks-table><table class="data-table compact stack-table">
-      <thead><tr><th scope="col" aria-label="${t('services')}"></th><th scope="col">${i18n.t('common.name')}</th>
-        <th scope="col">${i18n.t('common.status')}</th><th scope="col">${t('source')}</th>
-        <th scope="col">${t('containerCount')}</th>
-        ${['cpu', 'ram'].map(field => `<th scope="col"${field === 'cpu' ? ` title="${esc(t('metrics.cpuHint'))}"` : ''}>
-          <button type="button" class="stack-sort-button" data-stack-sort="${field}">${t('metrics.' + field)} <span aria-hidden="true">↕</span></button>
-        </th>`).join('')}
-        <th scope="col" title="${esc(t('metrics.rateHint'))}">${t('metrics.network')}</th>
-        <th scope="col" title="${esc(t('metrics.rateHint'))}">${t('metrics.disk')}</th>
-        <th scope="col">${t('usedNetworks')}</th>
-        <th scope="col">${t('usedVolumes')}</th>
-        <th scope="col" title="${esc(t('metrics.updatedHint'))}">${t('metrics.updated')}</th>
+      <thead><tr><th scope="col" aria-label="${t('services')}"></th>${header('name', i18n.t('common.name'))}
+        ${header('status', i18n.t('common.status'))}${header('source', t('source'))}
+        ${header('running', t('containerCount'))}
+        ${header('cpu', t('metrics.cpu'), t('metrics.cpuHint'))}${header('ram', t('metrics.ram'))}
+        ${header('network', t('metrics.network'), t('metrics.rateHint'))}${header('disk', t('metrics.disk'), t('metrics.rateHint'))}
+        ${header('networks', t('usedNetworks'))}${header('volumes', t('usedVolumes'))}
+        ${header('updated', t('metrics.updated'), t('metrics.updatedHint'))}
         <th scope="col">${i18n.t('common.actions')}</th></tr></thead>
       <tbody>${stacks.map((stack, index) => {
         const path = this._stackDetailPath(stack);
@@ -603,28 +603,32 @@ const StacksPage = {
   },
 
   _stackSort() {
-    const [field, direction] = this._metricSort.split(':');
-    return ['cpu', 'ram'].includes(field) && ['ascending', 'descending'].includes(direction) ? { field, direction } : null;
+    const [key, direction] = this._sortPreference.split(':');
+    return [...this._metricColumns, ...this._inventoryColumns].includes(key) && ['ascending', 'descending'].includes(direction)
+      ? { key, direction } : null;
   },
 
   _toggleStackSort(root, field) {
     const previous = this._stackSort();
-    this._metricSort = previous?.field !== field ? field + ':descending'
-      : previous.direction === 'descending' ? field + ':ascending' : '';
-    localStorage.setItem('dd-stacks-sort', this._metricSort);
-    this._syncStackSort(root);
-    this._stackMetrics?.setSort(this._stackSort());
+    const metric = this._metricColumns.includes(field);
+    const sort = metric && previous?.key === field && previous.direction === 'ascending'
+      ? null : TableSort.next(previous, field, metric ? 'descending' : 'ascending');
+    this._sortPreference = sort ? `${sort.key}:${sort.direction}` : '';
+    localStorage.setItem('dd-stacks-sort', this._sortPreference);
+    TableSort.update(root, sort);
+    this._stackMetrics?.setSort(sort);
   },
 
-  _syncStackSort(root) {
-    const sort = this._stackSort();
-    root.querySelectorAll('[data-stack-sort]').forEach(button => {
-      const header = button.closest('th');
-      const active = sort?.field === button.dataset.stackSort;
-      if (active) header.setAttribute('aria-sort', sort.direction);
-      else header.removeAttribute('aria-sort');
-      button.querySelector('span').textContent = active ? (sort.direction === 'ascending' ? '↑' : '↓') : '↕';
-    });
+  _stackSortValues(stack) {
+    const t = key => i18n.t('pages.stacks.' + key);
+    return {
+      name: stack.name,
+      status: t('state.' + this._stackState(stack)),
+      source: stack.source === 'git' ? 'Git' : t(stack.discovered ? 'sourceDisk' : 'sourceHost'),
+      running: stack.running,
+      networks: stack.networks?.length || 0,
+      volumes: stack.volumes?.length || 0,
+    };
   },
 
   _renderStackResources(stack, kind) {

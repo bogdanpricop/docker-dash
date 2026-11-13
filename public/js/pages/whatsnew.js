@@ -15,6 +15,10 @@ const WhatsNewPage = {
   // Contributors add their entry to _unreleased below; the release process
   // moves those entries into a new numbered release.
   _releases: [
+    { version: '8.96.46', date: '2026-11-14', title: 'Inventory sorting and secondary volumes', changes: [
+      { type: 'improvement', text: 'Sort Stacks, Images, Volumes and Security tables by clicking column headers.' },
+      { type: 'feature', text: 'Use Sec. stacks in Volumes to show volumes associated only with secondary stacks.' },
+    ] },
     { version: '8.96.45', date: '2026-11-13', title: 'Scheduled security scans and secondary stacks', changes: [
       { type: 'feature', text: 'Schedule vulnerability scans and CIS benchmarks per host, with report history and optional notification delivery.' },
       { type: 'improvement', text: 'Use the Sec. stacks filter in Images, Security and Log Explorer. The Stacks search field has more room.' },

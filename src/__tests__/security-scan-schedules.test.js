@@ -28,6 +28,7 @@ app.use((req, _res, next) => {
 const router = Router();
 router.use('/security-schedules', require('../routes/security-schedules'));
 router.use('/images', require('../routes/images'));
+router.use('/volumes', require('../routes/volumes'));
 app.use(router);
 app.use((error, _req, res, _next) => res.status(error.status || 500).json({ error: error.message }));
 
@@ -166,4 +167,24 @@ test('secondary-only images are excluded before history pagination and shared im
   expect(triage.body.scans).toEqual([expect.objectContaining({
     verified_image_id: shared, consumers: [expect.objectContaining({ stack: 'primary' })],
   })]);
+});
+
+test('volume visibility keeps shared and unassigned volumes, and hides exclusive mounts and Compose-owned volumes', async () => {
+  const preferences = require('../services/stack-display-preferences');
+  preferences.setSecondaryStack(800, hostId, 'demo', true);
+  const volumes = ['demo-mounted', 'demo-stopped', 'demo-unmounted', 'shared', 'unused', 'bind-source'].map(name => ({ name }));
+  for (const index of [2, 3]) volumes[index].labels = { 'com.docker.compose.project': 'demo' };
+  const mount = name => ({ name, type: 'volume' });
+  jest.spyOn(docker, 'listVolumes').mockResolvedValue(volumes);
+  const listContainers = jest.spyOn(docker, 'listContainers').mockResolvedValue([
+    { stack: 'demo', state: 'running', mounts: [mount('demo-mounted'), mount('shared'), { type: 'bind', name: 'bind-source' }] },
+    { stack: 'demo', state: 'exited', mounts: [mount('demo-stopped')] },
+    { stack: 'primary', state: 'running', mounts: [mount('shared')] },
+  ]);
+  const url = '/volumes?hostId=' + hostId;
+  expect((await admin('get')(url).expect(200)).body).toEqual(volumes);
+  expect(listContainers).not.toHaveBeenCalled();
+  expect((await admin('get')(url + '&secondary=hide').expect(200)).body.map(volume => volume.name))
+    .toEqual(['shared', 'unused', 'bind-source']);
+  expect(listContainers).toHaveBeenCalledWith(hostId);
 });

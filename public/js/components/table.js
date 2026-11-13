@@ -3,11 +3,73 @@
    ═══════════════════════════════════════════════════ */
 'use strict';
 
+class TableSort {
+  static collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+
+  static next(sort, key, first = 'ascending') {
+    const reverse = first === 'ascending' ? 'descending' : 'ascending';
+    return { key, direction: sort?.key === key && sort.direction === first ? reverse : first };
+  }
+
+  static compare(a, b, direction) {
+    const missing = value => value == null || value === '' || (typeof value === 'number' && !Number.isFinite(value));
+    if (missing(a)) return missing(b) ? 0 : 1;
+    if (missing(b)) return -1;
+    const result = typeof a === 'number' && typeof b === 'number' ? a - b : TableSort.collator.compare(a, b);
+    return direction === 'descending' ? -result : result;
+  }
+
+  static header(key, label, { title = '', left = false } = {}) {
+    const escape = Utils.escapeHtml;
+    return `<th scope="col"${title ? ` title="${escape(title)}"` : ''}${left ? ' style="text-align:left"' : ''}>
+      ${TableSort.button(key, label)}</th>`;
+  }
+
+  static button(key, label) {
+    const escape = Utils.escapeHtml;
+    return `<button type="button" class="table-sort-button" data-sort-column="${escape(key)}">${escape(label)} <span aria-hidden="true">↕</span></button>`;
+  }
+
+  static update(root, sort) {
+    root.querySelectorAll('th > .table-sort-button').forEach(button => {
+      const header = button.parentElement;
+      const direction = sort?.key === button.dataset.sortColumn ? sort.direction : null;
+      if (direction) header.setAttribute('aria-sort', direction);
+      else header.removeAttribute('aria-sort');
+      button.querySelector('span').textContent = direction === 'ascending' ? '↑' : direction === 'descending' ? '↓' : '↕';
+    });
+  }
+
+  static bind(table, values, sort, onSort) {
+    const body = table.tBodies[0];
+    const rows = [...body.rows].map((row, index) => ({ row, values: values[index] }));
+    const apply = () => {
+      TableSort.update(table.tHead, sort);
+      if (!sort) return;
+      const ordered = [...rows].sort((a, b) => TableSort.compare(a.values[sort.key], b.values[sort.key], sort.direction));
+      for (const { row } of ordered) body.appendChild(row);
+    };
+    TableSort.onClick(table.tHead, key => {
+      sort = TableSort.next(sort, key);
+      onSort?.(sort);
+      apply();
+    });
+    apply();
+  }
+
+  static onClick(head, onSort) {
+    head.addEventListener('click', event => {
+      const button = event.target.closest('th')?.querySelector('.table-sort-button');
+      if (button) onSort(button.dataset.sortColumn);
+    });
+  }
+}
+
 class DataTable {
   /**
    * @param {HTMLElement} container
    * @param {Object} opts
-   * @param {Array<{key, label, render?, sortable?, width?}>} opts.columns
+   * @param {Array<{key, label, render?, sortable?, sortValue?, width?}>} opts.columns
    * @param {Function} opts.onRowClick
    * @param {boolean} opts.selectable
    * @param {Function} opts.rowClass
@@ -21,8 +83,8 @@ class DataTable {
     this.emptyText = opts.emptyText || 'No data';
 
     this._data = [];
-    this._sortKey = null;
-    this._sortDir = 'asc';
+    this._sortState = opts.sort || null;
+    this._onSort = opts.onSort;
     this._selected = new Set();
     this._filter = '';
     this._page = 1;
@@ -61,11 +123,14 @@ class DataTable {
 
     for (const col of this.columns) {
       const th = document.createElement('th');
-      th.textContent = col.label || col.key;
+      th.scope = 'col';
+      th.textContent = col.label ?? col.key;
       if (col.width) th.style.width = col.width;
       if (col.sortable !== false) {
-        th.classList.add('sortable');
-        th.addEventListener('click', () => this._sort(col.key));
+        th.innerHTML = TableSort.button(col.key, col.label ?? col.key);
+        th.addEventListener('click', event => {
+          if (!event.target.closest('.dt-col-filter-dropdown, .col-config-btn, .col-config-dropdown')) this._sort(col.key);
+        });
 
         if (document.documentElement.getAttribute('data-uimode') === 'enterprise') {
           const filterIcon = document.createElement('i');
@@ -85,6 +150,7 @@ class DataTable {
     }
 
     thead.appendChild(tr);
+    TableSort.update(thead, this._sortState);
     this._table.appendChild(thead);
 
     // Body
@@ -121,17 +187,9 @@ class DataTable {
   }
 
   _sort(key) {
-    if (this._sortKey === key) {
-      this._sortDir = this._sortDir === 'asc' ? 'desc' : 'asc';
-    } else {
-      this._sortKey = key;
-      this._sortDir = 'asc';
-    }
-    // Update sort indicators
-    this._table.querySelectorAll('th').forEach(th => {
-      th.classList.remove('sort-asc', 'sort-desc');
-      if (th.dataset.key === key) th.classList.add(`sort-${this._sortDir}`);
-    });
+    this._sortState = TableSort.next(this._sortState, key);
+    this._onSort?.(this._sortState);
+    TableSort.update(this._table.tHead, this._sortState);
     this._page = 1;
     this._renderBody();
   }
@@ -168,19 +226,10 @@ class DataTable {
     });
 
     // Sort
-    if (this._sortKey) {
-      data.sort((a, b) => {
-        let va = a[this._sortKey], vb = b[this._sortKey];
-        if (va == null) va = '';
-        if (vb == null) vb = '';
-        if (typeof va === 'number' && typeof vb === 'number') {
-          return this._sortDir === 'asc' ? va - vb : vb - va;
-        }
-        va = String(va).toLowerCase();
-        vb = String(vb).toLowerCase();
-        const cmp = va.localeCompare(vb);
-        return this._sortDir === 'asc' ? cmp : -cmp;
-      });
+    if (this._sortState) {
+      const { key, direction } = this._sortState;
+      const value = this.columns.find(col => col.key === key)?.sortValue || (row => row[key]);
+      data.sort((a, b) => TableSort.compare(value(a), value(b), direction));
     }
 
     return data;

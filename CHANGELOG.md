@@ -156,6 +156,12 @@ All notable changes to Docker Dash are documented here.
   members. Commit mutations, mapping changes and HTTP audit together; remove group
   ownership mappings on deletion. [Evidence and compatibility](docs/audits/2026-09-20-scim-security.md).
 
+## [8.96.46] - 2026-11-14 — Inventory sorting and secondary volumes
+
+- Sort Stacks, Images, Volumes and Security tables from the column headers.
+- Show volumes associated only with secondary stacks on demand. Keep shared
+  volumes and volumes with no stack association visible.
+
 ## [8.96.45] - 2026-11-13 — Scheduled security scans and secondary stacks
 
 - Schedule image vulnerability scans and CIS benchmarks per Docker host.

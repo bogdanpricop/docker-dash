@@ -8,6 +8,7 @@ const ImagesPage = {
   _refreshTimer: null,
   _repositoryView: false,
   _expandedRepositories: new Set(),
+  _repositorySorts: new Map(),
 
   async render(container, params = {}) {
     if (params.id) {
@@ -52,11 +53,14 @@ const ImagesPage = {
     `;
 
     this._table = new DataTable(container.querySelector('#images-table'), {
+      sort: this._sort,
+      onSort: sort => { this._sort = sort; },
       columns: [
         { key: '_repo', label: i18n.t('pages.images.repository'), render: (v, row) => this._renderRepo(row) },
         { key: '_tag', label: i18n.t('pages.images.tag'), render: v => `<span class="badge badge-info">${Utils.escapeHtml(v || 'none')}</span>` },
         { key: 'size', label: i18n.t('pages.images.size'), render: v => Utils.formatBytes(v) },
-        { key: '_created', label: i18n.t('pages.images.created'), render: (_, row) => Utils.timeAgo(new Date(row.created * 1000).toISOString()) },
+        { key: 'created', label: i18n.t('pages.images.created'), sortValue: row => row.created > 0 ? row.created : null,
+          render: value => Number.isFinite(value) && value > 0 ? Utils.timeAgo(value * 1000) : '—' },
         { key: '_id', label: i18n.t('pages.images.id'), render: (_, row) => `<span class="mono text-sm">${Utils.shortImageId(row.id)}</span>` },
         { key: '_actions', label: '', sortable: false, width: '180px', render: (_, row) => `
           <div class="action-btns">
@@ -161,7 +165,6 @@ const ImagesPage = {
         img._repo = repo;
         img._tag = t;
         img._id = img.id;
-        img._created = img.created;
       });
       table.setData(images);
       if (this._repositoryView) this._renderRepositories(document.getElementById('image-search').value);
@@ -207,17 +210,24 @@ const ImagesPage = {
     root.innerHTML = [...groups.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([repo, rows]) => `
       <details class="card image-repository" data-repository="${escape(repo)}" ${search || this._expandedRepositories.has(repo) ? 'open' : ''}>
         <summary><strong>${escape(repo)}</strong><span class="badge">${rows.length}</span></summary>
-        <div class="file-list-scroll"><table class="data-table compact"><thead><tr><th>Tag</th><th>Image ID</th><th>Size</th><th></th></tr></thead>
+        <div class="file-list-scroll"><table class="data-table compact"><thead><tr>
+          ${TableSort.header('tag', i18n.t('pages.images.tag'))}${TableSort.header('id', i18n.t('pages.images.id'))}
+          ${TableSort.header('size', i18n.t('pages.images.size'))}<th></th></tr></thead>
         <tbody>${rows.map(({ tag, reference, image }) => `<tr>
           <td>${escape(tag || '—')}</td><td class="mono">${Utils.shortImageId(image.id)}</td><td>${Utils.formatBytes(image.size)}</td>
           <td><button type="button" class="btn btn-xs btn-secondary" data-image-review="${escape(image.id)}" data-reference="${escape(reference)}">Usage and digest</button>
           <a class="btn btn-xs btn-secondary" href="#/images/${encodeURIComponent(image.id)}">Details</a></td>
         </tr>`).join('')}</tbody></table></div>
       </details>`).join('') || '<p class="text-muted">No matching repositories.</p>';
-    if (!search) root.querySelectorAll('[data-repository]').forEach(group => group.addEventListener('toggle', () => {
-      if (group.open) this._expandedRepositories.add(group.dataset.repository);
-      else this._expandedRepositories.delete(group.dataset.repository);
-    }));
+    root.querySelectorAll('[data-repository]').forEach(group => {
+      const repo = group.dataset.repository;
+      if (!search) group.addEventListener('toggle', () => {
+        if (group.open) this._expandedRepositories.add(repo);
+        else this._expandedRepositories.delete(repo);
+      });
+      TableSort.bind(group.querySelector('table'), groups.get(repo).map(({ tag, image }) => ({ tag, id: image.id, size: image.size })),
+        this._repositorySorts.get(repo), sort => this._repositorySorts.set(repo, sort));
+    });
     root.querySelectorAll('[data-image-review]').forEach(button => button.addEventListener('click', () =>
       this._showImageInventory(this._imageRows.find(image => image.id === button.dataset.imageReview), button.dataset.reference)));
   },

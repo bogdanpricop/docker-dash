@@ -5,7 +5,7 @@ class StackMetrics {
   static batchSize = 200;
   static intervalMs = 15_000;
 
-  constructor(root, hostId, stacks, sort) {
+  constructor(root, hostId, stacks, sort, sortValues) {
     this.root = root;
     this.hostId = hostId;
     this.sort = sort;
@@ -13,6 +13,7 @@ class StackMetrics {
       const services = row.nextElementSibling;
       return {
         row,
+        values: sortValues(stacks[index]),
         services: services?.classList.contains('stack-table-services') ? services : null,
         ids: [...new Set((stacks[index].containers || []).filter(container => container.state === 'running')
           .map(container => container.id))],
@@ -24,6 +25,7 @@ class StackMetrics {
     this.visibilityChanged = () => { if (!document.hidden) void this.refresh(); };
     document.addEventListener('visibilitychange', this.visibilityChanged);
     this.timer = setInterval(() => { if (!document.hidden) void this.refresh(); }, StackMetrics.intervalMs);
+    this.sortRows();
     void this.refresh();
   }
 
@@ -73,9 +75,10 @@ class StackMetrics {
         totals[field] = values.length && values.length === ids.length && values.every(Number.isFinite)
           ? values.reduce((sum, value) => sum + value, 0) : null;
       }
-      entry.totals = totals;
       const cells = row.querySelectorAll('[data-stack-metric]');
       const updated = readings.length ? Math.min(...readings.map(reading => reading.latest.at)) : null;
+      Object.assign(entry.values, { cpu: totals.cpu, ram: totals.ram, network: this.totalRate(totals.rx, totals.tx),
+        disk: this.totalRate(totals.read, totals.write), updated });
       const quality = this.unavailable && ids.length ? 'unavailable'
         : fresh.length < ids.length ? (readings.length ? 'incomplete' : 'noSample') : null;
       this.renderValues(cells, totals, updated, quality);
@@ -94,14 +97,8 @@ class StackMetrics {
 
   sortRows() {
     if (!this.rows.length) return;
-    const { field, direction } = this.sort || {};
-    const order = field ? [...this.rows].sort((a, b) => {
-      const first = a.totals?.[field];
-      const second = b.totals?.[field];
-      if (!Number.isFinite(first)) return Number.isFinite(second) ? 1 : 0;
-      if (!Number.isFinite(second)) return -1;
-      return direction === 'ascending' ? first - second : second - first;
-    }) : this.rows;
+    const { key, direction } = this.sort || {};
+    const order = key ? [...this.rows].sort((a, b) => TableSort.compare(a.values[key], b.values[key], direction)) : this.rows;
     const body = this.rows[0].row.parentNode;
     const focused = document.activeElement;
     let cursor = body.firstElementChild;

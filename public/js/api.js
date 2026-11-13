@@ -210,7 +210,7 @@ const Api = {
   getScanners() { return this.get('/images/scanners'); },
 
   // ─── Volumes ─────────────────────────────────────
-  getVolumes() { return this.get('/volumes'); },
+  getVolumes({ showSecondary = true } = {}) { return this.get('/volumes' + (showSecondary ? '' : '?secondary=hide')); },
   getVolume(name) { return this.get(`/volumes/${name}/inspect`); },
   removeVolume(name) { return this.delete(`/volumes/${name}`); },
   createVolume(data) { return this.post('/volumes', data); },

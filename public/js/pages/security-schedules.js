@@ -4,6 +4,7 @@ const SecuritySchedules = {
   path: '/security-schedules',
   kinds: { images: 'Image vulnerabilities', cis: 'CIS Docker Benchmark' },
   states: { queued: 'Queued', running: 'Running', success: 'Completed', partial: 'Partial', error: 'Failed' },
+  _runSorts: new Map(),
 
   summary(run) {
     const s = run?.summary;
@@ -30,8 +31,9 @@ const SecuritySchedules = {
           <button class="btn btn-sm btn-primary" data-scan-add>Add schedule</button></div></div>
         <div class="card-body">
           <p class="text-muted text-sm">Scheduler timezone · ${e(timeZone)}</p>
-          ${schedules.length ? `<div class="file-list-scroll"><table class="data-table compact">
-            <thead><tr><th>Schedule</th><th>Docker host</th><th>Next run</th><th>Last result</th><th>Report channel</th><th>Actions</th></tr></thead>
+          ${schedules.length ? `<div class="file-list-scroll"><table class="data-table compact" data-scan-schedules>
+            <thead><tr>${[['name', 'Schedule'], ['host', 'Docker host'], ['next', 'Next run'], ['result', 'Last result'],
+              ['channel', 'Report channel']].map(([key, label]) => TableSort.header(key, label)).join('')}<th>Actions</th></tr></thead>
             <tbody>${schedules.map(s => `<tr>
               <td><strong>${e(s.name)}</strong><div class="text-muted text-sm">${this.kinds[s.kind]} · <code>${e(s.cron)}</code></div></td>
               <td>${e(s.hostName || 'Removed host')}</td>
@@ -44,6 +46,10 @@ const SecuritySchedules = {
         </div>
       </div>
       <div id="security-schedule-history"></div>`;
+    const table = el.querySelector('[data-scan-schedules]');
+    if (table) TableSort.bind(table, schedules.map(s => ({ name: s.name, host: s.hostName,
+      next: s.enabled ? Date.parse(s.nextRunAt) : null, result: this.states[s.lastRun?.status], channel: s.channelName })),
+    this._scheduleSort, sort => { this._scheduleSort = sort; });
     el.querySelector('[data-scan-list-refresh]').addEventListener('click', () => this.render(el).catch(error => Toast.error(error.message)));
     el.querySelector('[data-scan-add]').addEventListener('click', () => {
       this.edit(el, timeZone).catch(error => Toast.error(error.message));
@@ -152,12 +158,17 @@ const SecuritySchedules = {
       <button class="btn btn-xs btn-secondary" data-scan-refresh>Refresh</button></div>
       <div class="card-body">
         ${runs.length ? `<div class="file-list-scroll"><table class="data-table compact">
-          <thead><tr><th>Queued</th><th>Trigger</th><th>Result</th><th>Delivery</th><th></th></tr></thead>
+          <thead><tr>${[['queued', 'Queued'], ['trigger', 'Trigger'], ['result', 'Result'], ['delivery', 'Delivery']]
+            .map(([key, label]) => TableSort.header(key, label)).join('')}<th></th></tr></thead>
           <tbody>${runs.map(run => `<tr><td>${e(date(run.queuedAt))}</td><td>${e(run.trigger)}</td>
             <td>${e(this.states[run.status])}<div class="text-muted text-sm">${e(this.summary(run))}</div></td>
             <td>${e(this.delivery(run))}</td><td><button class="btn btn-xs btn-secondary" data-scan-report="${run.id}">View run</button></td></tr>`).join('')}
           </tbody></table></div>` : '<p class="text-muted">No runs yet.</p>'}
       </div></div>`;
+    const table = root.querySelector('table');
+    if (table) TableSort.bind(table, runs.map(run => ({ queued: Date.parse(run.queuedAt), trigger: run.trigger,
+      result: this.states[run.status], delivery: this.delivery(run) })), this._runSorts.get(schedule.id),
+    sort => this._runSorts.set(schedule.id, sort));
     root.querySelector('[data-scan-refresh]').addEventListener('click', () => this.history(el, schedule, date).catch(error => Toast.error(error.message)));
     root.querySelectorAll('[data-scan-report]').forEach(button => button.addEventListener('click', () =>
       this.report(Number(button.dataset.scanReport)).catch(error => Toast.error(error.message))));
@@ -179,15 +190,21 @@ const SecuritySchedules = {
         <p class="text-muted text-sm">Report delivery · ${e(this.delivery(run))}</p>
         ${[run.error, run.deliveryError, report?.summary?.error].filter(Boolean).map(error => `<p class="text-danger">${e(error)}</p>`).join('')}
         ${report?.summary?.skipped ? `<p>${report.summary.skipped} images skipped.</p>` : ''}
-        ${imageRows ? `<div class="file-list-scroll"><table class="data-table compact"><thead><tr>
-          <th>Image</th><th>Scanner / error</th><th>Critical</th><th>High</th><th>Total</th><th>With fixes</th><th></th>
+        ${imageRows ? `<div class="file-list-scroll"><table class="data-table compact" data-report-images><thead><tr>
+          ${[['name', 'Image'], ['outcome', 'Scanner / error'], ['critical', 'Critical'], ['high', 'High'], ['total', 'Total'],
+            ['fixable', 'With fixes']].map(([key, label]) => TableSort.header(key, label)).join('')}<th></th>
           </tr></thead><tbody>${imageRows}</tbody></table></div>` : ''}
-        ${report?.checks?.length ? `<div class="file-list-scroll"><table class="data-table compact"><thead><tr>
-          <th>Check</th><th>Result</th><th>Details and remediation</th>
+        ${report?.checks?.length ? `<div class="file-list-scroll"><table class="data-table compact" data-report-checks><thead><tr>
+          ${TableSort.header('title', 'Check')}${TableSort.header('status', 'Result')}${TableSort.header('details', 'Details and remediation')}
           </tr></thead><tbody>${report.checks.map(check => `<tr><td>${e(check.title)}</td><td>${e(check.status)}</td>
           <td>${e(check.details || '')}${check.remediation ? `<div class="text-muted">${e(check.remediation)}</div>` : ''}</td></tr>`).join('')}</tbody></table></div>` : ''}
       </div>
       <div class="modal-footer">${report ? '<button type="button" class="btn btn-secondary" id="security-report-download">Download JSON</button>' : ''}</div>`, { width: '1050px' });
+    const images = document.querySelector('[data-report-images]');
+    if (images) TableSort.bind(images, report.images.map(item => ({ name: item.name, outcome: item.error || item.scanner,
+      ...item.summary, fixable: item.fixable })));
+    const checks = document.querySelector('[data-report-checks]');
+    if (checks) TableSort.bind(checks, report.checks);
     document.querySelector('#security-report-close').addEventListener('click', () => Modal.close());
     document.querySelector('#security-report-download')?.addEventListener('click', () => Utils.downloadBlob(
       'security-scan-' + run.id + '.json', new Blob([JSON.stringify(run, null, 2)], { type: 'application/json' })));

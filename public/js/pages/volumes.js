@@ -21,6 +21,9 @@ const VolumesPage = {
               <i class="fas fa-search"></i>
               <input type="text" id="vol-search" placeholder="${i18n.t('pages.volumes.filterPlaceholder')}">
             </div>
+            <label class="toggle-label" title="${i18n.t('common.secondaryStacksHint')}">
+              <input type="checkbox" id="vol-show-secondary" aria-label="${i18n.t('common.secondaryStacksHint')}"> ${i18n.t('common.showSecondaryStacks')}
+            </label>
             <button class="btn btn-sm btn-primary" id="vol-create">
               <i class="fas fa-plus"></i> Create
             </button>
@@ -35,13 +38,15 @@ const VolumesPage = {
       `;
 
       this._table = new DataTable(container.querySelector('#vol-table'), {
+        sort: this._sort,
+        onSort: sort => { this._sort = sort; },
         columns: [
           { key: 'name', label: i18n.t('pages.volumes.name'), render: v => `<span class="mono">${Utils.escapeHtml(v && v.length > 40 ? v.substring(0, 12) + '...' : (v || ''))}</span>` },
           { key: 'driver', label: i18n.t('pages.volumes.driver') },
           { key: 'mountpoint', label: i18n.t('pages.volumes.mountpoint'), render: v => `<span class="mono text-sm">${Utils.escapeHtml(v || '')}</span>` },
           { key: 'scope', label: i18n.t('pages.volumes.scope') },
-          { key: 'size', label: i18n.t('pages.images.size'), render: v => v >= 0 ? Utils.formatBytes(v) : '—' },
-          { key: '_created', label: i18n.t('pages.volumes.created'), render: (_, row) => Utils.timeAgo(row.created) },
+          { key: 'size', label: i18n.t('pages.images.size'), sortValue: row => row.size >= 0 ? row.size : null, render: v => Number.isFinite(v) && v >= 0 ? Utils.formatBytes(v) : '—' },
+          { key: 'created', label: i18n.t('pages.volumes.created'), sortValue: row => Date.parse(row.created), render: v => Number.isFinite(Date.parse(v)) ? Utils.timeAgo(v) : '—' },
           { key: '_actions', label: '', sortable: false, width: '100px', render: (_, row) => `
             <div class="action-btns">
               <button class="action-btn" data-action="inspect" data-name="${Utils.escapeHtml(row.name)}" title="${i18n.t('pages.volumes.inspect')}"><i class="fas fa-info-circle"></i></button>
@@ -53,7 +58,8 @@ const VolumesPage = {
       });
 
       container.querySelector('#vol-search').addEventListener('input',
-        Utils.debounce(e => this._table.setFilter(e.target.value), 200));
+        Utils.debounce(e => { if (e.target.isConnected) this._table.setFilter(e.target.value); }, 200));
+      container.querySelector('#vol-show-secondary').addEventListener('change', () => this._load());
       container.querySelector('#vol-create').addEventListener('click', () => this._createDialog());
       container.querySelector('#vol-help').addEventListener('click', () => this._showHelp());
       container.querySelector('#vol-refresh').addEventListener('click', () => this._load());
@@ -82,7 +88,7 @@ const VolumesPage = {
       });
 
       await this._load();
-      this._refreshTimer = setInterval(() => this._load(), 30000);
+      if (container.querySelector('#vol-show-secondary')) this._refreshTimer = setInterval(() => this._load(), 30000);
     }
   },
 
@@ -287,12 +293,18 @@ const VolumesPage = {
   },
 
   async _load() {
+    const table = this._table;
+    const toggle = document.getElementById('vol-show-secondary');
+    if (!toggle) return;
+    const sequence = this._loadSequence = (this._loadSequence || 0) + 1;
+    const hostId = Api.getHostId();
+    const current = () => toggle.isConnected && sequence === this._loadSequence && hostId === Api.getHostId();
     try {
-      const volumes = await Api.getVolumes();
+      const volumes = await Api.getVolumes({ showSecondary: toggle.checked });
+      if (!current()) return;
       // API returns array directly from dockerService.listVolumes()
       const list = Array.isArray(volumes) ? volumes : (volumes.Volumes || []);
-      list.forEach(v => { v._created = v.created; });
-      this._table.setData(list);
+      table.setData(list);
 
       // Update footer
       const footer = document.getElementById('vol-footer');
@@ -304,7 +316,7 @@ const VolumesPage = {
         footer.style.display = list.length > 0 ? '' : 'none';
       }
     } catch (err) {
-      Toast.error(i18n.t('pages.volumes.loadFailed', { message: err.message }));
+      if (current()) Toast.error(i18n.t('pages.volumes.loadFailed', { message: err.message }));
     }
   },
 
