@@ -11,10 +11,27 @@ const { getDb } = require('../db');
 const { extractHostId } = require('../middleware/hostId');
 const { requireHostAccessForMethod } = require('../middleware/hostAccess');
 const asyncHandler = require('../utils/asyncHandler');
-const { scanImageReport } = require('../services/image-admission');
+const imageScans = require('../services/image-scan-results');
+const permissions = require('../services/permissions');
+const { listSecondaryStacks } = require('../services/stack-display-preferences');
 
 function scanHostScope(req) {
   return [req.resolvedHostId ?? req.hostId, Number(req.hostId === 0 && req.user.role === 'admin')];
+}
+
+async function imageVisibility(req, includeConsumers = false) {
+  const hostId = req.resolvedHostId ?? req.hostId;
+  const secondary = req.query.secondary === 'hide' ? new Set(listSecondaryStacks(req.user.id, hostId)) : new Set();
+  const containers = secondary.size || includeConsumers
+    ? permissions.filterContainers(await dockerService.listContainers(hostId), req.user.id, req.user.role) : [];
+  const secondaryImages = new Set();
+  const primaryImages = new Set();
+  for (const container of containers) {
+    if (!container.imageIdFull) continue;
+    (secondary.has(container.stack) ? secondaryImages : primaryImages).add(container.imageIdFull);
+  }
+  return { hidden: [...secondaryImages].filter(id => !primaryImages.has(id)),
+    containers: containers.filter(container => !secondary.has(container.stack)) };
 }
 
 const router = Router();
@@ -23,7 +40,10 @@ router.use(extractHostId);
 router.use(requireHostAccessForMethod());
 
 router.get('/', requireAuth, asyncHandler(async (req, res) => {
-  res.json(await dockerService.listImages(req.resolvedHostId ?? req.hostId));
+  const hostId = req.resolvedHostId ?? req.hostId;
+  const [images, visibility] = await Promise.all([dockerService.listImages(hostId), imageVisibility(req)]);
+  const hidden = new Set(visibility.hidden);
+  res.json(images.filter(image => !hidden.has(image.id)));
 }));
 
 router.get('/:id/inspect', requireAuth, asyncHandler(async (req, res) => {
@@ -178,251 +198,6 @@ router.get('/:id/config', requireAuth, asyncHandler(async (req, res) => {
 const { execFileSync } = require('child_process');
 const scanLog = require('../utils/logger')('scan');
 
-function _makeSummary(vulns) {
-  return {
-    critical: vulns.filter(v => v.severity === 'critical').length,
-    high: vulns.filter(v => v.severity === 'high').length,
-    medium: vulns.filter(v => v.severity === 'medium').length,
-    low: vulns.filter(v => v.severity === 'low').length,
-    total: vulns.length,
-  };
-}
-
-function _grypeResult(data, imageName) {
-  const vulns = [];
-  for (const match of (data.matches || [])) {
-    const v = match.vulnerability || {};
-    const pkg = match.artifact || {};
-    const related = (match.relatedVulnerabilities || [])[0] || {};
-    const cvssEntries = [...(v.cvss || []), ...(related.cvss || [])];
-    const cvssScore = cvssEntries.length > 0
-      ? Math.max(...cvssEntries.map(c => c.metrics?.baseScore || 0))
-      : null;
-
-    vulns.push({
-      id: v.id || '?',
-      severity: (v.severity || 'unknown').toLowerCase(),
-      package: pkg.name || '?',
-      version: pkg.version || '?',
-      fixedIn: (v.fix?.versions || [])[0] || null,
-      title: related.description?.substring(0, 200) || v.description?.substring(0, 200) || '',
-      url: (related.urls || v.urls || [])[0] || '',
-      cvss: cvssScore,
-      type: pkg.type || '',
-      target: pkg.locations?.[0]?.path || '',
-    });
-  }
-
-  const recommendations = _generateRemediation(vulns, imageName);
-  return {
-    scanner: 'grype',
-    image: imageName,
-    scannedAt: new Date().toISOString(),
-    vulnerabilities: vulns,
-    summary: _makeSummary(vulns),
-    recommendations,
-  };
-}
-
-function _trivyResult(data, imageName) {
-  const vulns = [];
-  for (const r of (data.Results || [])) {
-    for (const v of (r.Vulnerabilities || [])) {
-      vulns.push({
-        id: v.VulnerabilityID || '?',
-        severity: (v.Severity || 'unknown').toLowerCase(),
-        package: v.PkgName || '?',
-        version: v.InstalledVersion || '?',
-        fixedIn: v.FixedVersion || null,
-        title: v.Title || '',
-        description: v.Description || '',
-        url: v.PrimaryURL || '',
-        references: (v.References || []).slice(0, 3),
-        cvss: v.CVSS ? Object.values(v.CVSS)[0]?.V3Score || null : null,
-        target: r.Target || '',
-        type: r.Type || '',
-      });
-    }
-  }
-  // Generate remediation recommendations
-  const recommendations = _generateRemediation(vulns, imageName);
-
-  return {
-    scanner: 'trivy',
-    image: imageName,
-    scannedAt: new Date().toISOString(),
-    vulnerabilities: vulns,
-    summary: _makeSummary(vulns),
-    recommendations,
-  };
-}
-
-function _classifyVuln(v) {
-  const pkg = (v.package || '').toLowerCase();
-  const target = (v.target || '').toLowerCase();
-
-  // Go binaries (Docker Scout, Docker CLI, Trivy) — compiled third-party tools
-  const goPatterns = ['google.golang.org/', 'go.opentelemetry.io/', 'github.com/docker/', 'github.com/cloudflare/',
-    'github.com/containerd/', 'github.com/moby/', 'golang.org/', 'github.com/aquasecurity/'];
-  if (goPatterns.some(p => pkg.startsWith(p)) || v.type === 'gobinary' || target.includes('scout') || target.includes('trivy')) {
-    return 'third-party-binary';
-  }
-  if (pkg === 'stdlib' && (target.includes('scout') || target.includes('trivy') || target.includes('docker'))) {
-    return 'third-party-binary';
-  }
-
-  // OS packages (Alpine apk, Debian apt)
-  if (['alpine', 'debian', 'ubuntu', 'wolfi', 'chainguard'].includes(v.type) || target.includes('alpine') || target.includes('debian')) {
-    return 'os-package';
-  }
-
-  // Node.js / npm packages
-  if (v.type === 'node-pkg' || v.type === 'npm' || target.includes('node_modules') || target.includes('package-lock')) {
-    return 'npm-package';
-  }
-
-  // Heuristic: Go module paths
-  if (pkg.includes('/') && (pkg.includes('.com/') || pkg.includes('.org/') || pkg.includes('.io/'))) {
-    return 'third-party-binary';
-  }
-
-  return 'other';
-}
-
-function _generateRemediation(vulns, imageName) {
-  const recs = [];
-
-  // Classify all vulnerabilities
-  for (const v of vulns) v._class = _classifyVuln(v);
-
-  const npmVulns = vulns.filter(v => v._class === 'npm-package');
-  const osVulns = vulns.filter(v => v._class === 'os-package');
-  const binaryVulns = vulns.filter(v => v._class === 'third-party-binary');
-  const otherVulns = vulns.filter(v => v._class === 'other');
-  const fixable = vulns.filter(v => v.fixedIn && v.fixedIn !== 'not fixed');
-  const critical = vulns.filter(v => v.severity === 'critical');
-  const high = vulns.filter(v => v.severity === 'high');
-
-  // Group fixable vulns by package
-  const fixableByPkg = {};
-  for (const v of fixable) {
-    if (v._class === 'third-party-binary') continue;
-    if (!fixableByPkg[v.package]) fixableByPkg[v.package] = { current: v.version, fixedIn: v.fixedIn, count: 0, maxSev: v.severity, class: v._class };
-    fixableByPkg[v.package].count++;
-    if (['critical', 'high'].includes(v.severity)) fixableByPkg[v.package].maxSev = v.severity;
-  }
-
-  // === Third-party binary vulnerabilities (Scout, Trivy, Docker CLI) ===
-  if (binaryVulns.length > 0) {
-    const binaryCritical = binaryVulns.filter(v => v.severity === 'critical');
-    const toolNames = [...new Set(binaryVulns.map(v => {
-      const t = (v.target || '').toLowerCase();
-      if (t.includes('scout')) return 'Docker Scout';
-      if (t.includes('trivy')) return 'Trivy';
-      if (v.package.includes('docker/cli')) return 'Docker CLI';
-      return 'third-party tool';
-    }))];
-
-    recs.push({
-      priority: binaryCritical.length > 0 ? 'info' : 'info',
-      type: 'third-party',
-      title: `${binaryVulns.length} vulnerabilities in third-party tools (${toolNames.join(', ')})`,
-      description: `These CVEs are in pre-compiled binaries bundled in the image (${toolNames.join(', ')}). `
-        + `They are NOT in your application code and cannot be fixed by changing your Dockerfile or package.json. `
-        + `They will be resolved automatically when the tool maintainers release updated versions. `
-        + `Risk is low because these tools are not exposed to the network — they only run locally for scanning/CLI operations.`
-        + (binaryCritical.length > 0 ? ` Affected: ${binaryCritical.map(v => `${v.id} (${v.package})`).join(', ')}.` : ''),
-    });
-  }
-
-  // === OS package vulnerabilities ===
-  if (osVulns.length > 0) {
-    const isAlpine = imageName.includes('alpine') || osVulns.some(v => v.type === 'alpine');
-    const isDebian = imageName.includes('debian') || imageName.includes('ubuntu') || osVulns.some(v => v.type === 'debian');
-    const fixableOs = osVulns.filter(v => v.fixedIn && v.fixedIn !== 'not fixed');
-    const unfixableOs = osVulns.filter(v => !v.fixedIn || v.fixedIn === 'not fixed');
-
-    if (fixableOs.length > 0) {
-      recs.push({
-        priority: 'high',
-        type: 'update-base',
-        title: `Update base image (${fixableOs.length} fixable OS vulnerabilities)`,
-        description: `Rebuild with the latest base image and add a package upgrade step. Fixes: ${[...new Set(fixableOs.map(v => v.package))].join(', ')}.`,
-        command: isAlpine ? 'RUN apk update && apk upgrade --no-cache' : isDebian ? 'RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*' : '# Upgrade OS packages',
-      });
-    }
-
-    if (unfixableOs.length > 0) {
-      recs.push({
-        priority: 'info',
-        type: 'accept-risk',
-        title: `${unfixableOs.length} OS vulnerabilities without patches`,
-        description: `These affect OS packages (${[...new Set(unfixableOs.map(v => v.package))].join(', ')}) that don't have fixes yet in the current Alpine/Debian release. They will be patched in future OS updates.`,
-      });
-    }
-  }
-
-  // === npm package vulnerabilities ===
-  const npmFixable = Object.entries(fixableByPkg).filter(([, v]) => v.class === 'npm-package');
-  const npmCritical = npmFixable.filter(([, v]) => v.maxSev === 'critical');
-  const npmHigh = npmFixable.filter(([, v]) => v.maxSev === 'high');
-
-  if (npmCritical.length > 0) {
-    recs.push({
-      priority: 'critical',
-      type: 'upgrade-packages',
-      title: `Upgrade ${npmCritical.length} critical npm package(s)`,
-      description: npmCritical.map(([pkg, info]) => `${pkg}: ${info.current} → ${info.fixedIn}`).join(', '),
-      command: `npm update ${npmCritical.map(([pkg]) => pkg).join(' ')}\n# Or add overrides in package.json:\n${npmCritical.map(([pkg, info]) => `#   "${pkg}": "${info.fixedIn}"`).join('\n')}`,
-    });
-  }
-
-  if (npmHigh.length > 0) {
-    recs.push({
-      priority: 'high',
-      type: 'upgrade-packages',
-      title: `Upgrade ${npmHigh.length} high-severity npm package(s)`,
-      description: npmHigh.map(([pkg, info]) => `${pkg}: ${info.current} → ${info.fixedIn}`).join(', '),
-      command: `npm update ${npmHigh.map(([pkg]) => pkg).join(' ')}`,
-    });
-  }
-
-  // === Other fixable (unclassified) ===
-  const otherFixable = Object.entries(fixableByPkg).filter(([, v]) => v.class !== 'npm-package' && v.class !== 'os-package');
-  if (otherFixable.length > 0) {
-    recs.push({
-      priority: 'medium',
-      type: 'upgrade-packages',
-      title: `${otherFixable.length} other fixable package(s)`,
-      description: otherFixable.map(([pkg, info]) => `${pkg}: ${info.current} → ${info.fixedIn}`).join(', '),
-    });
-  }
-
-  // === Architecture recommendation ===
-  if (vulns.length > 20) {
-    recs.push({
-      priority: 'medium',
-      type: 'architecture',
-      title: 'Consider a minimal base image',
-      description: `This image has ${vulns.length} vulnerabilities. Using distroless or scratch-based images can eliminate OS-level CVEs entirely.`,
-    });
-  }
-
-  // === Summary ===
-  recs.push({
-    priority: 'info',
-    type: 'summary',
-    title: 'Summary',
-    description: `${vulns.length} total: ${npmVulns.length} npm, ${osVulns.length} OS, ${binaryVulns.length} third-party tools, ${otherVulns.length} other. `
-      + `${fixable.length} fixable by you, ${binaryVulns.length} require upstream tool updates. `
-      + `${critical.length} critical, ${high.length} high.`,
-  });
-
-  return recs;
-}
-
-// Preserve the persistent Docker CLI configuration for registry/Compose users.
-process.env.DOCKER_CONFIG ||= '/data/.docker';
 const SCOUT_DISABLED_REASON = 'Docker Scout is temporarily excluded because its latest published binary includes vulnerable dependencies and its plugin source is not publicly available for a security rebuild. Use Trivy or Grype. Scout will return only after a corrected build passes verification.';
 
 // Keep a clear response for older clients without accepting or storing credentials.
@@ -454,40 +229,30 @@ router.get('/:id/scan', requireAuth, asyncHandler(async (req, res) => {
   const imageName = imageData.RepoTags?.[0] || req.params.id;
   let result;
   try {
-    const report = await scanImageReport(dockerService.getDocker(hostId), imageData.Id, scanner);
-    result = report.scanner === 'trivy' ? _trivyResult(report.data, imageName) : _grypeResult(report.data, imageName);
+    result = await imageScans.scanAndSave(dockerService.getDocker(hostId), imageData.Id, imageName, scanner, hostId, { userId: req.user.id });
   } catch (error) {
     scanLog.warn('Verified image scan unavailable', { hostId, imageId: imageData.Id, reason: error.message });
     return res.json({
       scanner: 'none', image: imageName, scannedAt: new Date().toISOString(),
-      vulnerabilities: [], summary: _makeSummary([]), message: error.message,
+      vulnerabilities: [], summary: imageScans.emptySummary(), message: error.message,
     });
   }
-  const db = getDb();
-  const fixable = result.vulnerabilities.filter(v => v.fixedIn).length;
-  const saved = db.prepare(`
-    INSERT INTO scan_results (image_id, image_name, scanner, summary_critical, summary_high,
-      summary_medium, summary_low, summary_total, fixable_count, results_json, recommendations_json, scanned_by, host_id, verified_image_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    imageData.Id, imageName, result.scanner,
-    result.summary.critical, result.summary.high, result.summary.medium, result.summary.low, result.summary.total,
-    fixable, JSON.stringify(result.vulnerabilities), JSON.stringify(result.recommendations),
-    req.user.id, hostId, imageData.Id
-  );
-  result.scanId = Number(saved.lastInsertRowid);
-  result.imageId = imageData.Id;
   res.json(result);
 }));
 
 // Scan history
-router.get('/scan-history', requireAuth, asyncHandler((req, res) => {
+router.get('/scan-history', requireAuth, asyncHandler(async (req, res) => {
   const db = getDb();
   const { image, imageId, limit: lim } = req.query;
   const maxRows = Math.min(Math.max(parseInt(lim, 10) || 100, 1), 500);
   const cols = 'id, image_id, verified_image_id, image_name, scanner, summary_critical, summary_high, summary_medium, summary_low, summary_total, fixable_count, scanned_at, host_id';
   const filters = ['(host_id = ? OR (host_id = 0 AND ? = 1))'];
   const values = scanHostScope(req);
+  const { hidden } = await imageVisibility(req);
+  if (hidden.length) {
+    filters.push('COALESCE(verified_image_id, image_id) NOT IN (SELECT value FROM json_each(?))');
+    values.push(JSON.stringify(hidden));
+  }
   if (typeof image === 'string') { filters.push('image_name = ?'); values.push(image); }
   if (typeof imageId === 'string') { filters.push('verified_image_id = ?'); values.push(imageId); }
   const rows = db.prepare(`SELECT ${cols} FROM scan_results WHERE ${filters.join(' AND ')}
@@ -510,13 +275,13 @@ router.get('/scan-history/:id', requireAuth, asyncHandler((req, res) => {
 
 router.get('/scan-triage', requireAuth, asyncHandler(async (req, res) => {
   const hostId = req.resolvedHostId ?? req.hostId;
+  const { hidden, containers } = await imageVisibility(req, true);
   const rows = getDb().prepare(`SELECT id, verified_image_id, image_name, scanner, scanned_at, results_json
     FROM scan_results AS scan
-    WHERE host_id = ? AND verified_image_id IS NOT NULL AND id = (
+    WHERE host_id = ? AND verified_image_id IS NOT NULL
+      AND verified_image_id NOT IN (SELECT value FROM json_each(?)) AND id = (
       SELECT MAX(id) FROM scan_results WHERE host_id = scan.host_id AND verified_image_id = scan.verified_image_id
-    ) ORDER BY id DESC LIMIT 101`).all(hostId);
-  const containers = require('../services/permissions').filterContainers(
-    await dockerService.listContainers(hostId), req.user.id, req.user.role);
+    ) ORDER BY id DESC LIMIT 101`).all(hostId, JSON.stringify(hidden));
   const consumers = new Map();
   for (const container of containers) {
     if (!consumers.has(container.imageIdFull)) consumers.set(container.imageIdFull, []);

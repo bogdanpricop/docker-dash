@@ -18,6 +18,9 @@ const LogsPage = {
       <div class="page-header">
         <h2><i class="fas fa-scroll" style="color:var(--accent)"></i> Log Explorer</h2>
         <div class="page-actions">
+          <label class="toggle-label" title="${i18n.t('common.secondaryStacksHint')}">
+            <input type="checkbox" id="logs-show-secondary" aria-label="${i18n.t('common.secondaryStacksHint')}"> ${i18n.t('common.showSecondaryStacks')}
+          </label>
           <select id="logs-mode" class="form-control" aria-label="Log view">
             <option value="single">Single</option><option value="multi">Multi</option><option value="grouped">Grouped</option>
           </select>
@@ -90,10 +93,30 @@ const LogsPage = {
 
     // Load containers and build tree
     try {
-      const { containers, host } = await Api.get('/containers?context=1');
+      const { containers, host, secondaryStacks } = await Api.get('/containers?context=1');
       if (!output.isConnected) return;
       this._hostId = host.id;
-      this._allContainers = containers.filter(c => c.state === 'running' || c.id.startsWith(target || '__none__'));
+      const secondary = new Set(secondaryStacks);
+      const isSecondary = c => secondary.has(c.stack || c.labels?.['com.docker.compose.project']);
+      const inventory = containers.filter(c => c.state === 'running' || (target && c.id.startsWith(target)));
+      const toggle = container.querySelector('#logs-show-secondary');
+      toggle.checked = Boolean(target && inventory.some(c => c.id.startsWith(target) && isSecondary(c)));
+      const applyVisibility = () => {
+        this._allContainers = toggle.checked ? inventory : inventory.filter(c => !isSecondary(c));
+      };
+      applyVisibility();
+      toggle.addEventListener('change', () => {
+        applyVisibility();
+        const visible = new Set(this._allContainers.map(c => c.id.slice(0, 12)));
+        this._selectedContainers = new Set([...this._selectedContainers].filter(id => visible.has(id)));
+        this._loadSequence = (this._loadSequence || 0) + 1;
+        this._lastLogs = [];
+        const search = container.querySelector('#logs-search').value.trim();
+        this._viewer.set([], search, this._mode);
+        if (this._viewer.paused) output.textContent = 'Resume to load logs for the visible selection.';
+        this._renderSidebar();
+        this._loadLogs();
+      });
       const candidates = target ? this._allContainers.filter(c => c.id.startsWith(target)) : this._allContainers.slice(0, 25);
       this._selectedContainers = new Set(candidates.map(c => c.id.substring(0, 12)));
       this._renderSidebar();

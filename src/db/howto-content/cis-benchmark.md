@@ -46,3 +46,5 @@ icon: fas fa-clipboard-check
 
 <h3>Docker Dash CIS Tool</h3>
 <p>In Docker Dash, go to <strong>Security → CIS Benchmark</strong> to run an automated check against these rules. Each item shows pass/fail status with remediation instructions.</p>
+
+<p>Use Security → Scheduled scans to run the benchmark periodically and send a report summary to a notification channel.</p>

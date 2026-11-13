@@ -71,8 +71,8 @@ const StacksPage = {
               ${states.map(state => `<option value="${state}" ${state === this._stateFilter ? 'selected' : ''}>${i18n.t('pages.stacks.state.' + state)}</option>`).join('')}
             </select>
           </div>
-          <label class="toggle-label">
-            <input type="checkbox" id="stacks-show-secondary"> ${i18n.t('common.showSecondaryStacks')}<span id="stacks-secondary-count"></span>
+          <label class="toggle-label" title="${i18n.t('common.secondaryStacksHint')}">
+            <input type="checkbox" id="stacks-show-secondary" aria-label="${i18n.t('common.secondaryStacksHint')}"> ${i18n.t('common.showSecondaryStacks')}<span id="stacks-secondary-count"></span>
           </label>
           <label class="toggle-label" title="Include stopped Compose projects discovered under DD_STACKS_DIR">
             <input type="checkbox" id="stacks-show-disk" ${this._showDiskStacks ? 'checked' : ''}> From disk

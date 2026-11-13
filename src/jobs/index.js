@@ -484,6 +484,13 @@ function startAll() {
 
   // Claim the minute in SQLite before calling Docker. A failed lookup
   // leaves schedules untouched rather than falling back to a different host.
+  jobs.push(cron.schedule('* * * * *', _m('security-scan-enqueue', () => {
+    require('../services/security-scan-schedules').enqueueDue();
+  })));
+  jobs.push(cron.schedule('* * * * *', _m('security-scan-worker', () => {
+    return require('../services/security-scan-schedules').processNext();
+  })));
+
   jobs.push(cron.schedule('* * * * *', _m('schedule-executor', async () => {
     if (config.features.readOnly) return;
     const now = new Date();

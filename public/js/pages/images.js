@@ -13,6 +13,7 @@ const ImagesPage = {
     if (params.id) {
       return this._renderDetail(container, params.id);
     }
+    this._showSecondaryStacks = false;
     container.innerHTML = `
       <div class="page-header">
         <h2><i class="fas fa-layer-group"></i> ${i18n.t('pages.images.title')}</h2>
@@ -21,6 +22,9 @@ const ImagesPage = {
             <i class="fas fa-search"></i>
             <input type="text" id="image-search" placeholder="${i18n.t('pages.images.filterPlaceholder')}">
           </div>
+          <label class="toggle-label" title="${i18n.t('common.secondaryStacksHint')}">
+            <input type="checkbox" id="images-show-secondary" aria-label="${i18n.t('common.secondaryStacksHint')}"> ${i18n.t('common.showSecondaryStacks')}
+          </label>
           <button class="btn btn-sm btn-secondary" type="button" id="image-group-repos" aria-pressed="${this._repositoryView}">Group by repository</button>
           <button class="btn btn-sm btn-primary" id="pull-btn">
             <i class="fas fa-download"></i> ${i18n.t('pages.images.pullImage')}
@@ -94,6 +98,10 @@ const ImagesPage = {
     container.querySelector('#images-help').addEventListener('click', () => this._showHelp());
     container.querySelector('#images-guide').addEventListener('click', () => this._showActionsGuide());
     container.querySelector('#images-refresh').addEventListener('click', () => this._load());
+    container.querySelector('#images-show-secondary').addEventListener('change', event => {
+      this._showSecondaryStacks = event.target.checked;
+      this._load();
+    });
     container.querySelector('#registry-browse-btn').addEventListener('click', () => this._registryBrowser());
 
     // Event delegation for table action buttons
@@ -142,8 +150,10 @@ const ImagesPage = {
     const table = this._table;
     const view = document.getElementById('images-table');
     try {
-      const images = await Api.getImages();
-      if (!view?.isConnected || this._table !== table) return;
+      const sequence = this._imageLoadSequence = (this._imageLoadSequence || 0) + 1;
+      const hostId = Api.getHostId();
+      const images = await Api.get('/images?hostId=' + hostId + (this._showSecondaryStacks ? '' : '&secondary=hide'));
+      if (!view?.isConnected || this._table !== table || sequence !== this._imageLoadSequence || hostId !== Api.getHostId()) return;
       this._imageRows = images;
       images.forEach(img => {
         const tag = (img.repoTags || [])[0] || '<none>:<none>';

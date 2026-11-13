@@ -55,3 +55,7 @@ docker scout recommendations nginx:latest  # suggests updates</code></pre>
     image-ref: myapp:latest
     severity: CRITICAL,HIGH
     exit-code: 1</code></pre>
+
+<h3>Scheduled scans</h3>
+<p>As an administrator, open Security → Scheduled scans. Choose a Docker host, Image vulnerabilities or CIS Docker Benchmark, and a frequency. The preview shows the next runs in the scheduler timezone. Choose a notification channel to receive the totals and a link to the report.</p>
+<p>Image reports count findings per image and package, including findings with a fixed version available. CIS reports show passed checks, warnings, failures, and coverage. Run now queues a scan. Check History for its result and delivery status.</p>

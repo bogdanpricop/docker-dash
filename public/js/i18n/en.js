@@ -3,8 +3,8 @@
 // This is the base/fallback language. All keys must be defined here.
 i18n.register('en', 'EN', 'English', {
   common: {
-    secondaryStack: 'Secondary', showSecondaryStacks: 'Show secondary stacks',
-    secondaryStacksHidden: 'Secondary stacks are hidden. Turn on Show secondary stacks to see them.',
+    secondaryStack: 'Secondary', showSecondaryStacks: 'Sec. stacks', secondaryStacksHint: 'Show/Hide secondary stacks',
+    secondaryStacksHidden: 'Secondary stacks are hidden. Turn on Sec. stacks to see them.',
     remoteSecretExecution: 'Transmit and execute through verified SSH without saving a temporary script. If interrupted, check the host before retrying. Configure SSH access on the Hosts page.',
     replacementCleanup: 'Replacement is active, but retained recovery resources need administrator cleanup. Operation: {{operation}}. See the rollback recovery guide.',
     newVersionAvailable: 'New version {{version}} available', newBuildAvailable: 'A dashboard update is available', reload: 'Reload',
