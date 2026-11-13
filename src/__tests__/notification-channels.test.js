@@ -46,11 +46,55 @@ test('rejects an incomplete update and tests the original configured recipient',
   expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: 'ops@example.test' }));
 });
 
+test('restricts general broadcasts and targeted notifications while accepting scheduled reports and manual tests', async () => {
+  const createEmail = (name, usage) => channels.create({ name, usage, provider: 'email', created_by: 1,
+    config: { to: `${name}@example.test` } }).id;
+  const scheduled = createEmail('scheduled', 'scheduled_scans');
+  const message = { text: 'Container stopped' };
+  expect(channels.hasGeneralChannels()).toBe(false);
+  await require('../services/eventNotifier').processEvent({ type: 'container', action: 'stop', actorId: 'fixture-channel-stop' });
+  await channels.sendToAll(message);
+  expect(await channels.send(scheduled, message)).toBe(false);
+  expect(email.send).not.toHaveBeenCalled();
+
+  const general = createEmail('ops', 'general');
+  const legacy = createEmail('legacy');
+  const inactive = createEmail('inactive', 'all');
+  channels.update(inactive, { is_active: false });
+  expect(channels.hasGeneralChannels()).toBe(true);
+  expect(channels.get(legacy).usage).toBe('all');
+  await channels.sendToAll(message);
+  expect(email.send.mock.calls.map(([mail]) => mail.to).sort()).toEqual(['legacy@example.test', 'ops@example.test']);
+
+  email.send.mockClear();
+  const report = { text: 'Security report for the scheduled scan' };
+  await expect(channels.send(general, report, { usage: 'scheduled_scans', diagnostics: true })).rejects.toMatchObject({ status: 400 });
+  await expect(channels.send(scheduled, report, { usage: 'scheduled_scans', diagnostics: true })).resolves.toBe(true);
+  await channels.test(scheduled);
+  expect(email.send.mock.calls.map(([mail]) => mail.to)).toEqual(['scheduled@example.test', 'scheduled@example.test']);
+
+  const secret = channels.get(legacy).config_encrypted;
+  channels.update(legacy, { usage: 'scheduled_scans' });
+  expect(channels.get(legacy).config_encrypted).toBe(secret);
+  expect(channels.list().find(channel => channel.id === legacy).usage).toBe('scheduled_scans');
+  expect(() => channels.update(legacy, { usage: null })).toThrow('Invalid notification channel usage');
+  expect(() => createEmail('unknown', 'other')).toThrow('Invalid notification channel usage');
+});
+
+test('blocks email attachments from reaching a webhook provider', async () => {
+  const { id } = channels.create({ name: 'Hook', provider: 'webhook', config: { url: 'https://hooks.example.test/object' }, created_by: 1 });
+  const fetch = jest.spyOn(global, 'fetch').mockResolvedValue(new global.Response('', { status: 200 }));
+  await expect(channels.send(id, { text: 'Scan report', emailAttachments: [{ filename: 'report.html', content: 'fixture' }] },
+    { usage: 'scheduled_scans' })).rejects.toThrow('Attachments require an email notification channel');
+  expect(fetch).not.toHaveBeenCalled();
+});
+
 test('reports the missing recipient for a legacy channel before calling SMTP', async () => {
   const { lastInsertRowid } = getDb().prepare(`
     INSERT INTO notification_channels (name, provider, config_encrypted, created_by)
     VALUES ('Legacy email', 'email', ?, 1)
   `).run(encrypt('{}'));
+  expect(channels.get(lastInsertRowid).usage).toBe('all');
   await expect(channels.test(lastInsertRowid)).rejects.toThrow('Recipient Email is required');
   expect(email.send).not.toHaveBeenCalled();
 });

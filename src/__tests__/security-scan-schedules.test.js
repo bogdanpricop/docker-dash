@@ -52,11 +52,13 @@ beforeAll(() => {
   db.prepare("INSERT INTO docker_hosts (id,name,connection_type,daemon_type,is_active) VALUES (?, 'Fixture Docker', 'socket', 'docker', 1)").run(hostId);
   db.prepare("INSERT INTO docker_hosts (id,name,connection_type,daemon_type,is_active) VALUES (812, 'Fixture Provider', 'tcp', 'proxmox', 1)").run();
   db.prepare("INSERT INTO notification_channels (id,name,provider,config_encrypted,created_by) VALUES (801,'Reports','webhook','fixture',800)").run();
+  db.prepare("INSERT INTO notification_channels (id,name,provider,config_encrypted,created_by,usage) VALUES (802,'Report email','email','fixture',800,'scheduled_scans'), (803,'Operations email','email','fixture',800,'general')").run();
 });
 beforeEach(() => {
   db.prepare('DELETE FROM security_scan_schedules').run();
   db.prepare('DELETE FROM scan_results').run();
   db.prepare('UPDATE users SET is_active=1 WHERE id=800').run();
+  db.prepare("UPDATE notification_channels SET usage='scheduled_scans' WHERE id=802").run();
 });
 afterEach(() => jest.restoreAllMocks());
 afterAll(closeDb);
@@ -101,7 +103,8 @@ test('automatic runs claim one cron slot, scan exact images once and send the pe
   expect(scanner.mock.calls.map(call => call[1])).toEqual([first, second]);
   expect(connection).toHaveBeenCalledWith(hostId);
   expect(deliver).toHaveBeenCalledTimes(1);
-  expect(deliver).toHaveBeenCalledWith(801, expect.any(Object), { diagnostics: true });
+  expect(deliver).toHaveBeenCalledWith(801, expect.any(Object), { diagnostics: true, usage: 'scheduled_scans' });
+  expect(deliver.mock.calls[0][1]).not.toHaveProperty('emailAttachments');
   const history = await admin('get')('/security-schedules/' + id + '/history').expect(200);
   expect(history.body).toEqual([expect.objectContaining({ status: 'partial', deliveryStatus: 'sent', trigger: 'automatic',
     summary: expect.objectContaining({ selected: 2, scanned: 1, failed: 1, total: 2, fixable: 1, high: 1 }) })]);
@@ -110,6 +113,70 @@ test('automatic runs claim one cron slot, scan exact images once and send the pe
   expect(db.prepare('SELECT host_id,verified_image_id,security_run_id FROM scan_results').get()).toMatchObject({
     host_id: hostId, verified_image_id: first, security_run_id: run.body.id,
   });
+});
+
+test('detailed email is limited to eligible SMTP channels and contains verified findings grouped by image', async () => {
+  await admin('post')('/security-schedules').send({ ...scheduleSettings, reportFormat: 'detailed' }).expect(400);
+  await admin('post')('/security-schedules').send({ ...scheduleSettings, channelId: 803 }).expect(400);
+  await admin('post')('/security-schedules').send({ ...scheduleSettings, channelId: 802, kind: 'cis', reportFormat: 'detailed' }).expect(400);
+  await admin('post')('/security-schedules').send({ ...scheduleSettings, channelId: null, reportFormat: 'invalid' }).expect(400);
+  jest.spyOn(docker, 'getDocker').mockReturnValue({ listContainers: async () => [
+    { State: 'running', ImageID: first, Image: 'api:1' },
+    { State: 'running', ImageID: second, Image: 'worker:<script>' },
+  ] });
+  const scan = findings => ({ scanner: 'trivy', data: { Results: [{ Vulnerabilities: findings }] } });
+  jest.spyOn(admission, 'scanImageReport').mockResolvedValueOnce(scan([
+    { VulnerabilityID: 'CVE-2026-1000', PkgName: '<img src=x>', InstalledVersion: '1.2', FixedVersion: '1.3', Severity: 'CRITICAL' },
+  ])).mockResolvedValueOnce(scan([
+    { VulnerabilityID: 'CVE-2026-2000', PkgName: 'shared-lib', InstalledVersion: '4', FixedVersion: 'not fixed', Severity: 'LOW' },
+  ]));
+  const send = jest.spyOn(notifications, 'send').mockResolvedValue();
+  const created = await admin('post')('/security-schedules').send({ ...scheduleSettings, channelId: 802, reportFormat: 'detailed' }).expect(201);
+  expect(created.body.reportFormat).toBe('detailed');
+  expect((await admin('put')('/security-schedules/' + created.body.id).send({ ...scheduleSettings, channelId: 802 }).expect(200))
+    .body.reportFormat).toBe('detailed');
+  const now = new Date('2026-11-14T02:00:00Z');
+  scans.enqueueDue(now);
+  await scans.processNext(now);
+  expect(send).toHaveBeenCalledTimes(1);
+  const [channel, message, options] = send.mock.calls[0];
+  expect(channel).toBe(802);
+  expect(options).toEqual({ diagnostics: true, usage: 'scheduled_scans' });
+  expect(message.text).toContain('Detailed report attached, grouped by image.');
+  const [attachment] = message.emailAttachments;
+  expect(attachment).toMatchObject({ filename: expect.stringMatching(/^docker-dash-image-scan-\d+\.html$/), contentType: 'text/html; charset=utf-8' });
+  expect(attachment.content).toMatch(/<h2>api:1<\/h2>[\s\S]+CVE-2026-1000<\/td><td>Critical<\/td><td>&lt;img src=x&gt;<\/td><td>1\.2<\/td><td>1\.3/);
+  expect(attachment.content).toMatch(/<h2>worker:&lt;script&gt;<\/h2>[\s\S]+CVE-2026-2000[\s\S]+No published fix/);
+  expect(attachment.content).not.toMatch(/<script|<img/);
+  const [{ id, reportFormat, deliveryStatus }] = scans.history(created.body.id);
+  expect({ reportFormat, deliveryStatus }).toEqual({ reportFormat: 'detailed', deliveryStatus: 'sent' });
+  expect(scans.getRun(id).trigger).toBe('automatic');
+});
+
+test('bounds large attachments and identifies findings omitted from the email', () => {
+  const findings = Array.from({ length: 3000 }, (_, index) => ({ id: `CVE-2026-${index}`, severity: 'high',
+    package: '&'.repeat(300), version: '1', fixedIn: '2' }));
+  const { build } = require('../services/security-scan-email-report');
+  const rows = [{ id: first, scanId: 11, name: 'one', summary: { total: findings.length }, fixable: findings.length }];
+  const connection = { prepare: () => ({ get: () => ({ results_json: JSON.stringify(findings) }) }) };
+  const { attachment, omitted } = build(connection, { id: 1, host_name: 'Docker' }, { status: 'success',
+    report: { images: rows, summary: { total: findings.length, fixable: findings.length, skipped: 0, scanned: 1, selected: 1, failed: 0 } } });
+  expect(Buffer.byteLength(attachment.content)).toBeLessThanOrEqual(2 * 1024 * 1024);
+  expect(omitted).toBeGreaterThan(0);
+  expect((attachment.content.match(/CVE-2026-/g) || []).length + omitted).toBe(findings.length);
+  expect(attachment.content).toContain(`${omitted} findings are omitted`);
+});
+
+test('changing channel usage after queueing preserves the scan and prevents detailed email delivery', async () => {
+  jest.spyOn(docker, 'getDocker').mockReturnValue({ listContainers: async () => [] });
+  const send = jest.spyOn(notifications, 'send').mockResolvedValue();
+  const schedule = await admin('post')('/security-schedules').send({ ...scheduleSettings, channelId: 802, reportFormat: 'detailed' }).expect(201);
+  const queued = await admin('post')('/security-schedules/' + schedule.body.id + '/run-now').expect(202);
+  db.prepare("UPDATE notification_channels SET usage='general' WHERE id=802").run();
+  await scans.processNext();
+  expect(send).not.toHaveBeenCalled();
+  expect(scans.getRun(queued.body.id)).toMatchObject({ status: 'success', deliveryStatus: 'error',
+    deliveryError: 'The email channel is unavailable for detailed scheduled reports', summary: { selected: 0 } });
 });
 
 test('a manual CIS run reports incomplete coverage and preserves its result when delivery fails', async () => {

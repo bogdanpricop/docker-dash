@@ -274,4 +274,4 @@ async function scanAndSave(docker, imageId, imageName, scanner, hostId, { userId
   return result;
 }
 
-module.exports = { scanAndSave, emptySummary: () => _makeSummary([]) };
+module.exports = { scanAndSave, hasFix, emptySummary: () => _makeSummary([]) };

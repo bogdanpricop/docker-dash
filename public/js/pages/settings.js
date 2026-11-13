@@ -7,6 +7,7 @@ const SettingsPage = {
   _tab: 'profile',
   _user: null,
   _notificationTests: new Map(),
+  _notificationChannelUses: { all: 'notificationUsageAll', general: 'notificationUsageGeneral', scheduled_scans: 'notificationUsageScheduled' },
 
   async render(container, params = {}) {
     this._user = App.user;
@@ -246,7 +247,7 @@ const SettingsPage = {
           <div class="card-body" style="padding:0">
             ${channels.length === 0 ? '<div class="empty-msg">' + i18n.t('pages.settings.noChannels') + '</div>' : `
             <table class="data-table">
-              <thead><tr><th style="text-align:left">Name</th><th>Provider</th><th>Status</th><th></th></tr></thead>
+              <thead><tr><th style="text-align:left">Name</th><th>Provider</th><th>${esc(t('notificationUsageColumn'))}</th><th>Status</th><th></th></tr></thead>
               <tbody>${channels.map(c => `
                 <tr data-nc-row="${c.id}" data-nc-provider="${esc(c.provider)}" data-nc-active="${Boolean(c.is_active)}">
                   <td style="text-align:left"><i class="${providerIcons[c.provider] || 'fas fa-bell'}" style="margin-right:8px;color:var(--accent)"></i><strong>${Utils.escapeHtml(c.name)}</strong></td>
@@ -256,6 +257,7 @@ const SettingsPage = {
                       ? `<button type="button" class="btn btn-sm btn-secondary" data-action="smtp-nc">${i18n.t('pages.settings.notificationSmtpSettings')}</button>`
                       : ''}
                   </td>
+                  <td data-nc-usage>${esc(t(this._notificationChannelUses[c.usage] || this._notificationChannelUses.all))}</td>
                   <td>${c.is_active ? '<span class="text-green">Active</span>' : '<span class="text-muted">Inactive</span>'}
                     <div class="text-sm text-muted" data-nc-test-status role="status"></div>
                     <span data-nc-result hidden><button type="button" class="btn btn-sm btn-secondary" data-action="result-nc" data-id="${c.id}">${esc(t('notificationTestDetails'))}</button></span>
@@ -435,6 +437,13 @@ const SettingsPage = {
         <label for="nc-provider">Provider *</label>
         <select id="nc-provider" class="form-control" ${channel ? 'disabled' : ''}>${options}</select>
       </div>
+      <div class="form-group">
+        <label for="nc-usage">${esc(t('notificationUsageLabel'))}</label>
+        <select id="nc-usage" class="form-control" aria-describedby="nc-usage-hint">
+          ${Object.entries(this._notificationChannelUses).map(([value, label]) => `<option value="${value}" ${value === (channel?.usage || 'all') ? 'selected' : ''}>${esc(t(label))}</option>`).join('')}
+        </select>
+        <p id="nc-usage-hint" class="text-sm text-muted">${esc(t('notificationUsageHint'))}</p>
+      </div>
       <div id="nc-fields"></div>
     `, {
       title: t(channel ? 'editChannelTitle' : 'addChannelTitle'),
@@ -473,6 +482,7 @@ const SettingsPage = {
       onSubmit: async content => {
         const name = content.querySelector('#nc-name').value.trim();
         const provider = content.querySelector('#nc-provider').value;
+        const usage = content.querySelector('#nc-usage').value;
         if (!name) { Toast.warning(t('nameRequired')); return false; }
         const config = {};
         for (const input of content.querySelectorAll('[data-config-key]')) {
@@ -487,8 +497,8 @@ const SettingsPage = {
         const submit = content.querySelector('#modal-submit');
         submit.disabled = true;
         try {
-          if (channel) await Api.updateNotificationChannel(channel.id, { name, configPatch: config });
-          else await Api.createNotificationChannel({ name, provider, config });
+          if (channel) await Api.updateNotificationChannel(channel.id, { name, usage, configPatch: config });
+          else await Api.createNotificationChannel({ name, provider, usage, config });
           return true;
         } catch (err) {
           Toast.error(err.message);

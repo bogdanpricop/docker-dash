@@ -8,7 +8,8 @@ const launchOptions = require('./puppeteer-launch-options');
 
 async function main() {
   const app = express();
-  app.get('/smoke', (_req, res) => res.send('<!doctype html><link rel="stylesheet" href="/css/app.css"><main id="test"></main>'));
+  app.get('/smoke', (_req, res) => res.send('<!doctype html><link rel="stylesheet" href="/css/app.css"><main id="test"></main>' +
+    '<div id="modal-overlay" class="modal-overlay hidden"><div id="modal-content" class="modal-content"></div></div>'));
   app.use(express.static(path.join(__dirname, '..', 'public')));
   const server = await new Promise(resolve => {
     const listener = app.listen(0, '127.0.0.1', () => resolve(listener));
@@ -24,7 +25,7 @@ async function main() {
     await page.goto(base + '/smoke');
     for (const script of ['utils.js', 'components/table.js', 'components/log-viewer.js', 'components/compose-service-form.js',
       'components/stack-metrics.js', 'pages/stacks.js', 'pages/security-triage.js', 'pages/images.js', 'pages/volumes.js',
-      'pages/security.js', 'pages/security-schedules.js']) {
+      'components/modal.js', 'pages/security.js', 'pages/security-schedules.js']) {
       await page.addScriptTag({ url: `${base}/js/${script}` });
     }
     await page.evaluate(() => {
@@ -280,6 +281,13 @@ async function main() {
       window.Api = {
         getHostId: () => 17,
         getScanners: async () => ({ scanners: [] }),
+        getHosts: async () => [{ id: 17, name: 'Docker2', daemonType: 'docker', isActive: true }],
+        getNotificationChannels: async () => [
+          { id: 1, name: 'Scan email', provider: 'email', usage: 'scheduled_scans', is_active: 1 },
+          { id: 2, name: 'General email', provider: 'email', usage: 'general', is_active: 1 },
+          { id: 3, name: 'Webhook', provider: 'webhook', usage: 'all', is_active: 1 },
+        ],
+        post: async (_url, values) => { window.savedSchedule = values; },
         get: async url => {
           if (url.startsWith('/images/scan-history')) return scans;
           if (url === '/security-schedules') return { timeZone: 'UTC', schedules: [
@@ -335,6 +343,26 @@ async function main() {
     await page.click('[data-scan-action="history"][data-id="2"]');
     await page.click('#security-schedule-history [data-sort-column="queued"]');
     assert.deepEqual(await column('#security-schedule-history', 1), ['automatic', 'manual']);
+    await page.click('[data-scan-add]');
+    await page.waitForSelector('#security-schedule-form');
+    assert.deepEqual(await page.$$eval('#sec-scan-channel option', options => options.map(option => option.textContent)),
+      ['In-app only', 'Scan email', 'Webhook']);
+    const reportIsOff = () => page.$eval('#sec-scan-reportFormat', select => select.disabled);
+    assert.equal(await reportIsOff(), true);
+    await page.select('#sec-scan-channel', '3');
+    assert.equal(await reportIsOff(), true);
+    await page.select('#sec-scan-channel', '1');
+    assert.equal(await reportIsOff(), false);
+    await page.select('#sec-scan-reportFormat', 'detailed');
+    await page.select('#sec-scan-kind', 'cis');
+    assert.equal(await reportIsOff(), true);
+    await page.select('#sec-scan-kind', 'images');
+    assert.equal(await reportIsOff(), false);
+    await page.type('#sec-scan-name', 'Daily image report');
+    await page.select('#sec-scan-frequency', '0 2 * * *');
+    await page.click('#security-schedule-form [type="submit"]');
+    await page.waitForFunction(() => window.savedSchedule?.reportFormat === 'detailed');
+    assert.equal(await page.evaluate(() => window.savedSchedule.cron), '0 2 * * *');
     assert.deepEqual(errors, []);
     console.log('Operator browser checks passed for grouped logs, Compose graph, inventory sorting and visibility, security triage and SARIF');
   } finally {

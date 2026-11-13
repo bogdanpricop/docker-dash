@@ -360,8 +360,10 @@ class ProcedureService {
           severity: 'info', event: 'procedure',
         };
         const service = require('./notificationChannels');
-        if (config.channel_id) await service.send(config.channel_id, message);
-        else await service.sendToAll(message);
+        if (config.channel_id) {
+          const sent = await service.send(config.channel_id, message);
+          if (!sent) throw new Error('The notification channel is inactive or reserved for scheduled scans');
+        } else await service.sendToAll(message);
         return config.channel_id ? `Notification sent to channel ${config.channel_id}` : 'Notification sent';
       }
       case 'webhook': {

@@ -235,7 +235,16 @@ const ProceduresPage = {
     if (step.action_type === 'deploy_stack') return input('Compose stack name *', 'stack_name', cfg.stack_name, 'my-stack');
     if (step.action_type === 'wait_seconds') return `<div class="form-group"><label>Seconds (0–3600)</label><input type="number" min="0" max="3600" step="0.1" class="form-control" data-config="seconds" value="${Number(cfg.seconds) || 0}"></div>`;
     if (step.action_type === 'run_git_stack') return `<div style="display:grid;grid-template-columns:2fr 1fr;gap:10px"><div class="form-group"><label>Git stack *</label><select class="form-control" data-config="git_stack_id"><option value="">Select...</option>${gitStacks.map(stack => `<option value="${stack.id}" ${Number(cfg.git_stack_id) === stack.id ? 'selected' : ''}>${Utils.escapeHtml(stack.stack_name)}</option>`).join('')}</select></div><div class="form-group"><label>&nbsp;</label><label style="display:block;padding:9px"><input type="checkbox" data-config="force" ${cfg.force ? 'checked' : ''}> Force deploy</label></div></div>`;
-    if (step.action_type === 'notify_channel') return `<div style="display:grid;grid-template-columns:1fr 2fr;gap:10px"><div class="form-group"><label>Channel</label><select class="form-control" data-config="channel_id"><option value="">All enabled channels</option>${channels.map(channel => `<option value="${channel.id}" ${Number(cfg.channel_id) === channel.id ? 'selected' : ''}>${Utils.escapeHtml(channel.name)}</option>`).join('')}</select></div>${input('Message', 'message', cfg.message, 'Procedure step completed')}</div>`;
+    if (step.action_type === 'notify_channel') {
+      const selected = Number(cfg.channel_id) || 0;
+      const eligible = channels.filter(channel => channel.is_active && channel.usage !== 'scheduled_scans');
+      const unavailable = selected && !eligible.some(channel => channel.id === selected);
+      return `<div style="display:grid;grid-template-columns:1fr 2fr;gap:10px"><div class="form-group"><label>Channel</label>
+        <select class="form-control" data-config="channel_id"><option value="">All enabled general channels</option>
+        ${eligible.map(channel => `<option value="${channel.id}" ${selected === channel.id ? 'selected' : ''}>${Utils.escapeHtml(channel.name)}</option>`).join('')}
+        ${unavailable ? `<option value="${selected}" selected>Selected channel unavailable for general notifications</option>` : ''}</select></div>
+        ${input('Message', 'message', cfg.message, 'Procedure step completed')}</div>`;
+    }
     if (step.action_type === 'webhook') return `${input('Webhook URL *', 'url', cfg.url, 'https://example.net/hook')}<div class="form-group"><label>JSON payload</label><textarea class="form-control" data-config="payload_text" rows="3">${Utils.escapeHtml(cfg.payload_text ?? JSON.stringify(cfg.payload || {}, null, 2))}</textarea></div>`;
     return '';
   },

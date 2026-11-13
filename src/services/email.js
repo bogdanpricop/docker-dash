@@ -59,13 +59,13 @@ class EmailService {
     return transporter;
   }
 
-  async send({ to, subject, html, smtp = config.smtp, diagnostics = false }) {
+  async send({ to, subject, html, text, attachments, smtp = config.smtp, diagnostics = false }) {
     const from = smtp.fromName ? { name: smtp.fromName, address: smtp.fromEmail } : smtp.fromEmail;
     let recipientCounts;
 
     try {
       const transporter = this._getTransporter(smtp);
-      const info = await transporter.sendMail({ from, to, subject, html });
+      const info = await transporter.sendMail({ from, to, subject, html, text, attachments });
       if (diagnostics && info.rejected?.length) {
         recipientCounts = { acceptedRecipients: info.accepted?.length || 0, rejectedRecipients: info.rejected.length };
         throw info.rejectedErrors?.[0] || Object.assign(new Error('Recipients were rejected'), { code: 'EENVELOPE', command: 'RCPT TO' });
@@ -84,8 +84,8 @@ class EmailService {
         const reply = typeof err.response === 'string' ? err.response : '';
         const responseCode = Number.isInteger(err.responseCode) && err.responseCode >= 400 && err.responseCode <= 599 ? err.responseCode : undefined;
         const authentication = command === 'AUTH' || code === 'EAUTH';
-        const response = responseCode && !authentication
-          ? safeProviderText(reply, [smtp.user, smtp.password, smtp.fromEmail, subject, html, ...[to].flat()]) : undefined;
+        const response = responseCode && !authentication && !attachments?.length
+          ? safeProviderText(reply, [smtp.user, smtp.password, smtp.fromEmail, subject, html, text, ...[to].flat()]) : undefined;
         failure.details = {
           code: network.code || code,
           reason: network.reason || smtpReasons[code] || 'SMTP delivery failed.',

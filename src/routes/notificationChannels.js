@@ -47,7 +47,7 @@ router.post('/', requireAuth, requireRole('admin'), writeable, (req, res) => {
     auditService.log({
       userId: req.user.id, username: req.user.username,
       action: 'notification_channel_create', targetType: 'notification_channel',
-      targetId: String(result.id), ip: getClientIp(req),
+      targetId: String(result.id), details: { usage: result.usage }, ip: getClientIp(req),
     });
     res.status(201).json(result);
   } catch (err) {
@@ -61,7 +61,8 @@ router.put('/:id', requireAuth, requireRole('admin'), writeable, (req, res) => {
       auditService.log({
         userId: req.user.id, username: req.user.username,
         action: 'notification_channel_update', targetType: 'notification_channel',
-        targetId: req.params.id, ip: getClientIp(req),
+        targetId: req.params.id, details: req.body.usage === undefined ? undefined : { usage: req.body.usage },
+        ip: getClientIp(req),
       });
     }
     res.json({ ok: true });

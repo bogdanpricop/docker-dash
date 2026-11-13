@@ -1,6 +1,6 @@
 'use strict';
 
-const { getDb } = require('../db');
+const channelService = require('./notificationChannels');
 const log = require('../utils/logger')('event-notifier');
 
 // Events that trigger notifications
@@ -85,8 +85,7 @@ class EventNotifier {
         message.text = `**${containerName}**${hostInfo} exited normally (code 0)`;
       }
 
-      // Send to all active notification channels
-      const channelService = require('./notificationChannels');
+      // Broadcast Docker events only to general-purpose channels.
       await channelService.sendToAll(message);
 
       log.debug('Event notification sent', { event: eventKey, container: containerName });
@@ -119,11 +118,8 @@ class EventNotifier {
   }
 
   _isEnabled() {
-    // Check if any notification channels exist and are active
     try {
-      const db = getDb();
-      const count = db.prepare('SELECT COUNT(*) AS cnt FROM notification_channels WHERE is_active = 1').get()?.cnt || 0;
-      return count > 0;
+      return channelService.hasGeneralChannels();
     } catch {
       return false;
     }

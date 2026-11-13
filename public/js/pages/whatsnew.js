@@ -15,6 +15,10 @@ const WhatsNewPage = {
   // Contributors add their entry to _unreleased below; the release process
   // moves those entries into a new numbered release.
   _releases: [
+    { version: '8.96.47', date: '2026-11-14', title: 'Detailed security emails and channel routing', changes: [
+      { type: 'feature', text: 'Attach a detailed image vulnerability report with CVEs, severity and published fixes to scheduled emails.' },
+      { type: 'feature', text: 'Limit a notification channel to scheduled scans or routine alerts, or use it for both.' },
+    ] },
     { version: '8.96.46', date: '2026-11-14', title: 'Inventory sorting and secondary volumes', changes: [
       { type: 'improvement', text: 'Sort Stacks, Images, Volumes and Security tables by clicking column headers.' },
       { type: 'feature', text: 'Use Sec. stacks in Volumes to show volumes associated only with secondary stacks.' },

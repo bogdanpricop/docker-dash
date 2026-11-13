@@ -20,7 +20,7 @@ icon: fas fa-bell
 </ol>
 
 <h3>Add a Notification Channel</h3>
-<p>Go to <strong>Alerts → Channels → Add Channel</strong> and choose your platform:</p>
+<p>Go to <strong>Settings → Notifications → Add Channel</strong> and choose your platform. Set <strong>Use channel for</strong> to <strong>Scheduled scans only</strong> to reserve the channel for scan reports. Choose <strong>General notifications only</strong> for operational messages or the combined option to receive both.</p>
 
 <h4>Discord</h4>
 <p>Create a webhook in your Discord server (Server Settings → Integrations → Webhooks) and paste the URL.</p>

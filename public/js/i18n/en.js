@@ -872,6 +872,12 @@ i18n.register('en', 'EN', 'English', {
       registryDeleted: 'Registry deleted',
       // Notification Channels
       notificationChannelsTitle: 'Notification Channels',
+      notificationUsageColumn: 'Usage',
+      notificationUsageLabel: 'Use channel for',
+      notificationUsageAll: 'General notifications and scheduled scans',
+      notificationUsageGeneral: 'General notifications only',
+      notificationUsageScheduled: 'Scheduled scans only',
+      notificationUsageHint: 'Select Scheduled scans only to receive scan reports without container events or other alerts.',
       addChannel: 'Add Channel',
       noChannels: 'No notification channels configured. Add Discord, Telegram, Slack, or other channels to receive alerts.',
       channelCreated: 'Notification channel created',

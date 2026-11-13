@@ -156,6 +156,13 @@ All notable changes to Docker Dash are documented here.
   members. Commit mutations, mapping changes and HTTP audit together; remove group
   ownership mappings on deletion. [Evidence and compatibility](docs/audits/2026-09-20-scim-security.md).
 
+## [8.96.47] - 2026-11-14 — Detailed security emails and channel routing
+
+- Attach a detailed, per-image HTML report to scheduled vulnerability emails,
+  including CVEs, severity, installed versions and published fixes.
+- Choose whether a notification channel receives routine alerts, scheduled
+  scan reports, or both.
+
 ## [8.96.46] - 2026-11-14 — Inventory sorting and secondary volumes
 
 - Sort Stacks, Images, Volumes and Security tables from the column headers.

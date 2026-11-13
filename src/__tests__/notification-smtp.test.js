@@ -78,6 +78,20 @@ test('uses a plaintext relay without forwarding credentials from the previous mo
   expect(() => smtp.save({ ...external, password: '' }, 1)).toThrow('Enter the password');
 });
 
+test('scheduled scan email forwards a plain summary and an in-memory HTML attachment to SMTP', async () => {
+  smtp.save(external, 1);
+  const { id } = channels.create({ name: 'Daily scan', provider: 'email', usage: 'scheduled_scans',
+    config: { to: 'ops@example.test' }, created_by: 1 });
+  const attachment = { filename: 'docker-dash-image-scan-1.html', contentType: 'text/html; charset=utf-8',
+    content: '<h1>Image vulnerability report</h1>' };
+  await channels.send(id, { title: 'Docker Dash security report', text: 'Scan completed', emailAttachments: [attachment] },
+    { diagnostics: true, usage: 'scheduled_scans' });
+  expect(mailer.createTransport).toHaveBeenCalledWith(expect.objectContaining({ disableFileAccess: true, disableUrlAccess: true }));
+  expect(mailer.createTransport.mock.results[0].value.sendMail).toHaveBeenCalledWith(expect.objectContaining({
+    to: 'ops@example.test', subject: 'Docker Dash security report', text: 'Scan completed', attachments: [attachment],
+  }));
+});
+
 test.each([{ security: 'plain' }, { host: 'smtp://user:password@example.test' }, { port: 65536 }])(
   'rejects invalid external SMTP settings (%j)', fields => {
     expect(() => smtp.save({ ...external, ...fields }, 1)).toThrow();
