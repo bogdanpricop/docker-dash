@@ -1,6 +1,8 @@
 'use strict';
 
 const SecurityTriage = {
+  _sort: null,
+
   async render(element, showSecondary = false) {
     const escape = Utils.escapeHtml;
     const activeHost = Api.getHostId();
@@ -28,6 +30,9 @@ const SecurityTriage = {
     const status = element.querySelector('[data-triage-state]');
     const compare = element.querySelector('[data-triage-compare]');
     const exportButton = element.querySelector('[data-triage-export]');
+    const columns = [['id', 'Vulnerability'], ['severity', 'Severity'], ['package', 'Package'], ['version', 'Installed'],
+      ['fixedIn', 'Fixed in'], ['image', 'Image'], ['running', 'Running containers']];
+    const severities = ['critical', 'high', 'medium', 'low', 'negligible', 'unknown'];
     let data;
     let scanMap;
     let filtered = [];
@@ -46,20 +51,31 @@ const SecurityTriage = {
           && (!severity.value || severity.value === finding.severity)
           && (!fix.value || Boolean(finding.fixedIn) === (fix.value === 'fixed'));
       });
+      const running = finding => scanMap.get(finding.scanId).consumers.filter(container => container.state === 'running');
+      if (this._sort) {
+        const { key, direction } = this._sort;
+        const value = finding => {
+          if (key === 'severity') return severities.indexOf(finding.severity) + 1 || null;
+          if (key === 'image') return scanMap.get(finding.scanId).image_name;
+          if (key === 'running') return running(finding).length;
+          return finding[key];
+        };
+        filtered.sort((a, b) => TableSort.compare(value(a), value(b), direction));
+      }
       const start = page * 100;
       const visible = filtered.slice(start, start + 100);
       status.textContent = `${data.host.name || 'Local Docker'} · ${filtered.length} findings across verified scans${data.truncated ? ' · inventory limit reached' : ''}`;
       exportButton.disabled = !filtered.length;
       list.innerHTML = visible.length ? `<div class="file-list-scroll"><table class="data-table compact"><thead>
-        <tr><th>Vulnerability</th><th>Severity</th><th>Package</th><th>Installed</th><th>Fixed in</th><th>Image</th><th>Running containers</th></tr>
+        <tr>${columns.map(([key, label]) => TableSort.header(key, label)).join('')}</tr>
         </thead><tbody>${visible.map(finding => {
           const scan = scanMap.get(finding.scanId);
-          const running = scan.consumers.filter(container => container.state === 'running');
+          const consumers = running(finding);
           return `<tr><td class="mono">${escape(finding.id)}</td><td><span class="badge">${escape(finding.severity)}</span></td>
             <td>${escape(finding.package)}</td><td class="mono">${escape(finding.version)}</td><td class="mono">${escape(finding.fixedIn || '—')}</td>
             <td>${escape(scan.image_name)}<div class="text-xs mono text-muted" title="${escape(scan.verified_image_id)}">${Utils.shortImageId(scan.verified_image_id)} · ${escape(scan.scanner)}</div></td>
-            <td>${running.length ? `<details><summary>${running.length} running</summary>
-              ${running.map(container => `<button type="button" class="btn btn-xs btn-secondary" data-triage-container="${escape(container.id)}">${escape(container.name)}</button>`).join('')}</details>` : '—'}</td></tr>`;
+            <td>${consumers.length ? `<details><summary>${consumers.length} running</summary>
+              ${consumers.map(container => `<button type="button" class="btn btn-xs btn-secondary" data-triage-container="${escape(container.id)}">${escape(container.name)}</button>`).join('')}</details>` : '—'}</td></tr>`;
         }).join('')}</tbody></table></div>
         <div class="schedule-controls" style="margin-top:10px">
           <button type="button" class="btn btn-xs btn-secondary" data-triage-prev ${page ? '' : 'disabled'}>Previous</button>
@@ -68,6 +84,17 @@ const SecurityTriage = {
         </div>` : '<div class="empty-msg">No verified findings match the filters. Run a scan for the installed image to establish coverage.</div>';
       list.querySelector('[data-triage-prev]')?.addEventListener('click', () => { page--; paint(); });
       list.querySelector('[data-triage-next]')?.addEventListener('click', () => { page++; paint(); });
+      const head = list.querySelector('thead');
+      if (head) {
+        TableSort.update(head, this._sort);
+        TableSort.onClick(head, key => {
+          const restoreFocus = head.contains(document.activeElement);
+          this._sort = TableSort.next(this._sort, key);
+          page = 0;
+          paint();
+          if (restoreFocus) list.querySelector(`[data-sort-column="${key}"]`)?.focus();
+        });
+      }
       list.querySelectorAll('[data-triage-container]').forEach(button => button.addEventListener('click', () => {
         const route = '#/containers/' + encodeURIComponent(button.dataset.triageContainer);
         if (data.host.id) App._activateHost(data.host.id, route);

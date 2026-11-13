@@ -5,6 +5,9 @@
 
 const SecurityPage = {
   _tab: 'overview',
+  _scanColumns: [['summary_critical', 'Critical'], ['summary_high', 'High'], ['summary_medium', 'Medium'],
+    ['summary_low', 'Low'], ['summary_total', 'Total'], ['fixable_count', 'Fixable']],
+  _historySorts: new Map(),
 
   async render(container, params = {}) {
     this._showSecondaryStacks = false;
@@ -164,11 +167,11 @@ const SecurityPage = {
       <div class="card">
         <div class="card-header"><h3><i class="fas fa-layer-group" style="margin-right:8px"></i>Image Security Status</h3></div>
         <div class="card-body" style="padding:0">
-          <table class="data-table">
+          <table class="data-table" id="sec-image-status">
             <thead><tr>
-              <th style="text-align:left">Image</th>
-              <th>Critical</th><th>High</th><th>Medium</th><th>Low</th><th>Total</th><th>Fixable</th>
-              <th>Last Scan</th><th></th>
+              ${TableSort.header('image_name', 'Image', { left: true })}
+              ${this._scanColumns.map(([key, label]) => TableSort.header(key, label)).join('')}
+              ${TableSort.header('scanned_at', 'Last Scan')}<th></th>
             </tr></thead>
             <tbody>
               ${images.map(img => {
@@ -266,6 +269,10 @@ Please:
         </div>
       </div>
     `;
+
+    TableSort.bind(el.querySelector('#sec-image-status'), images.map(image => this._scanSortValues({
+      ...latestByImage.get(image.id), image_name: image.repoTags?.[0] || '<none>',
+    })), this._overviewSort, sort => { this._overviewSort = sort; });
 
     // Wire copy buttons via addEventListener (not inline onclick)
     el.querySelector('#copy-overview-prompt')?.addEventListener('click', () => {
@@ -561,6 +568,7 @@ Please:
 
     if (this._historyView === 'list') {
       body.innerHTML = this._renderHistoryTable(filtered);
+      this._bindHistorySort(body.querySelector('table'), filtered, 'list');
       body.querySelectorAll('[data-action="view-scan"]').forEach(btn => {
         btn.addEventListener('click', () => this._viewScanDetail(parseInt(btn.dataset.scanId)));
       });
@@ -568,19 +576,20 @@ Please:
     }
 
     // Grouped views
-    const groups = {};
+    const groups = new Map();
     for (const r of filtered) {
       let key;
       if (this._historyView === 'image') key = r.image_name;
       else if (this._historyView === 'scanner') key = r.scanner;
       else key = (r.scanned_at || '').substring(0, 10); // date: YYYY-MM-DD
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(r);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(r);
     }
 
     const groupIcon = this._historyView === 'image' ? 'fa-layer-group' : this._historyView === 'scanner' ? 'fa-search' : 'fa-calendar-day';
 
-    body.innerHTML = Object.entries(groups).map(([key, items]) => {
+    const entries = [...groups];
+    body.innerHTML = entries.map(([key, items]) => {
       const totalC = items.reduce((s, r) => s + r.summary_critical, 0);
       const totalH = items.reduce((s, r) => s + r.summary_high, 0);
       const totalAll = items.reduce((s, r) => s + r.summary_total, 0);
@@ -601,6 +610,11 @@ Please:
           </div>
         </div>`;
     }).join('');
+
+    body.querySelectorAll('.hist-group-body table').forEach((table, index) => {
+      const [key, rows] = entries[index];
+      this._bindHistorySort(table, rows, JSON.stringify([this._historyView, key]));
+    });
 
     // Wire view-scan buttons in all group tables
     body.querySelectorAll('[data-action="view-scan"]').forEach(btn => {
@@ -649,11 +663,10 @@ Please:
   _renderHistoryTable(rows) {
     return `<table class="data-table">
       <thead><tr>
-        <th style="text-align:left">Image</th>
-        <th>Scanner</th>
-        <th>Critical</th><th>High</th><th>Medium</th><th>Low</th><th>Total</th>
-        <th>Fixable</th>
-        <th>Scanned At</th>
+        ${TableSort.header('image_name', 'Image', { left: true })}
+        ${TableSort.header('scanner', 'Scanner')}
+        ${this._scanColumns.map(([key, label]) => TableSort.header(key, label)).join('')}
+        ${TableSort.header('scanned_at', 'Scanned At')}
         <th></th>
       </tr></thead>
       <tbody>${rows.map(r => `
@@ -671,6 +684,17 @@ Please:
         </tr>
       `).join('')}</tbody>
     </table>`;
+  },
+
+  _scanSortValues(row) {
+    const timestamp = row.scanned_at?.replace(' ', 'T');
+    const hasZone = /(?:Z|[+-]\d\d:?\d\d)$/i.test(timestamp || '');
+    return { ...row, scanned_at: timestamp ? Date.parse(timestamp + (hasZone ? '' : 'Z')) : null };
+  },
+
+  _bindHistorySort(table, rows, group) {
+    TableSort.bind(table, rows.map(row => this._scanSortValues(row)), this._historySorts.get(group),
+      sort => this._historySorts.set(group, sort));
   },
 
   async _renderScanners(el) {
@@ -890,8 +914,9 @@ Please:
           ${vulns.length > 0 ? `
           <h4 style="margin:16px 0 8px;font-size:12px;text-transform:uppercase;color:var(--text-muted)">Vulnerabilities (${vulns.length})</h4>
           <div style="max-height:250px;overflow-y:auto">
-            <table class="data-table compact">
-              <thead><tr><th>Sev</th><th>CVE</th><th>Package</th><th>Version</th><th>Fix</th></tr></thead>
+            <table class="data-table compact" data-scan-findings>
+              <thead><tr>${[['severity', 'Sev'], ['id', 'CVE'], ['package', 'Package'], ['version', 'Version'], ['fixedIn', 'Fix']]
+                .map(([key, label]) => TableSort.header(key, label)).join('')}</tr></thead>
               <tbody>${sortedVulns.slice(0, 100).map(v => `
                 <tr>
                   <td class="mono text-sm" style="color:${sevColor(v.severity)};font-weight:600">${v.severity.toUpperCase()}</td>
@@ -907,6 +932,9 @@ Please:
         <div class="modal-footer"><button class="btn btn-primary" id="scan-detail-close-btn">Close</button></div>
       `, { width: '850px' });
 
+      const table = Modal._content.querySelector('[data-scan-findings]');
+      if (table) TableSort.bind(table, sortedVulns.slice(0, 100).map(v => ({ ...v, severity: sevOrder[v.severity] ?? 5 })),
+        { key: 'severity', direction: 'ascending' });
       Modal._content.querySelector('#scan-detail-close-x').addEventListener('click', () => Modal.close());
       Modal._content.querySelector('#scan-detail-close-btn').addEventListener('click', () => Modal.close());
 
