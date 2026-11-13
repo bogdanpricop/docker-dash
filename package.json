@@ -1,6 +1,6 @@
 {
   "name": "docker-dash",
-  "version": "8.96.43",
+  "version": "8.96.44",
   "description": "Full-featured Docker management dashboard",
   "main": "src/server.js",
   "scripts": {
@@ -57,6 +57,7 @@
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
     "canvas": "^3.2.3",
+    "deepmerge": "file:vendor/deepmerge",
     "chart.js": "^4.5.1",
     "codemirror": "^6.0.2",
     "esbuild": "0.28.2",
@@ -78,7 +79,10 @@
   "overrides": {
     "js-yaml": "$js-yaml",
     "glob": "14.0.3",
-    "minimatch": "11.0.4"
+    "minimatch": "11.0.4",
+    "jest-config": {
+      "deepmerge": "$deepmerge"
+    }
   },
   "allowScripts": {
     "@parcel/watcher@2.6.0": true,
