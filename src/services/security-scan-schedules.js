@@ -5,6 +5,7 @@ const dockerService = require('./docker');
 const imageScans = require('./image-scan-results');
 const cis = require('./cis-benchmark');
 const notifications = require('./notificationChannels');
+const emailReport = require('./security-scan-email-report');
 const policy = require('./provider-operations/policy');
 const config = require('../config');
 const httpUrl = require('../utils/http-url');
@@ -42,7 +43,7 @@ function projectSchedule(row, now = new Date()) {
   return {
     id: row.id, name: row.name, hostId: row.host_id, hostName: row.host_name,
     kind: row.kind, imageScope: row.image_scope, scanner: row.scanner,
-    cron: row.cron, enabled: Boolean(row.enabled), channelId: row.channel_id, channelName: row.channel_name,
+    cron: row.cron, enabled: Boolean(row.enabled), channelId: row.channel_id, channelName: row.channel_name, reportFormat: row.report_format,
     nextRunAt: row.enabled && row.host_id ? nextScheduleRuns(row.cron, now)[0] ?? null : null,
   };
 }
@@ -54,7 +55,7 @@ function projectRun(row, includeReport = false) {
     id: row.id, scheduleId: row.schedule_id, hostId: row.host_id, hostName: row.host_name,
     kind: row.kind, trigger: row.trigger, status: row.status, queuedAt: row.queued_at,
     startedAt: row.started_at, finishedAt: row.finished_at, error: row.error,
-    deliveryStatus: row.delivery_status, deliveryError: row.delivery_error,
+    deliveryStatus: row.delivery_status, deliveryError: row.delivery_error, reportFormat: row.report_format,
     summary, ...(includeReport ? { report } : {}),
   };
 }
@@ -70,7 +71,7 @@ function list() {
 
 function save(id, body, ownerId) {
   const db = getDb();
-  const { name, hostId, kind, cron, enabled = true, channelId = null } = body || {};
+  const { name, hostId, kind, cron, enabled = true, channelId = null, reportFormat } = body || {};
   const imageScope = kind === 'images' ? body.imageScope ?? 'running' : 'running';
   const scanner = kind === 'images' ? body.scanner ?? 'auto' : 'auto';
   if (typeof name !== 'string' || !name.trim() || name.trim().length > 80 || /[\x00-\x1f\x7f]/.test(name)
@@ -79,20 +80,26 @@ function save(id, body, ownerId) {
   if (typeof cron !== 'string' || !nextScheduleRuns(cron).length) throw fail('Enter a five-field cron expression with an upcoming run');
   hostFor(db, hostId);
   if (!ownerAllowed(db, ownerId)) throw fail('An active administrator account must own the schedule', 403);
-  if (channelId !== null && (!Number.isSafeInteger(channelId) || channelId < 1
-    || !db.prepare('SELECT 1 FROM notification_channels WHERE id=? AND is_active=1').get(channelId))) {
-    throw fail('Choose an active notification channel');
-  }
-  const fields = [name.trim(), hostId, kind, imageScope, scanner, cron.trim(), Number(enabled), channelId, ownerId];
   return db.transaction(() => {
+    const channel = Number.isSafeInteger(channelId) && channelId > 0
+      ? db.prepare('SELECT provider, usage FROM notification_channels WHERE id=? AND is_active=1').get(channelId) : null;
+    if (channelId !== null && !notifications.allowsUsage(channel, 'scheduled_scans')) {
+      throw fail('Choose an active channel that allows scheduled scans');
+    }
+    const previous = id === null ? null : db.prepare('SELECT report_format FROM security_scan_schedules WHERE id=?').get(id);
+    const canAttach = kind === 'images' && channel?.provider === 'email';
+    const format = reportFormat === undefined ? (canAttach ? previous?.report_format || 'summary' : 'summary') : reportFormat;
+    if (!['summary', 'detailed'].includes(format)) throw fail('Invalid report format');
+    if (format === 'detailed' && !canAttach) throw fail('Detailed reports require an email channel and an image vulnerability scan');
+    const fields = [name.trim(), hostId, kind, imageScope, scanner, cron.trim(), Number(enabled), channelId, ownerId, format];
     if (id === null) {
       if (db.prepare('SELECT COUNT(*) AS count FROM security_scan_schedules').get().count >= MAX_SCHEDULES) {
         throw fail('The security scan schedule limit has been reached', 409);
       }
-      id = Number(db.prepare("INSERT INTO security_scan_schedules (name,host_id,kind,image_scope,scanner,cron,enabled,channel_id,owner_id,created_at)" +
-        ' VALUES (?,?,?,?,?,?,?,?,?,?)').run(...fields, new Date().toISOString()).lastInsertRowid);
+      id = Number(db.prepare("INSERT INTO security_scan_schedules (name,host_id,kind,image_scope,scanner,cron,enabled,channel_id,owner_id,report_format,created_at)" +
+        ' VALUES (?,?,?,?,?,?,?,?,?,?,?)').run(...fields, new Date().toISOString()).lastInsertRowid);
     } else {
-      const changed = db.prepare('UPDATE security_scan_schedules SET name=?,host_id=?,kind=?,image_scope=?,scanner=?,cron=?,enabled=?,channel_id=?,owner_id=? WHERE id=?')
+      const changed = db.prepare('UPDATE security_scan_schedules SET name=?,host_id=?,kind=?,image_scope=?,scanner=?,cron=?,enabled=?,channel_id=?,owner_id=?,report_format=? WHERE id=?')
         .run(...fields, id).changes;
       if (!changed) throw fail('Security scan schedule not found', 404);
       // Queued runs represent the previous settings, including their delivery target.
@@ -132,9 +139,9 @@ function enqueue(db, schedule, host, trigger, now) {
     return null;
   }
   return Number(db.prepare("INSERT INTO security_scan_runs" +
-    " (schedule_id,host_id,host_name,kind,image_scope,scanner,channel_id,delivery_status,trigger,status,queued_at)" +
-    " VALUES (?,?,?,?,?,?,?,?,?,'queued',?)").run(schedule.id, host.id, host.name, schedule.kind,
-    schedule.image_scope, schedule.scanner, schedule.channel_id, schedule.channel_id ? 'pending' : 'none', trigger, now.toISOString()).lastInsertRowid);
+    " (schedule_id,host_id,host_name,kind,image_scope,scanner,channel_id,delivery_status,trigger,status,queued_at,report_format)" +
+    " VALUES (?,?,?,?,?,?,?,?,?,'queued',?,?)").run(schedule.id, host.id, host.name, schedule.kind,
+    schedule.image_scope, schedule.scanner, schedule.channel_id, schedule.channel_id ? 'pending' : 'none', trigger, now.toISOString(), schedule.report_format).lastInsertRowid);
 }
 
 function enqueueManual(id, now = new Date()) {
@@ -258,16 +265,28 @@ function notificationMessage(run, result) {
 
 async function deliver(db, run, result) {
   if (run.delivery_status !== 'pending') return;
-  const current = db.prepare('SELECT channel_id,delivery_status FROM security_scan_runs WHERE id=?').get(run.id);
+  const current = db.prepare('SELECT channel_id,delivery_status,finished_at FROM security_scan_runs WHERE id=?').get(run.id);
   if (!current || current.delivery_status !== 'sending') return;
   let status = 'sent', error = null;
   try {
     if (!current.channel_id) throw fail('The selected notification channel was deleted');
-    await notifications.send(current.channel_id, notificationMessage(run, result), { diagnostics: true });
+    const message = notificationMessage(run, result);
+    if (run.report_format === 'detailed') {
+      const channel = db.prepare('SELECT provider,usage FROM notification_channels WHERE id=? AND is_active=1').get(current.channel_id);
+      if (channel?.provider !== 'email' || !notifications.allowsUsage(channel, 'scheduled_scans')) {
+        throw fail('Detailed report delivery requires an active email channel for scheduled scans');
+      }
+      const { attachment, omitted } = emailReport.build(db, { ...run, finished_at: current.finished_at }, result);
+      message.emailAttachments = [attachment];
+      message.text += '\nDetailed report attached, grouped by image.';
+      if (omitted > 0) message.text += `\n${omitted} findings are omitted from the attachment. Open the run in Docker Dash for the full results.`;
+    }
+    await notifications.send(current.channel_id, message, { diagnostics: true, usage: 'scheduled_scans' });
   } catch (cause) {
     status = 'error';
     error = cause.details?.reason || (cause.status === 400 || cause.status === 404
-      ? 'The selected channel is unavailable or incomplete' : 'Notification delivery failed');
+      ? (run.report_format === 'detailed' ? 'The email channel is unavailable for detailed scheduled reports' : 'The selected channel is unavailable or incomplete')
+      : 'Notification delivery failed');
   }
   db.prepare("UPDATE security_scan_runs SET delivery_status=?,delivery_error=? WHERE id=? AND delivery_status='sending'").run(status, error, run.id);
 }

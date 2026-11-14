@@ -39,7 +39,7 @@ const SecuritySchedules = {
               <td>${e(s.hostName || 'Removed host')}</td>
               <td>${s.enabled ? e(date(s.nextRunAt)) : 'Paused'}</td>
               <td>${s.lastRun ? `<strong>${e(this.states[s.lastRun.status])}</strong><div class="text-muted text-sm">${e(this.summary(s.lastRun))}</div>` : 'Never run'}</td>
-              <td>${e(s.channelName || 'In-app only')}</td>
+              <td>${e(s.channelName || 'In-app only')}${s.channelName && s.reportFormat === 'detailed' ? '<div class="text-muted text-sm">Detailed attachment</div>' : ''}</td>
               <td>${[['run', 'Run now'], ['history', 'History'], ['edit', 'Edit'], ['delete', 'Delete']].map(([action, label]) =>
                 `<button class="btn btn-xs btn-secondary" data-scan-action="${action}" data-id="${s.id}" ${action === 'run' && (!s.hostId || ['running','queued'].includes(s.lastRun?.status)) ? 'disabled' : ''}>${label}</button>`).join(' ')}
               </td></tr>`).join('')}</tbody></table></div>` : '<p class="text-muted">No security scans scheduled.</p>'}
@@ -83,6 +83,7 @@ const SecuritySchedules = {
     if (!el.isConnected || SecurityPage._tab !== 'schedules') return;
     const e = Utils.escapeHtml;
     const hostId = schedule?.hostId ?? (Api.getHostId() || hosts.find(host => host.isDefault)?.id);
+    const eligibleChannels = channels.filter(channel => channel.is_active && channel.usage !== 'general');
     const options = (rows, selected) => rows.map(([id, label]) =>
       `<option value="${e(id)}" ${String(id) === String(selected) ? 'selected' : ''}>${e(label)}</option>`).join('');
     const select = (key, label, rows, selected, required = '') => `<div class="form-group"><label for="sec-scan-${key}">${label}</label>
@@ -106,7 +107,12 @@ const SecuritySchedules = {
             <input class="form-control mono" id="sec-scan-cron" name="cron" required maxlength="120" value="${e(cron)}">
             <button type="button" class="btn btn-xs btn-secondary" data-scan-preview>Preview next runs</button>
             <div id="sec-scan-preview" class="text-muted text-sm" role="status"></div></div>
-          ${select('channel', 'Send report to', [['', 'In-app only'], ...channels.filter(c => c.is_active).map(c => [c.id,c.name])], schedule?.channelId)}
+          ${select('channel', 'Send report to', [['', 'In-app only'], ...eligibleChannels.map(c => [c.id,c.name])], schedule?.channelId)}
+          ${schedule?.channelId && !eligibleChannels.some(c => c.id === schedule.channelId) ? '<p class="text-warning text-sm">The previous channel no longer accepts scheduled reports. Select another channel to resume delivery.</p>' : ''}
+          <div id="sec-scan-report-options" hidden>
+            ${select('reportFormat', 'Email report', [['summary', 'Summary only'], ['detailed', 'Summary and detailed attachment']], schedule?.reportFormat || 'summary')}
+            <p class="text-muted text-sm">The HTML attachment groups findings by image and shows CVEs, severity, installed versions and published fixes.</p>
+          </div>
           <label class="toggle-label"><input name="enabled" type="checkbox" ${schedule?.enabled !== false ? 'checked' : ''}> Enabled</label>
           <p id="sec-scan-error" class="text-danger text-sm" role="alert"></p>
         </div>
@@ -116,9 +122,16 @@ const SecuritySchedules = {
     const form = document.querySelector('#security-schedule-form');
     form.parentElement.querySelectorAll('[data-close-scan-modal]').forEach(b => b.addEventListener('click', () => Modal.close()));
     const fields = form.elements;
-    const updateKind = () => { form.querySelector('#sec-scan-image-options').hidden = fields.kind.value === 'cis'; };
-    fields.kind.addEventListener('change', updateKind);
-    updateKind();
+    const updateOptions = () => {
+      const images = fields.kind.value === 'images';
+      const channel = eligibleChannels.find(c => c.id === Number(fields.channel.value));
+      form.querySelector('#sec-scan-image-options').hidden = !images;
+      form.querySelector('#sec-scan-report-options').hidden = !(images && channel?.provider === 'email');
+      fields.reportFormat.disabled = !(images && channel?.provider === 'email');
+    };
+    fields.kind.addEventListener('change', updateOptions);
+    fields.channel.addEventListener('change', updateOptions);
+    updateOptions();
     fields.frequency.addEventListener('change', () => { if (fields.frequency.value) fields.cron.value = fields.frequency.value; });
     fields.cron.addEventListener('input', () => { fields.frequency.value = frequencies.some(([v]) => v === fields.cron.value) ? fields.cron.value : ''; });
     form.querySelector('[data-scan-preview]').addEventListener('click', async () => {
@@ -135,7 +148,8 @@ const SecuritySchedules = {
       button.disabled = true;
       const values = { name: fields.name.value, hostId: Number(fields.host.value), kind: fields.kind.value,
         imageScope: fields.scope.value, scanner: fields.scanner.value, cron: fields.cron.value,
-        channelId: fields.channel.value ? Number(fields.channel.value) : null, enabled: fields.enabled.checked };
+        channelId: fields.channel.value ? Number(fields.channel.value) : null, enabled: fields.enabled.checked,
+        reportFormat: fields.reportFormat.disabled ? 'summary' : fields.reportFormat.value };
       try {
         if (schedule) await Api.put(this.path + '/' + schedule.id, values);
         else await Api.post(this.path, values);
@@ -187,7 +201,7 @@ const SecuritySchedules = {
       <button type="button" class="modal-close-btn" id="security-report-close">×</button></div>
       <div class="modal-body" id="security-report-body">
         <p><strong>${e(this.states[run.status])}</strong> · ${e(this.summary(run))}</p>
-        <p class="text-muted text-sm">Report delivery · ${e(this.delivery(run))}</p>
+        <p class="text-muted text-sm">Report delivery · ${e(this.delivery(run))}${run.reportFormat === 'detailed' ? ' · Detailed email attachment' : ''}</p>
         ${[run.error, run.deliveryError, report?.summary?.error].filter(Boolean).map(error => `<p class="text-danger">${e(error)}</p>`).join('')}
         ${report?.summary?.skipped ? `<p>${report.summary.skipped} images skipped.</p>` : ''}
         ${imageRows ? `<div class="file-list-scroll"><table class="data-table compact" data-report-images><thead><tr>

@@ -2,7 +2,6 @@
 
 // Tests for src/services/eventNotifier.js
 // Mocks notificationChannels and workflows to avoid real I/O.
-// Uses in-memory SQLite for _isEnabled() DB checks.
 //
 // NOTE: The module-level `cooldowns` Map inside eventNotifier is not exported,
 // so it persists across tests. Each test uses a unique actorName to avoid
@@ -16,6 +15,7 @@ jest.resetModules();
 jest.mock('../services/notificationChannels', () => ({
   sendToAll: jest.fn().mockResolvedValue(undefined),
   send: jest.fn().mockResolvedValue(undefined),
+  hasGeneralChannels: jest.fn(),
 }));
 
 jest.mock('../services/workflows', () => ({
@@ -23,35 +23,22 @@ jest.mock('../services/workflows', () => ({
 }));
 
 describe('EventNotifier', () => {
-  let db, notifier, channelMock, workflowMock;
+  let notifier, channelMock, workflowMock;
 
   beforeAll(() => {
-    const { getDb } = require('../db');
-    db = getDb();
     notifier = require('../services/eventNotifier');
     channelMock = require('../services/notificationChannels');
     workflowMock = require('../services/workflows');
-    // Seed admin user for created_by FK in notification_channels
-    db.prepare(
-      `INSERT OR IGNORE INTO users (id, username, password_hash, role) VALUES (1, 'admin', 'x', 'admin')`
-    ).run();
-  });
-
-  afterAll(() => {
-    const { closeDb } = require('../db');
-    closeDb();
   });
 
   beforeEach(() => {
     jest.clearAllMocks();
-    db.prepare('DELETE FROM notification_channels').run();
+    channelMock.hasGeneralChannels.mockReturnValue(false);
   });
 
   // ─── helper to activate a channel so _isEnabled() returns true ────────────
   function enableChannel() {
-    db.prepare(
-      `INSERT INTO notification_channels (name, provider, config_encrypted, is_active, created_by) VALUES ('test-channel', 'webhook', '{}', 1, 1)`
-    ).run();
+    channelMock.hasGeneralChannels.mockReturnValue(true);
   }
 
   // ─── _isEnabled ───────────────────────────────────────────────────────────

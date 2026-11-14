@@ -17,7 +17,7 @@ summary: Configurează alerte CPU/memorie cu notificări Discord, Slack, Telegra
 </ol>
 
 <h3>Adaugă un canal de notificare</h3>
-<p>Mergi la <strong>Alerts → Channels → Add Channel</strong> și alege platforma:</p>
+<p>Mergi la <strong>Setări → Notificări → Adaugă canal</strong> și alege platforma. La <strong>Folosește canalul pentru</strong>, selectează <strong>Doar scanări programate</strong> pentru a primi rapoartele de scanare. Alege <strong>Doar notificări generale</strong> pentru mesajele operaționale sau opțiunea combinată pentru ambele tipuri de mesaje.</p>
 
 <h4>Discord</h4>
 <p>Creează un webhook în serverul tău Discord (Server Settings → Integrations → Webhooks) și lipește URL-ul.</p>

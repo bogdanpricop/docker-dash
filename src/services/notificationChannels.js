@@ -8,6 +8,12 @@ const addressparser = require('nodemailer/lib/addressparser');
 const httpUrl = require('../utils/http-url');
 const log = require('../utils/logger')('notify');
 const activeTests = new Set();
+const channelUsages = new Set(['all', 'general', 'scheduled_scans']);
+const generalChannels = "FROM notification_channels WHERE is_active = 1 AND usage IN ('all', 'general')";
+
+function validateUsage(usage) {
+  if (!channelUsages.has(usage)) throw Object.assign(new Error('Invalid notification channel usage'), { status: 400 });
+}
 
 /**
  * Notification channel providers.
@@ -70,14 +76,14 @@ const providers = {
   },
 
   async email(config, message, diagnostic) {
-    // Delegate to existing email service
     const emailService = require('./email');
     await emailService.send({
       to: config.to,
       smtp: require('./notification-smtp').transport(),
       diagnostics: Boolean(diagnostic),
       subject: message.title || 'Docker Dash Alert',
-      html: `<p>${message.text.replace(/\n/g, '<br>')}</p>`,
+      text: message.text,
+      ...(message.emailAttachments?.length ? { attachments: message.emailAttachments } : {}),
     });
   },
 
@@ -181,18 +187,19 @@ class NotificationChannelService {
     return getDb().prepare('SELECT * FROM notification_channels WHERE id = ?').get(id);
   }
 
-  create({ name, provider, config, created_by }) {
+  create({ name, provider, config, created_by, usage = 'all' }) {
     if (!name || !provider) throw new Error('name and provider are required');
+    validateUsage(usage);
     this._validateConfig(provider, config);
 
     const db = getDb();
     const r = db.prepare(`
-      INSERT INTO notification_channels (name, provider, config_encrypted, is_active, created_by)
-      VALUES (?, ?, ?, 1, ?)
-    `).run(name, provider, encrypt(JSON.stringify(config)), created_by);
+      INSERT INTO notification_channels (name, provider, config_encrypted, is_active, created_by, usage)
+      VALUES (?, ?, ?, 1, ?, ?)
+    `).run(name, provider, encrypt(JSON.stringify(config)), created_by, usage);
 
     log.info('Channel created', { id: r.lastInsertRowid, name, provider });
-    return { id: Number(r.lastInsertRowid), name, provider };
+    return { id: Number(r.lastInsertRowid), name, provider, usage };
   }
 
   update(id, data) {
@@ -209,6 +216,11 @@ class NotificationChannelService {
       params.push(data.name.trim());
     }
     if (data.is_active !== undefined) { sets.push('is_active = ?'); params.push(data.is_active ? 1 : 0); }
+    if (data.usage !== undefined) {
+      validateUsage(data.usage);
+      sets.push('usage = ?');
+      params.push(data.usage);
+    }
     if (data.configPatch !== undefined) {
       if (data.config !== undefined) throw invalid('Use either config or configPatch');
       if (!data.configPatch || typeof data.configPatch !== 'object' || Array.isArray(data.configPatch)) {
@@ -250,12 +262,29 @@ class NotificationChannelService {
 
   // ─── Send ────────────────────────────────────────
 
-  async send(channelId, message, { diagnostics = false } = {}) {
+  allowsUsage(channel, usage) {
+    return Boolean(channel && (channel.usage === 'all' || channel.usage === usage));
+  }
+
+  hasGeneralChannels() {
+    return Boolean(getDb().prepare(`SELECT 1 ${generalChannels} LIMIT 1`).get());
+  }
+
+  async send(channelId, message, { diagnostics = false, usage = 'general' } = {}) {
     const channel = this.get(channelId);
     if (!channel) throw Object.assign(new Error('Channel not found'), { status: 404 });
     if (!channel.is_active) {
       if (diagnostics) throw Object.assign(new Error('This notification channel is inactive'), { status: 400 });
-      return;
+      return false;
+    }
+    if (usage !== null && !this.allowsUsage(channel, usage)) {
+      if (diagnostics) throw Object.assign(new Error('This channel is not configured to receive this type of notification'), {
+        status: 400, details: { reason: 'The notification channel usage excludes this report.' },
+      });
+      return false;
+    }
+    if (message.emailAttachments?.length && channel.provider !== 'email') {
+      throw Object.assign(new Error('Attachments require an email notification channel'), { status: 400 });
     }
 
     const config = JSON.parse(decrypt(channel.config_encrypted));
@@ -265,6 +294,7 @@ class NotificationChannelService {
     try {
       await provider(config, message, diagnostics ? Object.values(config).flat() : undefined);
       log.debug('Notification sent', { channelId, provider: channel.provider });
+      return true;
     } catch (err) {
       log.error('Notification failed', { channelId, provider: channel.provider, error: err.message });
       throw err;
@@ -273,7 +303,7 @@ class NotificationChannelService {
 
   async sendToAll(message) {
     const db = getDb();
-    const channels = db.prepare('SELECT * FROM notification_channels WHERE is_active = 1').all();
+    const channels = db.prepare(`SELECT * ${generalChannels}`).all();
 
     // v8.7.19 — dispatch concurrently with Promise.allSettled instead of
     // serial await. Previously, a slow channel (e.g. ntfy hanging up to
@@ -306,7 +336,7 @@ class NotificationChannelService {
         text: 'If you see this, your notification channel is configured correctly!',
         severity: 'info',
         event: 'test',
-      }, { diagnostics: true });
+      }, { diagnostics: true, usage: null });
     } finally { activeTests.delete(id); }
   }
 

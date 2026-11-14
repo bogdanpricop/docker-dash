@@ -61,6 +61,8 @@ async function main() {
     }
     await page.type('#nc-name', 'Team email');
     await page.select('#nc-provider', 'email');
+    await page.select('#nc-usage', 'scheduled_scans');
+    assert.match(await page.$eval('#nc-usage-hint', el => el.textContent), /without container events/);
     await page.click('#modal-submit');
     assert.equal(await page.evaluate(() => window.createdChannels.length), 0, 'Missing recipient must not save');
     await page.type('[data-config-key="to"]', 'not-an-email');
@@ -70,9 +72,10 @@ async function main() {
     await page.click('#modal-submit');
     await page.waitForFunction(() => window.createdChannels.length === 1);
     assert.deepEqual(await page.evaluate(() => window.createdChannels[0]), {
-      name: 'Team email', provider: 'email', config: { to: 'team@example.test' },
+      name: 'Team email', provider: 'email', usage: 'scheduled_scans', config: { to: 'team@example.test' },
     });
     await page.waitForSelector('#modal-overlay.hidden');
+    assert.equal(await page.$eval('[data-nc-usage]', el => el.textContent), 'Scheduled scans only');
     await page.click('[data-action="smtp-nc"]');
     await page.waitForSelector('#modal-content #nc-smtp-mode');
     assert.equal(await page.$eval('#nc-smtp-mode', el => el.value), 'server');
@@ -83,6 +86,8 @@ async function main() {
     await page.click('[data-action="edit-nc"][data-id="1"]');
     assert.equal(await page.$eval('#nc-provider', el => el.disabled), true);
     assert.equal(await page.$eval('#nc-config-to', el => el.value), 'team@example.test');
+    assert.equal(await page.$eval('#nc-usage', el => el.value), 'scheduled_scans');
+    await page.select('#nc-usage', 'general');
     await page.$eval('#nc-config-to', el => { el.value = 'oncall@example.test'; });
     await page.click('[data-nc-smtp]');
     await page.waitForSelector('#modal-sub-content #nc-smtp-mode');
@@ -101,7 +106,7 @@ async function main() {
     await page.click('#modal-submit');
     await page.waitForFunction(() => window.updatedChannels.length === 1);
     assert.deepEqual(await page.evaluate(() => window.updatedChannels[0]), {
-      id: 1, name: 'Team email', configPatch: { to: 'oncall@example.test' },
+      id: 1, name: 'Team email', usage: 'general', configPatch: { to: 'oncall@example.test' },
     });
     await page.waitForSelector('#modal-overlay.hidden');
     await page.click('[data-action="smtp-nc"]');
