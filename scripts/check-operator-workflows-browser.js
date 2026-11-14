@@ -298,6 +298,8 @@ async function main() {
             { id: 1, queuedAt: '2026-01-02T02:00:00Z', kind: 'cis', status: 'error', trigger: 'manual' },
             { id: 2, queuedAt: '2026-01-01T02:00:00Z', kind: 'cis', status: 'success', trigger: 'automatic' },
           ];
+          if (url === '/security-schedules/runs/2') return { id: 2, hostId: 17, hostName: 'Docker2', kind: 'images', status: 'success',
+            report: { images: [{ scanId: 91, name: 'web:2', scanner: 'trivy', summary: { total: 0 } }] } };
           return structuredClone(images);
         },
         getVolumes: async ({ showSecondary }) => [
@@ -363,6 +365,18 @@ async function main() {
     await page.click('#security-schedule-form [type="submit"]');
     await page.waitForFunction(() => window.savedSchedule?.reportFormat === 'detailed');
     assert.equal(await page.evaluate(() => window.savedSchedule.cron), '0 2 * * *');
+    await page.evaluate(async () => {
+      SecurityPage._viewScanDetail = async (...args) => { window.openedScan = args; };
+      await SecurityPage.render(document.getElementById('test'), { id: 'schedules/2/images/91' });
+    });
+    assert.deepEqual(await page.evaluate(() => window.openedScan), [91, 17]);
+    await page.evaluate(async () => {
+      window.openedScan = null;
+      await SecurityPage.render(document.getElementById('test'), { id: 'schedules/2/images/92' });
+    });
+    assert.equal(await page.evaluate(() => window.openedScan), null);
+    assert.equal(await page.$eval('#security-report-body + .modal-footer a[download]', link => link.getAttribute('href')),
+      '/api/security-schedules/runs/2/report');
     assert.deepEqual(errors, []);
     console.log('Operator browser checks passed for grouped logs, Compose graph, inventory sorting and visibility, security triage and SARIF');
   } finally {

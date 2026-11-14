@@ -134,6 +134,15 @@ function getRun(id) {
   return projectRun(row, true);
 }
 
+function downloadImageReport(id) {
+  const db = getDb();
+  const run = db.prepare('SELECT * FROM security_scan_runs WHERE id=?').get(id);
+  if (!run || run.kind !== 'images' || !run.report_json) throw fail('Image report not available', 404);
+  return emailReport.build(db, { ...run, publicUrl: httpUrl(config.app.publicUrl) }, {
+    status: run.status, report: JSON.parse(run.report_json),
+  }).attachment;
+}
+
 function enqueue(db, schedule, host, trigger, now) {
   if (db.prepare("SELECT 1 FROM security_scan_runs WHERE schedule_id=? AND status IN ('queued', 'running')").get(schedule.id)) {
     return null;
@@ -276,9 +285,10 @@ async function deliver(db, run, result) {
       if (channel?.provider !== 'email' || !notifications.allowsUsage(channel, 'scheduled_scans')) {
         throw fail('Detailed report delivery requires an active email channel for scheduled scans');
       }
-      const { attachment, omitted } = emailReport.build(db, { ...run, finished_at: current.finished_at }, result);
+      const { attachment, omitted } = emailReport.build(db, { ...run, finished_at: current.finished_at,
+        publicUrl: httpUrl(config.app.publicUrl) }, result);
       message.emailAttachments = [attachment];
-      message.text += '\nDetailed report attached, grouped by image.';
+      message.text += '\nDetailed report attached, grouped by image. Start with Priority fixes or find an image in the index.';
       if (omitted > 0) message.text += `\n${omitted} findings are omitted from the attachment. Open the run in Docker Dash for the full results.`;
     }
     await notifications.send(current.channel_id, message, { diagnostics: true, usage: 'scheduled_scans' });
@@ -320,4 +330,4 @@ async function processNext(now = new Date()) {
     " AND status NOT IN ('queued','running') AND delivery_status!='sending'").run(run.schedule_id, run.schedule_id);
 }
 
-module.exports = { list, save, remove, history, getRun, enqueueManual, enqueueDue, processNext };
+module.exports = { list, save, remove, history, getRun, downloadImageReport, enqueueManual, enqueueDue, processNext };
