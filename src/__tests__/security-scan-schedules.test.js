@@ -127,8 +127,9 @@ test('detailed email is limited to eligible SMTP channels and contains verified 
   const scan = findings => ({ scanner: 'trivy', data: { Results: [{ Vulnerabilities: findings }] } });
   jest.spyOn(admission, 'scanImageReport').mockResolvedValueOnce(scan([
     { VulnerabilityID: 'CVE-2026-1000', PkgName: '<img src=x>', InstalledVersion: '1.2', FixedVersion: '1.3', Severity: 'CRITICAL' },
+    { VulnerabilityID: 'CVE-2026-1000', PkgName: '<img src=x>', InstalledVersion: '1.2', FixedVersion: '1.3', Severity: 'CRITICAL' },
   ])).mockResolvedValueOnce(scan([
-    { VulnerabilityID: 'CVE-2026-2000', PkgName: 'shared-lib', InstalledVersion: '4', FixedVersion: 'not fixed', Severity: 'LOW' },
+    { VulnerabilityID: 'OTHER-2026', PkgName: 'shared-lib', InstalledVersion: '4', FixedVersion: 'not fixed', Severity: 'LOW', PrimaryURL: 'javascript:alert(1)' },
   ]));
   const send = jest.spyOn(notifications, 'send').mockResolvedValue();
   const created = await admin('post')('/security-schedules').send({ ...scheduleSettings, channelId: 802, reportFormat: 'detailed' }).expect(201);
@@ -145,16 +146,24 @@ test('detailed email is limited to eligible SMTP channels and contains verified 
   expect(message.text).toContain('Detailed report attached, grouped by image.');
   const [attachment] = message.emailAttachments;
   expect(attachment).toMatchObject({ filename: expect.stringMatching(/^docker-dash-image-scan-\d+\.html$/), contentType: 'text/html; charset=utf-8' });
-  expect(attachment.content).toMatch(/<h2>api:1<\/h2>[\s\S]+CVE-2026-1000<\/td><td>Critical<\/td><td>&lt;img src=x&gt;<\/td><td>1\.2<\/td><td>1\.3/);
-  expect(attachment.content).toMatch(/<h2>worker:&lt;script&gt;<\/h2>[\s\S]+CVE-2026-2000[\s\S]+No published fix/);
-  expect(attachment.content).not.toMatch(/<script|<img/);
+  expect(attachment.content).toContain('<a href="#image-1">api:1</a>');
+  expect(attachment.content).toContain('<article id="image-1">');
+  expect(attachment.content).toMatch(/id="priorities"[\s\S]+https:\/\/www\.cve\.org\/CVERecord\?id=CVE-2026-1000/);
+  expect(attachment.content).toMatch(/<article id="image-1">[\s\S]+CVE-2026-1000<\/a><\/td><td class="critical">Critical<\/td><td><code>&lt;img src=x&gt;<\/code><\/td><td><code>1\.2<\/code><\/td><td><code class="fixed">1\.3<\/code><\/td><td class="num">2/);
+  expect(attachment.content).toMatch(/worker:&lt;script&gt;[\s\S]+OTHER-2026[\s\S]+No published fix/);
+  expect(attachment.content).not.toMatch(/<script|<img|javascript:alert/);
   const [{ id, reportFormat, deliveryStatus }] = scans.history(created.body.id);
   expect({ reportFormat, deliveryStatus }).toEqual({ reportFormat: 'detailed', deliveryStatus: 'sent' });
   expect(scans.getRun(id).trigger).toBe('automatic');
+  expect(attachment.content).toMatch(new RegExp('/#/security/schedules/' + id + '/images/\\d+'));
+  const download = '/security-schedules/runs/' + id + '/report';
+  await request(app).get(download).set('x-test-role', 'viewer').expect(403);
+  await admin('get')(download).expect(200).expect('Content-Disposition', /attachment.*\.html/).expect('Cache-Control', 'no-store')
+    .expect(res => expect(res.body.toString()).toBe(attachment.content));
 });
 
 test('bounds large attachments and identifies findings omitted from the email', () => {
-  const findings = Array.from({ length: 3000 }, (_, index) => ({ id: `CVE-2026-${index}`, severity: 'high',
+  const findings = Array.from({ length: 3000 }, (_, index) => ({ id: `CVE-2026-${1000 + index}`, severity: 'high',
     package: '&'.repeat(300), version: '1', fixedIn: '2' }));
   const { build } = require('../services/security-scan-email-report');
   const rows = [{ id: first, scanId: 11, name: 'one', summary: { total: findings.length }, fixable: findings.length }];
@@ -163,8 +172,9 @@ test('bounds large attachments and identifies findings omitted from the email', 
     report: { images: rows, summary: { total: findings.length, fixable: findings.length, skipped: 0, scanned: 1, selected: 1, failed: 0 } } });
   expect(Buffer.byteLength(attachment.content)).toBeLessThanOrEqual(2 * 1024 * 1024);
   expect(omitted).toBeGreaterThan(0);
-  expect((attachment.content.match(/CVE-2026-/g) || []).length + omitted).toBe(findings.length);
-  expect(attachment.content).toContain(`${omitted} findings are omitted`);
+  const details = attachment.content.split('<section id="details">')[1];
+  expect((details.match(/>CVE-2026-\d+<\/a>/g) || []).length + omitted).toBe(findings.length);
+  expect(attachment.content).toContain(`${omitted.toLocaleString('en')} findings are omitted`);
 });
 
 test('changing channel usage after queueing preserves the scan and prevents detailed email delivery', async () => {

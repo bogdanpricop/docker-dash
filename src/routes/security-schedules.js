@@ -29,6 +29,10 @@ router.get('/preview', (req, res) => {
   res.json({ nextRuns: nextScheduleRuns(req.query.cron, new Date(), 5) });
 });
 router.get('/runs/:id', (req, res) => res.json(scans.getRun(numericId(req.params.id))));
+router.get('/runs/:id/report', (req, res) => {
+  const report = scans.downloadImageReport(numericId(req.params.id));
+  res.attachment(report.filename).set({ 'Cache-Control': 'no-store', 'Content-Type': 'application/octet-stream' }).send(report.content);
+});
 router.get('/:id/history', (req, res) => res.json(scans.history(numericId(req.params.id))));
 
 router.post('/', writeable, (req, res) => {

@@ -68,8 +68,10 @@ const SecurityPage = {
     });
 
     const tabs = [...container.querySelectorAll('#sec-tabs [data-tab]')];
-    const [requestedTab, runId] = (params.id || '').split('/');
-    this._scheduledRun = requestedTab === 'schedules' && /^[0-9]+$/.test(runId || '') ? Number(runId) : null;
+    const [requestedTab, runId, subpage, scanId] = (params.id || '').split('/');
+    const routeId = value => /^\d+$/.test(value || '') && Number.isSafeInteger(Number(value)) && Number(value) > 0 ? Number(value) : null;
+    this._scheduledRun = requestedTab === 'schedules' ? routeId(runId) : null;
+    this._scheduledImage = this._scheduledRun && subpage === 'images' ? routeId(scanId) : null;
     this._tab = tabs.find(tab => tab.dataset.tab === (requestedTab || this._tab))?.dataset.tab || 'overview';
     tabs.forEach(tab => tab.classList.toggle('active', tab.dataset.tab === this._tab));
     await this._renderTab();
@@ -86,8 +88,10 @@ const SecurityPage = {
       else if (this._tab === 'scanners') await this._renderScanners(el);
       else if (this._tab === 'schedules') {
         const runId = this._scheduledRun;
+        const scanId = this._scheduledImage;
         this._scheduledRun = null;
-        await SecuritySchedules.render(el, runId);
+        this._scheduledImage = null;
+        await SecuritySchedules.render(el, runId, scanId);
       }
     } catch (err) {
       el.innerHTML = `<div class="empty-msg">Error: ${Utils.escapeHtml(err.message)}</div>`;
@@ -913,6 +917,7 @@ Please:
 
           ${vulns.length > 0 ? `
           <h4 style="margin:16px 0 8px;font-size:12px;text-transform:uppercase;color:var(--text-muted)">Vulnerabilities (${vulns.length})</h4>
+          ${vulns.length > 100 ? '<p class="text-sm text-muted">Showing the first 100 findings by severity. Download the complete list below.</p>' : ''}
           <div style="max-height:250px;overflow-y:auto">
             <table class="data-table compact" data-scan-findings>
               <thead><tr>${[['severity', 'Sev'], ['id', 'CVE'], ['package', 'Package'], ['version', 'Version'], ['fixedIn', 'Fix']]
@@ -929,7 +934,8 @@ Please:
             </table>
           </div>` : ''}
         </div>
-        <div class="modal-footer"><button class="btn btn-primary" id="scan-detail-close-btn">Close</button></div>
+        <div class="modal-footer">${vulns.length ? '<button type="button" class="btn btn-secondary" id="scan-download-findings">Download findings JSON</button>' : ''}
+          <button class="btn btn-primary" id="scan-detail-close-btn">Close</button></div>
       `, { width: '850px' });
 
       const table = Modal._content.querySelector('[data-scan-findings]');
@@ -937,6 +943,8 @@ Please:
         { key: 'severity', direction: 'ascending' });
       Modal._content.querySelector('#scan-detail-close-x').addEventListener('click', () => Modal.close());
       Modal._content.querySelector('#scan-detail-close-btn').addEventListener('click', () => Modal.close());
+      Modal._content.querySelector('#scan-download-findings')?.addEventListener('click', () => Utils.downloadBlob(
+        `image-scan-${scanId}.json`, new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })));
 
       // Navigation buttons
       const prevBtn = Modal._content.querySelector('#scan-prev');

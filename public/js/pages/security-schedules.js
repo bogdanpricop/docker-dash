@@ -18,7 +18,7 @@ const SecuritySchedules = {
     return labels[run.deliveryStatus] || '—';
   },
 
-  async render(el, requestedRun) {
+  async render(el, requestedRun, requestedImage) {
     const { timeZone, schedules } = await Api.get(this.path);
     if (!el.isConnected || SecurityPage._tab !== 'schedules') return;
     const e = Utils.escapeHtml;
@@ -75,7 +75,7 @@ const SecuritySchedules = {
         finally { button.disabled = false; }
       });
     });
-    if (requestedRun) await this.report(requestedRun);
+    if (requestedRun) await this.report(requestedRun, requestedImage);
   },
 
   async edit(el, timeZone, schedule) {
@@ -111,7 +111,7 @@ const SecuritySchedules = {
           ${schedule?.channelId && !eligibleChannels.some(c => c.id === schedule.channelId) ? '<p class="text-warning text-sm">The previous channel no longer accepts scheduled reports. Select another channel to resume delivery.</p>' : ''}
           <div id="sec-scan-report-options" hidden>
             ${select('reportFormat', 'Email report', [['summary', 'Summary only'], ['detailed', 'Summary and detailed attachment']], schedule?.reportFormat || 'summary')}
-            <p class="text-muted text-sm">The HTML attachment groups findings by image and shows CVEs, severity, installed versions and published fixes.</p>
+            <p class="text-muted text-sm">The HTML attachment includes priority fixes, a linked image index and findings with advisory links.</p>
           </div>
           <label class="toggle-label"><input name="enabled" type="checkbox" ${schedule?.enabled !== false ? 'checked' : ''}> Enabled</label>
           <p id="sec-scan-error" class="text-danger text-sm" role="alert"></p>
@@ -188,11 +188,15 @@ const SecuritySchedules = {
       this.report(Number(button.dataset.scanReport)).catch(error => Toast.error(error.message))));
   },
 
-  async report(id) {
+  async report(id, requestedImage) {
     const run = await Api.get(this.path + '/runs/' + id);
     if (SecurityPage._tab !== 'schedules' || !document.getElementById('security-schedule-history')) return;
     const e = Utils.escapeHtml;
     const report = run.report;
+    if (requestedImage && run.hostId && report?.images?.some(item => item.scanId === requestedImage)) {
+      await SecurityPage._viewScanDetail(requestedImage, run.hostId);
+      return;
+    }
     const imageRows = report?.images?.map(item => `<tr><td class="mono">${e(item.name)}</td>
       <td>${e(item.error || item.scanner)}</td><td>${item.summary?.critical ?? '—'}</td><td>${item.summary?.high ?? '—'}</td>
       <td>${item.summary?.total ?? '—'}</td><td>${item.fixable ?? '—'}</td>
@@ -213,7 +217,8 @@ const SecuritySchedules = {
           </tr></thead><tbody>${report.checks.map(check => `<tr><td>${e(check.title)}</td><td>${e(check.status)}</td>
           <td>${e(check.details || '')}${check.remediation ? `<div class="text-muted">${e(check.remediation)}</div>` : ''}</td></tr>`).join('')}</tbody></table></div>` : ''}
       </div>
-      <div class="modal-footer">${report ? '<button type="button" class="btn btn-secondary" id="security-report-download">Download JSON</button>' : ''}</div>`, { width: '1050px' });
+      <div class="modal-footer">${report && run.kind === 'images' ? `<a class="btn btn-secondary" href="/api/security-schedules/runs/${run.id}/report" download>Download HTML report</a>` : ''}
+        ${report ? '<button type="button" class="btn btn-secondary" id="security-report-download">Download JSON</button>' : ''}</div>`, { width: '1050px' });
     const images = document.querySelector('[data-report-images]');
     if (images) TableSort.bind(images, report.images.map(item => ({ name: item.name, outcome: item.error || item.scanner,
       ...item.summary, fixable: item.fixable })));

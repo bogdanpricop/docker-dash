@@ -15,6 +15,10 @@ const WhatsNewPage = {
   // Contributors add their entry to _unreleased below; the release process
   // moves those entries into a new numbered release.
   _releases: [
+    { version: '8.96.48', date: '2026-11-14', title: 'Navigable vulnerability reports', changes: [
+      { type: 'improvement', text: 'Review priority fixes and scan coverage, jump through a linked image index, and open advisory and Docker Dash links.' },
+      { type: 'feature', text: 'Download the redesigned HTML for past runs and export the full findings for individual images.' },
+    ] },
     { version: '8.96.47', date: '2026-11-14', title: 'Detailed security emails and channel routing', changes: [
       { type: 'feature', text: 'Attach a detailed image vulnerability report with CVEs, severity and published fixes to scheduled emails.' },
       { type: 'feature', text: 'Limit a notification channel to scheduled scans or routine alerts, or use it for both.' },
