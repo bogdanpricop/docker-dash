@@ -115,12 +115,14 @@ async function replace({ docker, inspect, imageId, hostId = 0, action, username,
     update('verifying');
     await verify(candidate, { ...verification, wasRunning: inspect.State.Running, skipHealth });
     // Required audit/state writes and the commit marker share one SQLite transaction.
+    // Reserve the writer before audit reads, avoiding a WAL read-to-write
+    // upgrade failure when another connection records a scan concurrently.
     // Callbacks must be synchronous and use this same database.
     db.transaction(() => {
       const result = commit(candidate.id, id);
       if (result?.then) throw new Error('Replacement commit must be synchronous');
       db.prepare("UPDATE container_replacements SET phase='committed', updated_at=datetime('now') WHERE id=?").run(id);
-    })();
+    }).immediate();
     phase = 'committed'; committed = true;
     require('./deployment-security').enqueue({ operationId: id, hostId, containerName: name,
       previousImageId: inspect.Image, currentImageId: imageId });

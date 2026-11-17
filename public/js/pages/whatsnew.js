@@ -17,6 +17,7 @@ const WhatsNewPage = {
   _releases: [
     { version: '8.96.48', date: '2026-11-14', title: 'DGX Spark pilot and navigable vulnerability reports', changes: [
       { type: 'fix', text: 'Container security updates tolerate Docker returning unchanged mounts in a different order, while still rejecting real mount configuration changes.' },
+      { type: 'fix', text: 'Security update commits reserve the database writer before recording their audit entry, avoiding unnecessary rollbacks during concurrent scans.' },
       { type: 'fix', text: 'Large vulnerability inventories can be verified from scanner reports up to 64 MiB. Oversized reports display an explicit error.' },
       { type: 'feature', text: 'Settings → AI lists models served by the configured DGX gateway, displays available model metadata and lets you select a model before saving.' },
       { type: 'feature', text: 'Security batch scan logs summarize prioritized findings with links to scanner evidence and report DGX availability.' },
