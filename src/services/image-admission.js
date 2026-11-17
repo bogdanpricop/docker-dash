@@ -13,6 +13,8 @@ const execFile = promisify(require('node:child_process').execFile);
 let inFlight = 0;
 const IMAGE_ID = /^sha256:[a-f0-9]{64}$/;
 const SEVERITIES = new Set(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'UNKNOWN']);
+// Large dependency inventories can produce JSON reports above 16 MiB.
+const MAX_REPORT_BYTES = 64 * 1024 ** 2;
 const COUNTS = ['critical', 'high', 'medium', 'low', 'unknown', 'negligible'];
 
 function unavailable(scanner, imageId) {
@@ -144,7 +146,7 @@ async function runTrivy(file, directory, signal, platform) {
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.toUpperCase().startsWith('TRIVY_')));
   const { stdout } = await execFile('trivy', ['image', '--input', file, '--config', config,
     '--ignorefile', ignores, '--platform', platform, '--scanners', 'vuln', '--format', 'json', '--quiet', '--timeout', '3m'], {
-    encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, timeout: 180000, signal, env,
+    encoding: 'utf8', maxBuffer: MAX_REPORT_BYTES, timeout: 180000, signal, env,
   });
   return stdout;
 }
@@ -160,7 +162,7 @@ async function runGrype(file, directory, signal, platform) {
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^(GRYPE|SYFT)_/i.test(key)));
   const { stdout } = await execFile('grype', [file, '--config', config, '--from', 'docker-archive',
     '--from', 'oci-archive', '--platform', platform, '--output', 'json', '--quiet'], {
-    encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, timeout: 180000, signal, env, cwd: directory,
+    encoding: 'utf8', maxBuffer: MAX_REPORT_BYTES, timeout: 180000, signal, env, cwd: directory,
   });
   return stdout;
 }
@@ -251,6 +253,7 @@ async function scanImageReport(docker, imageId, preferred) {
   };
   const names = preferred === 'auto' ? ['trivy', 'grype'] : [preferred];
   return withVerifiedArchive(docker, imageId, async (archive, directory, signal, identity) => {
+    let oversized = false;
     for (const scanner of names) {
       try {
         const [run, verify] = engines[scanner];
@@ -258,9 +261,9 @@ async function scanImageReport(docker, imageId, preferred) {
         if (signal.aborted) break;
         verify(output, imageId, identity.configId);
         return { scanner, data: JSON.parse(output) };
-      } catch { /* try the next requested scanner */ }
+      } catch (error) { oversized ||= error.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER'; }
     }
-    throw new Error('No scanner could verify a complete report for this image');
+    throw new Error('No scanner could verify a complete report for this image' + (oversized ? ' (report exceeds 64 MiB)' : ''));
   });
 }
 

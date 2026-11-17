@@ -42,7 +42,7 @@ test('CLI admission excludes inherited filters and uses the same private archive
   exec.mockImplementation(async (command, args, options) => {
     expect(options.shell).toBeUndefined();
     expect(options.timeout).toBe(180000);
-    expect(options.maxBuffer).toBe(16 * 1024 ** 2);
+    expect(options.maxBuffer).toBe(64 * 1024 ** 2);
     expect(options.signal.aborted).toBe(false);
     expect(typeof options.signal.addEventListener).toBe('function');
     const filename = command === 'trivy' ? args[args.indexOf('--input') + 1] : args[0];
@@ -272,4 +272,19 @@ test.each(['tampered', 'missing', 'duplicate', 'ambiguous', 'wrong-platform'])('
   const client = { getImage: () => ({ inspect: async () => selected, get: async () => archive(blobs) }) };
   expect(await scanImage(client, rootId, { scanners: scannerPair(scanner) })).toMatchObject({ passed: false, status: 'unavailable' });
   expect(scanner).not.toHaveBeenCalled();
+});
+
+test('verifies a complete scanner report larger than the former 16 MiB limit', async () => {
+  const exec = require('node:child_process').execFile[require('node:util').promisify.custom];
+  const payload = JSON.stringify(report([{ VulnerabilityID: 'CVE-2026-12345', Severity: 'LOW', Description: 'x'.repeat(17 * 1024 ** 2) }]));
+  exec.mockImplementation(async (command, args, options) => {
+    const stdout = command === 'trivy' ? payload : JSON.stringify(grypeReport());
+    if (Buffer.byteLength(stdout) > options.maxBuffer) {
+      throw Object.assign(new Error('stdout maxBuffer length exceeded'), { code: 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' });
+    }
+    return { stdout };
+  });
+  const result = await scanImage(docker(), imageId);
+  expect(result.checks.find(check => check.scanner === 'trivy').low).toBe(1);
+  exec.mockReset();
 });
