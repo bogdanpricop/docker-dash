@@ -21,7 +21,7 @@ const WhatsNewPage = {
       { type: 'feature', text: 'Deployment security reviews compare previous and new immutable images, retain scan evidence and support manual review.' },
       { type: 'feature', text: 'Docker Hosts shows DGX model availability, latency, GPU activity, temperature and unified memory on demand.' },
       { type: 'improvement', text: 'SSH Key Setup includes DGX Spark fingerprint verification, Docker access and socat installation.' },
-    
+
       { type: 'feature', text: 'In Security, Scan All Images opens a run log showing scan order, progress, duration, scanner results, and errors for each image.' },
       { type: 'feature', text: 'DGX Spark pilot (November 16): configure the internal HTTPS gateway in Settings → AI → DGX Spark.' },
       { type: 'feature', text: 'In Security → Triage, use Analyze with DGX on an image or a full Compose stack to review prioritized findings and proposed fixes.' },
