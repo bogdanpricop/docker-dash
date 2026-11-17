@@ -124,6 +124,25 @@ test('stale inspection is rejected without stopping the original', async () => {
   expect(fixture.old.stop).not.toHaveBeenCalled(); expect(fixture.states.size).toBe(1);
 });
 
+test('mount ordering changes do not reject an otherwise unchanged container', async () => {
+  input.inspect.Mounts = [
+    { Type: 'volume', Name: 'data', Destination: '/data', RW: true },
+    { Type: 'bind', Source: '/srv/config', Destination: '/config', RW: false },
+  ];
+  fixture.initial.Mounts = [...input.inspect.Mounts].reverse();
+  const result = await replace(input);
+  expect(result.cleanupRequired).toBe(false);
+  expect(fixture.old.stop).toHaveBeenCalledTimes(1);
+});
+
+test.each(['Source', 'Destination', 'RW'])('a real mount %s change still blocks replacement', async field => {
+  input.inspect.Mounts = [{ Type: 'bind', Source: '/srv/data', Destination: '/data', RW: true }];
+  fixture.initial.Mounts = [{ ...input.inspect.Mounts[0], [field]: field === 'RW' ? false : '/changed' }];
+  await expect(replace(input)).rejects.toThrow('fresh state');
+  expect(fixture.old.stop).not.toHaveBeenCalled();
+  expect(fixture.old.rename).not.toHaveBeenCalled();
+});
+
 test('stopped originals produce stopped replacements', async () => {
   input.inspect.State.Running = false; fixture.initial.State.Running = false;
   const result = await replace(input);

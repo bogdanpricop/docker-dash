@@ -14,8 +14,11 @@ function stable(value) {
   return value;
 }
 function fingerprint(inspect) {
+  // Docker may return the same mounts in a different order between inspections.
+  const mounts = inspect.Mounts?.map(stable)
+    .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
   return JSON.stringify(stable({ Id: inspect.Id, Name: inspect.Name, Image: inspect.Image,
-    Config: inspect.Config, HostConfig: inspect.HostConfig, Mounts: inspect.Mounts,
+    Config: inspect.Config, HostConfig: inspect.HostConfig, Mounts: mounts,
     Networks: inspect.NetworkSettings?.Networks, Running: inspect.State?.Running,
     Paused: inspect.State?.Paused, Restarting: inspect.State?.Restarting }));
 }
