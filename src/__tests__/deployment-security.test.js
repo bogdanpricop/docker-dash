@@ -103,3 +103,12 @@ test('disabled DGX skips automatic scans and interrupted evidence can be retried
   expect(reviews.retry(id, 7, 'app')).toBe(true);
   expect((await settled(id)).status).toBe('complete');
 });
+
+test('temporary scanner archive paths do not report unchanged OS CVEs as removed and added', () => {
+  const a = { ...finding('CVE-2026-1234'), _class: 'os-package', target: '/data/tmp/dd-image-admission-old/image.tar (alpine 3.22)' };
+  const b = { ...a, target: '/data/tmp/dd-image-admission-new/image.tar (alpine 3.23)' };
+  const result = reviews.compare(evidence(1, 'trivy', [a]), evidence(2, 'trivy', [b]));
+  expect(result.removedCount).toBe(0);
+  expect(result.addedCount).toBe(0);
+  expect(result.currentCount).toBe(1);
+});

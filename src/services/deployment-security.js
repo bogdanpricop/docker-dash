@@ -14,7 +14,13 @@ function compare(before, after) {
   const parse = row => {
     const findings = JSON.parse(row.results_json);
     if (!Array.isArray(findings)) throw new Error('Stored scan evidence is invalid.');
-    return new Map(findings.map(f => [JSON.stringify([f.id, f.package, f.target || '']), f]));
+    return new Map(findings.map(f => {
+      // Scanner archive paths contain a fresh temporary directory on every scan.
+      // OS package identity remains stable across archive paths and OS upgrades.
+      const target = f._class === 'os-package' ? 'os-packages'
+        : (f.target || '').replace(/^.*[/\\]dd-image-admission-[^/\\]+[/\\]image\.tar(?= |$)/, 'image.tar');
+      return [JSON.stringify([f.id, f.package, target]), f];
+    }));
   };
   const old = parse(before), current = parse(after);
   const removed = [...old].filter(([key]) => !current.has(key)).map(([, value]) => value);
