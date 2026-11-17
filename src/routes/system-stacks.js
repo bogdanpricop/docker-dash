@@ -423,11 +423,16 @@ router.post('/compose/:stack/:action/stream', requireAuth, hostAccess, requireRo
   heartbeat.unref?.();
 
   try {
+    const deploymentSecurity = require('../services/deployment-security');
+    const hostId = req.resolvedHostId ?? req.hostId;
+    const securityBefore = action === 'up' ? await deploymentSecurity.snapshot(hostId, stack) : [];
     const result = await runCompose(args, {
       cwd: workingDir,
       env: cliContext.env,
       onOutput: output => _sseWrite(res, 'output', output),
     });
+    await deploymentSecurity.afterStack({ hostId, stack, before: securityBefore,
+      operationId: 'compose-' + require('node:crypto').randomUUID() });
     _auditCompose(req, stack, action, workingDir, 'success', result);
     _sseWrite(res, 'done', {
       ok: true, exitCode: result.exitCode, durationMs: result.durationMs,
@@ -460,7 +465,12 @@ router.post('/compose/:stack/:action', requireAuth, hostAccess, requireRole('adm
     release = _acquireComposeSlot(req.user.id);
     workingDir = await _resolveStackWorkingDir(req, stack);
     cliContext = _dockerCliContext(req.resolvedHostId ?? req.hostId);
+    const deploymentSecurity = require('../services/deployment-security');
+    const hostId = req.resolvedHostId ?? req.hostId;
+    const securityBefore = action === 'up' ? await deploymentSecurity.snapshot(hostId, stack) : [];
     const result = await runCompose(args, { cwd: workingDir, env: cliContext.env });
+    await deploymentSecurity.afterStack({ hostId, stack, before: securityBefore,
+      operationId: 'compose-' + require('node:crypto').randomUUID() });
     _auditCompose(req, stack, action, workingDir, 'success', result);
     res.json({
       ok: true, output: result.stdout, stderr: result.stderr,
@@ -875,10 +885,15 @@ router.post('/stacks/:name/deploy', requireAuth, hostAccess, requireRole('admin'
   try {
     const { workingDir } = req.body;
     const targetDir = await _allowedWorkingDir(req, req.params.name, workingDir);
+    const deploymentSecurity = require('../services/deployment-security');
+    const hostId = req.resolvedHostId ?? req.hostId;
+    const securityBefore = await deploymentSecurity.snapshot(hostId, req.params.name);
     cliContext = _dockerCliContext(req.resolvedHostId ?? req.hostId);
     const result = await runCompose(['up', '-d'], {
       cwd: targetDir, env: cliContext.env,
     });
+    await deploymentSecurity.afterStack({ hostId, stack: req.params.name, before: securityBefore,
+      operationId: 'compose-' + require('node:crypto').randomUUID() });
 
     auditService.log({
       userId: req.user.id, username: req.user.username,

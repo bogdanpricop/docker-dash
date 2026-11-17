@@ -91,6 +91,7 @@ const SettingsPageAi = {
           </details>
         </div>
       </div>
+      <div data-dgx-settings></div>
     `;
 
     const renderProviderFields = (providerId) => {
@@ -221,6 +222,75 @@ const SettingsPageAi = {
         testButton.disabled = dirty;
         testButton.innerHTML = '<i class="fas fa-plug"></i> Test connection';
       }
+    });
+    await this._renderDgxSettings(el.querySelector('[data-dgx-settings]'));
+  },
+
+  async _renderDgxSettings(element) {
+    const t = key => i18n.t('dgx.' + key);
+    const escape = Utils.escapeHtml;
+    let config;
+    try { config = await Api.get('/ai/dgx'); }
+    catch (error) { element.textContent = error.message; return; }
+    if (!element.isConnected) return;
+    element.innerHTML = `<div class="card">
+      <div class="card-header"><h3>${t('settingsTitle')}</h3></div>
+      <form class="card-body" data-dgx-form>
+        <p class="text-sm text-muted">${t('settingsHelp')}</p>
+        <label><input name="enabled" type="checkbox" ${config.enabled ? 'checked' : ''}> ${t('enable')}</label>
+        <div class="form-group">
+          <label for="dgx-endpoint">${t('endpoint')}</label>
+          <input id="dgx-endpoint" name="endpoint" type="url" maxlength="320" class="form-control" value="${escape(config.endpoint)}" placeholder="https://192.168.13.23:18443">
+        </div>
+        <div class="form-group">
+          <label for="dgx-model">${t('model')}</label>
+          <input id="dgx-model" name="model" required maxlength="128" class="form-control" value="${escape(config.model)}">
+        </div>
+        <div class="form-group">
+          <label for="dgx-ca">${t('ca')}</label>
+          <textarea id="dgx-ca" name="caPem" rows="4" maxlength="12288" spellcheck="false" class="form-control mono">${escape(config.caPem)}</textarea>
+        </div>
+        <div class="form-group">
+          <label for="dgx-key">${t('key')}</label>
+          <input id="dgx-key" name="apiKey" type="password" maxlength="200" autocomplete="new-password" class="form-control" placeholder="${escape(config.hasKey ? t('keySaved') : '')}">
+          <label><input name="clearKey" type="checkbox" ${config.hasKey ? '' : 'disabled'}> ${t('clearKey')}</label>
+        </div>
+        <button class="btn btn-primary" type="submit">${i18n.t('common.save')}</button>
+        <button class="btn btn-secondary" type="button" data-dgx-test ${config.hasKey ? '' : 'disabled'}>${t('test')}</button>
+        <span class="text-sm" role="status" data-dgx-state></span>
+      </form>
+    </div>`;
+    const form = element.querySelector('[data-dgx-form]');
+    const test = form.querySelector('[data-dgx-test]');
+    const save = form.querySelector('[type="submit"]');
+    const status = form.querySelector('[data-dgx-state]');
+    form.addEventListener('input', () => { test.disabled = true; status.textContent = ''; });
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      const fields = new FormData(form);
+      const input = { enabled: fields.has('enabled'), endpoint: fields.get('endpoint').trim(), model: fields.get('model').trim(), caPem: fields.get('caPem').trim() };
+      if (fields.has('clearKey')) input.apiKey = null;
+      else if (fields.get('apiKey').trim()) input.apiKey = fields.get('apiKey').trim();
+      save.disabled = test.disabled = true;
+      status.textContent = '';
+      try {
+        await Api.put('/ai/dgx', input);
+        await this._renderDgxSettings(element);
+        Toast.success(t('saved'));
+      } catch (error) {
+        status.textContent = error.message;
+        save.disabled = false;
+      }
+    });
+    test.addEventListener('click', async () => {
+      test.disabled = true;
+      save.disabled = true;
+      status.textContent = t('testing');
+      try {
+        const result = await Api.post('/ai/dgx/test', {});
+        status.textContent = `${result.model} · ${result.latencyMs} ms · HTTPS OK`;
+      } catch (error) { status.textContent = error.message; }
+      finally { test.disabled = save.disabled = false; }
     });
   },
 };

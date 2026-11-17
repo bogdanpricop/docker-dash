@@ -39,6 +39,39 @@ beforeEach(() => {
   admission.scanImage.mockResolvedValue({ imageId, scanner: 'trivy', passed: false, status: 'unavailable' });
 });
 
+function reviewRecord(hostId = 42, name = 'old') {
+  return Number(getDb().prepare(`INSERT INTO deployment_security_reviews
+    (operation_id,host_id,container_name,previous_image_id,current_image_id,status,report_json)
+    VALUES(?,?,?,?,?,'complete','{}')`).run('route-' + Math.random(), hostId, name,
+    'sha256:' + 'a'.repeat(64), imageId).lastInsertRowid);
+}
+
+test('post-deployment reviews are restricted to the selected host and current container name', async () => {
+  getDb().prepare('DELETE FROM deployment_security_reviews').run();
+  const own = reviewRecord();
+  reviewRecord(43);
+  reviewRecord(42, 'another-container');
+  const response = await request(app).get('/containers/aaaaaaaaaaaa/deployment-security');
+  expect(response.status).toBe(200);
+  expect(response.body.reviews.map(row => row.id)).toEqual([own]);
+});
+
+test('post-deployment acknowledgment rejects a review from another container', async () => {
+  const other = reviewRecord(42, 'another-container');
+  const response = await request(app).post('/containers/aaaaaaaaaaaa/deployment-security/' + other + '/acknowledge').send({});
+  expect(response.status).toBe(409);
+  expect(getDb().prepare('SELECT reviewed_by FROM deployment_security_reviews WHERE id=?').get(other).reviewed_by).toBeNull();
+});
+
+test('post-deployment reviews enforce stack permissions for reading and acknowledging', async () => {
+  const id = reviewRecord();
+  for (const method of ['get', 'post']) {
+    const path = '/containers/aaaaaaaaaaaa/deployment-security' + (method === 'post' ? '/' + id + '/acknowledge' : '');
+    const response = await request(app)[method](path).set('x-test-role', 'operator');
+    expect(response.status).toBe(403);
+  }
+});
+
 test.each(['unavailable', 'blocked'])('pipeline leaves original container untouched when scan is %s', async status => {
   admission.scanImage.mockResolvedValue({ imageId, passed: false, status });
   const result = await pipelines.start({ containerId: 'old-container', hostId: 42, user: { username: 'admin' } });

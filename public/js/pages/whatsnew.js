@@ -15,7 +15,17 @@ const WhatsNewPage = {
   // Contributors add their entry to _unreleased below; the release process
   // moves those entries into a new numbered release.
   _releases: [
-    { version: '8.96.48', date: '2026-11-14', title: 'Navigable vulnerability reports', changes: [
+    { version: '8.96.48', date: '2026-11-14', title: 'DGX Spark pilot and navigable vulnerability reports', changes: [
+      { type: 'feature', text: 'Security batch scan logs summarize prioritized findings with links to scanner evidence and report DGX availability.' },
+      { type: 'feature', text: 'Container diagnostics correlate health checks, restarts, recent logs and Docker events for DGX analysis.' },
+      { type: 'feature', text: 'Deployment security reviews compare previous and new immutable images, retain scan evidence and support manual review.' },
+      { type: 'feature', text: 'Docker Hosts shows DGX model availability, latency, GPU activity, temperature and unified memory on demand.' },
+      { type: 'improvement', text: 'SSH Key Setup includes DGX Spark fingerprint verification, Docker access and socat installation.' },
+    
+      { type: 'feature', text: 'In Security, Scan All Images opens a run log showing scan order, progress, duration, scanner results, and errors for each image.' },
+      { type: 'feature', text: 'DGX Spark pilot (November 16): configure the internal HTTPS gateway in Settings → AI → DGX Spark.' },
+      { type: 'feature', text: 'In Security → Triage, use Analyze with DGX on an image or a full Compose stack to review prioritized findings and proposed fixes.' },
+      { type: 'feature', text: 'Review suggested Compose or Dockerfile diffs and copy recommendations and Linux commands. Deployment commands require a candidate that passes both Trivy and Grype checks. You decide whether to run them.' },
       { type: 'improvement', text: 'Review priority fixes and scan coverage, jump through a linked image index, and open advisory and Docker Dash links.' },
       { type: 'feature', text: 'Download the redesigned HTML for past runs and export the full findings for individual images.' },
     ] },

@@ -1,0 +1,44 @@
+{
+	admin off
+	auto_https disable_redirects
+}
+
+https://{$DGX_LISTEN_IP}:18443 {
+	bind {$DGX_LISTEN_IP}
+	tls /etc/dgx/server.pem /etc/dgx/server.key
+
+	@dockerDash {
+		remote_ip {$DGX_DOCKER_DASH_IP}
+		header Authorization "Bearer {$DGX_GATEWAY_TOKEN}"
+	}
+	route {
+		handle @dockerDash {
+			@models {
+				method GET
+				path /v1/models
+			}
+			@chat {
+				method POST
+				path /v1/chat/completions
+			}
+			handle @models {
+				reverse_proxy 127.0.0.1:8000 {
+					header_up -Authorization
+				}
+			}
+			handle @chat {
+				request_body {
+					max_size 32KB
+				}
+				reverse_proxy 127.0.0.1:8000 {
+					header_up -Authorization
+					transport http {
+						response_header_timeout 48s
+					}
+				}
+			}
+			respond 404
+		}
+		respond 403
+	}
+}

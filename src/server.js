@@ -632,6 +632,7 @@ async function start() {
   // Start background jobs
   const jobs = require('./jobs');
   jobs.startAll();
+  require('./services/deployment-security').start();
 
   // Start host health checks
   dockerService.startHealthChecks();
@@ -674,6 +675,7 @@ async function shutdown(signal) {
 
   const jobs = require('./jobs');
   jobs.stopAll();
+  require('./services/deployment-security').stop();
 
   // v7.0.0: release the leader lock in Redis (via Lua DEL-if-owned) and
   // close Redis connections. Without this, a rolling restart in HA mode

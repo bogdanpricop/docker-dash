@@ -14,6 +14,11 @@ const asyncHandler = require('../utils/asyncHandler');
 const imageScans = require('../services/image-scan-results');
 const permissions = require('../services/permissions');
 const { listSecondaryStacks } = require('../services/stack-display-preferences');
+const dgx = require('../services/ai/dgx');
+const dgxTriage = require('../services/ai/features/dgx-triage');
+const dgxStack = require('../services/ai/features/dgx-stack-plan');
+const dgxInFlight = new Set();
+const dgxBatchSummary = require('../services/ai/features/dgx-batch-summary');
 
 function scanHostScope(req) {
   return [req.resolvedHostId ?? req.hostId, Number(req.hostId === 0 && req.user.role === 'admin')];
@@ -306,7 +311,156 @@ router.get('/scan-triage', requireAuth, asyncHandler(async (req, res) => {
   res.json({
     host: { id: hostId, name: req.hostName }, scans, findings: findings.slice(0, 5000),
     truncated: rows.length > 100 || findings.length > 5000,
+    stacks: [...new Set(containers.map(container => container.stack).filter(stack => dgxStack.STACK_NAME.test(stack || '')))].sort(),
+    dgxAvailable: ['admin', 'operator'].includes(req.user.role) && req.hostAccess !== 'view' && dgx.settings().enabled,
   });
+}));
+
+function latestVerifiedScans(hostId, imageId) {
+  return getDb().prepare(
+    "SELECT id, image_name, scanner, scanned_at, results_json FROM scan_results WHERE id IN (" +
+    "SELECT MAX(id) FROM scan_results WHERE host_id = ? AND verified_image_id = ? " +
+    "AND scanner IN ('trivy', 'grype') GROUP BY scanner) ORDER BY id DESC",
+  ).all(hostId, imageId);
+}
+
+router.post('/scan-batch-summary', requireRole('admin', 'operator'), asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const { scanIds } = req.body || {};
+  if (!Array.isArray(scanIds) || !scanIds.length || scanIds.length > 500
+    || scanIds.some(id => !Number.isSafeInteger(id) || id < 1) || new Set(scanIds).size !== scanIds.length) {
+    return res.status(400).json({ error: 'Select up to 500 saved scan IDs from this batch.' });
+  }
+  const hostId = req.resolvedHostId ?? req.hostId;
+  const { hidden, containers } = await imageVisibility(req, true);
+  const scans = getDb().prepare(`SELECT id, verified_image_id, image_name, scanner, scanned_at, results_json
+    FROM scan_results WHERE host_id = ? AND id IN (SELECT value FROM json_each(?))
+    AND verified_image_id IS NOT NULL AND scanner IN ('trivy', 'grype')`)
+    .all(hostId, JSON.stringify(scanIds));
+  if (scans.length !== scanIds.length || scans.some(scan => hidden.includes(scan.verified_image_id)
+    || (req.user.role !== 'admin' && !containers.some(c => c.imageIdFull === scan.verified_image_id)))) {
+    return res.status(404).json({ error: 'Verified batch scans are unavailable in the selected host scope.' });
+  }
+  if (dgxInFlight.size >= 2 || dgxInFlight.has(req.user.id)) return res.status(429).json({ error: 'DGX is busy. Retry the batch summary shortly.' });
+  const config = dgx.settings();
+  const started = Date.now();
+  let result;
+  dgxInFlight.add(req.user.id);
+  try {
+    result = await dgxBatchSummary.summarize({ scans, containers }, config);
+    res.json(result);
+  } catch (error) {
+    res.status(502).json({ error: error.message || 'DGX batch summary failed.' });
+  } finally {
+    dgxInFlight.delete(req.user.id);
+    auditService.log({ userId: req.user.id, username: req.user.username, action: 'ai_call',
+      targetType: 'ai-feature', targetId: 'dgx-batch-summary', ip: getClientIp(req),
+      details: { provider: 'dgx', model: config.model, hostId, scanIds,
+        durationMs: Date.now() - started, payloadHash: result?.analysis?.payloadHash, ok: Boolean(result) } });
+  }
+}));
+
+router.post('/scan-triage/dgx', requireRole('admin', 'operator'), asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const hostId = req.resolvedHostId ?? req.hostId;
+  const { imageId } = req.body || {};
+  if (typeof imageId !== 'string' || !/^sha256:[a-f0-9]{64}$/.test(imageId)) {
+    return res.status(400).json({ error: 'Select a verified image ID.' });
+  }
+  const config = dgx.settings();
+  if (!config.enabled) return res.status(409).json({ error: 'DGX Security Triage is disabled in AI settings.' });
+  if (dgxInFlight.size >= 2 || dgxInFlight.has(req.user.id)) return res.status(429).json({ error: 'DGX is busy. Try again shortly.' });
+
+  dgxInFlight.add(req.user.id);
+  const started = Date.now();
+  let result;
+  let scans = [];
+  try {
+    const { hidden, containers } = await imageVisibility(req, true);
+    const consumers = containers.filter(container => container.imageIdFull === imageId);
+    if (hidden.includes(imageId) || (req.user.role !== 'admin' && !consumers.length)) {
+      return res.status(404).json({ error: 'No verified scans for this image in the selected scope.' });
+    }
+    scans = latestVerifiedScans(hostId, imageId);
+    if (!scans.length) return res.status(404).json({ error: 'No verified Trivy or Grype scan exists for this image.' });
+    result = await dgxTriage.analyze({
+      scans, runningContainers: consumers.filter(container => container.state === 'running').length,
+    }, config);
+    res.json({
+      ...result, imageId, image: scans[0].image_name,
+      scans: scans.map(({ id, scanner, scanned_at: scannedAt }) => ({ id, scanner, scannedAt })),
+      consumers: consumers.map(({ id, name, stack, state }) => ({ id, name, stack, state })),
+    });
+  } catch (error) {
+    res.status(502).json({ error: error.message || 'DGX Security Triage failed.' });
+  } finally {
+    dgxInFlight.delete(req.user.id);
+    if (scans.length) auditService.log({
+      userId: req.user.id, username: req.user.username,
+      action: 'ai_call', targetType: 'ai-feature', targetId: 'dgx-security-triage',
+      details: {
+        provider: 'dgx', model: config.model, hostId, imageId, scanIds: scans.map(scan => scan.id),
+        durationMs: Date.now() - started, payloadHash: result?.payloadHash, ok: Boolean(result),
+      },
+      ip: getClientIp(req),
+    });
+  }
+}));
+
+router.post('/scan-triage/dgx/stack', requireRole('admin', 'operator'), asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const { stack } = req.body || {};
+  if (typeof stack !== 'string' || !dgxStack.STACK_NAME.test(stack)) return res.status(400).json({ error: 'Select a valid Compose stack.' });
+  const hostId = req.resolvedHostId ?? req.hostId;
+  const config = dgx.settings();
+  if (!config.enabled) return res.status(409).json({ error: 'DGX Security Triage is disabled in AI settings.' });
+  if (dgxInFlight.size >= 2 || dgxInFlight.has(req.user.id)) return res.status(429).json({ error: 'DGX is busy. Try again shortly.' });
+  dgxInFlight.add(req.user.id);
+  const started = Date.now();
+  const scans = [];
+  let result;
+  try {
+    const all = (await dockerService.listContainers(hostId)).filter(container => container.stack === stack);
+    const containers = permissions.filterContainers(all, req.user.id, req.user.role);
+    const hidden = req.query.secondary === 'hide' && listSecondaryStacks(req.user.id, hostId).includes(stack);
+    if (!containers.length || hidden || containers.length !== all.length) return res.status(404).json({ error: 'No accessible complete stack on this host.' });
+    if (containers.length > 80) return res.status(422).json({ error: 'This stack exceeds the analysis limit of 80 containers.' });
+    const scanCache = new Map();
+    const getScans = id => {
+      if (!scanCache.has(id)) scanCache.set(id, latestVerifiedScans(hostId, id));
+      return scanCache.get(id);
+    };
+    const imageIds = [...new Set(containers.map(container => container.imageIdFull).filter(id => dgxStack.IMAGE_ID.test(id || '')))];
+    scans.push(...imageIds.flatMap(imageId => getScans(imageId).map(scan => ({ ...scan, imageId }))));
+    if (!scans.length) return res.status(404).json({ error: 'Run a verified scan for this stack first.' });
+    const analysis = await dgxTriage.analyze({
+      scans, stack: true, runningContainers: containers.filter(container => container.state === 'running').length,
+    }, config);
+    const roots = (process.env.DD_DGX_SOURCE_ROOTS || '/opt/stacks').split(',').map(root => root.trim()).filter(Boolean);
+    const gitBacked = Boolean(getDb().prepare('SELECT 1 FROM git_stacks WHERE host_id = ? AND stack_name = ?').get(hostId, stack));
+    const plan = await dgxStack.buildPlan({
+      containers, stack, images: await dockerService.listImages(hostId), getScans, gitBacked,
+      sourceRoots: req.hostConnectionType === 'socket' || !req.hostConnectionType ? roots : [],
+      inspectImage: ref => dockerService.inspectImage(ref, hostId),
+    });
+    const coverage = imageIds.map(id => ({
+      imageId: id, image: containers.find(container => container.imageIdFull === id).image,
+      scans: getScans(id).map(({ id: scanId, scanner, scanned_at: scannedAt }) => ({ id: scanId, scanner, scannedAt })),
+    }));
+    result = { ...analysis, stack, coverage, plan };
+    res.json(result);
+  } catch (error) {
+    res.status(502).json({ error: error.message || 'DGX stack triage failed.' });
+  } finally {
+    dgxInFlight.delete(req.user.id);
+    if (scans.length) auditService.log({
+      userId: req.user.id, username: req.user.username,
+      action: 'ai_call', targetType: 'ai-feature', targetId: 'dgx-stack-triage',
+      details: { provider: 'dgx', model: config.model, hostId, stack, scanIds: scans.map(scan => scan.id),
+        durationMs: Date.now() - started, payloadHash: result?.payloadHash, ok: Boolean(result) },
+      ip: getClientIp(req),
+    });
+  }
 }));
 
 // Delete scan results by IDs (POST to avoid /:id route conflict)

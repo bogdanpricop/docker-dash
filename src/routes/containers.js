@@ -297,6 +297,35 @@ router.get('/:id/inspect', requireAuth, requireContainerAccess('view'), async (r
   }
 });
 
+// Preview redacted diagnostics before explicitly sending them to the DGX.
+router.get('/:id/dgx-diagnostics', requireRole('admin'), requireContainerAccess('view'), asyncHandler(async (req, res) => {
+  const dgx = require('../services/ai/dgx');
+  if (!dgx.settings().enabled) return res.status(409).json({ error: 'Enable DGX in Settings → AI before analyzing a container.' });
+  const hostId = req.resolvedHostId ?? req.hostId;
+  const scope = JSON.stringify([req.user.id, hostId, req.params.id]);
+  const diagnostics = require('../services/ai/features/dgx-container-diagnostics');
+  res.set('Cache-Control', 'no-store').json(await diagnostics.preview(dockerService.getDocker(hostId), req.params.id, scope));
+}));
+
+router.post('/:id/dgx-diagnostics', requireRole('admin'), requireContainerAccess('view'), asyncHandler(async (req, res) => {
+  const dgx = require('../services/ai/dgx');
+  const config = dgx.settings();
+  if (!config.enabled) return res.status(409).json({ error: 'Enable DGX in Settings → AI before analyzing a container.' });
+  if (typeof req.body?.token !== 'string' || req.body.token.length > 64) return res.status(400).json({ error: 'Collect a diagnostics preview first.' });
+  const hostId = req.resolvedHostId ?? req.hostId;
+  const diagnostics = require('../services/ai/features/dgx-container-diagnostics');
+  try {
+    const result = await diagnostics.analyze(req.body.token, JSON.stringify([req.user.id, hostId, req.params.id]), config);
+    auditService.log({ userId: req.user.id, username: req.user.username, action: 'dgx_container_diagnostics',
+      targetType: 'container', targetId: req.params.id, details: { hostId, model: result.model, payloadHash: result.payloadHash, findings: result.findings.length }, ip: getClientIp(req) });
+    res.set('Cache-Control', 'no-store').json(result);
+  } catch (error) {
+    auditService.log({ userId: req.user.id, username: req.user.username, action: 'dgx_container_diagnostics_failed',
+      targetType: 'container', targetId: req.params.id, details: { hostId, model: config.model }, ip: getClientIp(req) });
+    res.status(error.status || 502).json({ error: error.message });
+  }
+}));
+
 // Container logs (enhanced with regex, level filter, stats)
 router.get('/:id/logs', requireAuth, asyncHandler(async (req, res) => {
   const { tail, since, until, search, regex, level, download } = req.query;
@@ -2091,5 +2120,29 @@ router.get('/:id/pipeline/history', requireAuth, requireContainerAccess('view'),
     const history = pipelineService.getHistory(name, req.hostId || 0);
   res.json({ container: name, pipelines: history });
 }));
+
+router.get('/:id/deployment-security', requireContainerAccess('view'), asyncHandler(async (req, res) => {
+  const hostId = req.resolvedHostId ?? req.hostId;
+  const inspection = await dockerService.getDocker(hostId).getContainer(req.params.id).inspect();
+  res.set('Cache-Control', 'no-store').json({ reviews: require('../services/deployment-security')
+    .list(hostId, inspection.Name.replace(/^\//, '')) });
+}));
+
+router.post('/:id/deployment-security/:reviewId/:action', requireRole('admin', 'operator'), writeable,
+  requireContainerAccess('operate'), asyncHandler(async (req, res) => {
+    const { reviewId, action } = req.params;
+    if (!/^[1-9][0-9]*$/.test(reviewId) || !Number.isSafeInteger(Number(reviewId))
+      || !['retry', 'acknowledge'].includes(action)) return res.status(400).json({ error: 'Invalid security review action.' });
+    const hostId = req.resolvedHostId ?? req.hostId;
+    const inspection = await dockerService.getDocker(hostId).getContainer(req.params.id).inspect();
+    const name = inspection.Name.replace(/^\//, '');
+    const reviews = require('../services/deployment-security');
+    const changed = action === 'retry' ? reviews.retry(Number(reviewId), hostId, name)
+      : reviews.acknowledge(Number(reviewId), hostId, name, req.user.username);
+    if (!changed) return res.status(409).json({ error: 'This review is unavailable or its state has changed. Refresh the review.' });
+    auditService.log({ userId: req.user.id, username: req.user.username, action: 'deployment_security_' + action,
+      targetType: 'container', targetId: name, details: { hostId, reviewId: Number(reviewId) }, ip: getClientIp(req) });
+    res.json({ ok: true });
+  }));
 
 module.exports = router;

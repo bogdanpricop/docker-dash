@@ -206,7 +206,10 @@ const Api = {
   getImageHistory(id) { return this.get(`/images/${id}/history`); },
   pullImage(name) { return this.post('/images/pull', { image: name }); },
   removeImage(id, force = false) { return this.delete(`/images/${id}?force=${force}`); },
-  scanImage(id, scanner = 'auto') { return this.get(`/images/${id}/scan?scanner=${scanner}`); },
+  scanImage(id, scanner = 'auto', hostId = null) {
+    const hostQuery = hostId === null ? '' : `&hostId=${hostId}`;
+    return this.get(`/images/${id}/scan?scanner=${encodeURIComponent(scanner)}${hostQuery}`);
+  },
   getScanners() { return this.get('/images/scanners'); },
 
   // ─── Volumes ─────────────────────────────────────

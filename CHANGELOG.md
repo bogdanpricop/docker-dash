@@ -1,5 +1,14 @@
 # Changelog
 
+## DGX operations — 2026-11-17
+
+- Summarize Security batch runs with prioritized images and scanner evidence.
+- Diagnose container health using a redacted preview and cited DGX findings.
+- Queue persisted post-deployment comparisons of previous/current image scans with manual review.
+- Show selected-host GPU/temperature/unified memory and configured DGX gateway availability.
+- Document DGX Spark SSH fingerprint and socat setup.
+
+
 All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
@@ -156,7 +165,18 @@ All notable changes to Docker Dash are documented here.
   members. Commit mutations, mapping changes and HTTP audit together; remove group
   ownership mappings on deletion. [Evidence and compatibility](docs/audits/2026-09-20-scim-security.md).
 
-## [8.96.48] - 2026-11-14 — Navigable vulnerability reports
+## [8.96.48] - 2026-11-14 — DGX Spark pilot and navigable vulnerability reports
+
+### DGX Spark pilot — 2026-11-16
+
+- Configure an internal HTTPS gateway in **Settings → AI → DGX Spark**.
+- In **Security → Triage**, use **Analyze with DGX** to prioritize findings and
+  review proposed fixes for an image or a full Compose stack.
+- Review suggested Compose or Dockerfile diffs and copy recommendations and
+  Linux commands. Deployment commands require a candidate that passes both
+  Trivy and Grype checks and are available for manual execution.
+
+### Vulnerability reports
 
 - Review coverage and priority fixes first, jump to images through a linked
   index, and expand findings with links to public advisories and Docker Dash.

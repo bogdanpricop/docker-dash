@@ -8,6 +8,8 @@ const SecurityPage = {
   _scanColumns: [['summary_critical', 'Critical'], ['summary_high', 'High'], ['summary_medium', 'Medium'],
     ['summary_low', 'Low'], ['summary_total', 'Total'], ['fixable_count', 'Fixable']],
   _historySorts: new Map(),
+  _batchRuns: new Map(),
+  _batchConfirmations: new Set(),
 
   async render(container, params = {}) {
     this._showSecondaryStacks = false;
@@ -32,6 +34,24 @@ const SecurityPage = {
           </button>
         </div>
       </div>
+      <details class="card" id="sec-batch-log" style="margin-bottom:16px" hidden>
+        <summary class="card-header" style="cursor:pointer;display:list-item">
+          <span style="display:inline-flex;align-items:center;gap:8px 16px;flex-wrap:wrap;vertical-align:middle;max-width:calc(100% - 24px)">
+            <strong>Scan run log</strong>
+            <progress id="sec-batch-progress" aria-label="Image scan progress" style="width:clamp(80px,16vw,200px)"></progress>
+            <span id="sec-batch-status" role="status" class="text-muted text-sm" style="overflow-wrap:anywhere"></span>
+          </span>
+        </summary>
+        <div class="card-body">
+          <div id="sec-batch-summary" style="margin-bottom:12px"></div>
+          <div class="table-wrap" style="max-height:22rem;overflow:auto">
+            <table class="data-table">
+              <thead><tr><th>#</th><th>Image</th><th>Status</th><th>Started</th><th>Duration</th><th>Details</th></tr></thead>
+              <tbody id="sec-batch-rows"></tbody>
+            </table>
+          </div>
+        </div>
+      </details>
       <div class="tabs" id="sec-tabs">
         <button class="tab active" data-tab="overview">Overview</button>
         <button class="tab" data-tab="triage">Triage</button>
@@ -75,6 +95,7 @@ const SecurityPage = {
     this._tab = tabs.find(tab => tab.dataset.tab === (requestedTab || this._tab))?.dataset.tab || 'overview';
     tabs.forEach(tab => tab.classList.toggle('active', tab.dataset.tab === this._tab));
     await this._renderTab();
+    this._renderBatchRun(Api.getHostId());
   },
 
   async _renderTab() {
@@ -322,6 +343,7 @@ Please:
 
     // Scan All button
     el.querySelector('#sec-scan-all-btn')?.addEventListener('click', () => this._scanAll());
+    this._renderBatchRun(Api.getHostId());
 
     // View scan detail buttons
     el.querySelectorAll('[data-action="view-scan"]').forEach(btn => {
@@ -371,10 +393,10 @@ Please:
     const body = mc.querySelector('#img-containers-body');
 
     try {
-      // listContainers returns summary rows; the `image` field is the tag the
+      // getContainers returns summary rows; the `image` field is the tag the
       // container was created with. Match exact image name first; if image was
       // renamed/retagged, nothing matches (expected — tell user).
-      const containers = await Api.listContainers();
+      const containers = await Api.getContainers();
       // Match by exact image OR by image ID prefix (12-char) if the tag resolves
       const matches = (containers || []).filter(c => {
         if (c.image === imageName) return true;
@@ -1034,26 +1056,147 @@ Generate a professional report with:
     }
   },
 
-  async _scanAll() {
-    const ok = await Modal.confirm('Scan all images for vulnerabilities? This may take several minutes.', { confirmText: 'Scan All' });
-    if (!ok) return;
+  _renderBatchRun(host, { open = false } = {}) {
+    if (Api.getHostId() !== host) return;
+    const panel = document.getElementById('sec-batch-log');
+    const run = this._batchRuns.get(host);
+    if (!panel || !run) return;
 
-    const images = await Api.get(this._secondaryFilter('/images'));
-    Toast.info(`Scanning ${images.length} images...`);
-
-    let completed = 0;
-    for (const img of images) {
-      const name = (img.repoTags || [])[0] || img.id;
-      try {
-        const result = await Api.scanImage(encodeURIComponent(img.id), 'auto');
-        if (!result.scanId) continue;
-        completed++;
-        Toast.info(`Scanned ${completed}/${images.length}: ${name}`);
-      } catch { /* continue scanning others */ }
+    panel.hidden = false;
+    if (open || panel.dataset.runId !== String(run.startedAt)) panel.open = true;
+    panel.dataset.runId = String(run.startedAt);
+    for (const button of document.querySelectorAll('#scan-all-btn, #sec-scan-all-btn')) {
+      button.disabled = run.running;
     }
 
-    Toast.success(`Scan complete: ${completed}/${images.length} images scanned`);
-    this._renderTab();
+    const total = run.entries.length;
+    const processed = run.succeeded + run.failed;
+    const current = run.entries[processed];
+    const status = run.error ? `Could not load images: ${run.error}`
+      : run.loading ? 'Loading images…'
+        : total === 0 ? 'No images to scan.'
+          : `${processed}/${total} processed · ${run.succeeded} succeeded · ${run.failed} failed`
+            + (run.running && current ? ` · Scanning ${processed + 1}/${total}: ${current.name}` : ' · Finished');
+    panel.querySelector('#sec-batch-status').textContent =
+      `${status} · Started ${new Date(run.startedAt).toLocaleString()}`;
+    const progress = panel.querySelector('#sec-batch-progress');
+    progress.max = total || 1;
+    progress.hidden = !run.loading && total === 0;
+    if (run.loading) progress.removeAttribute('value');
+    else progress.value = processed;
+
+    const escape = Utils.escapeHtml;
+    panel.querySelector('#sec-batch-rows').innerHTML = run.entries.map((entry, index) => {
+      const elapsed = entry.finishedAt ? `${((entry.finishedAt - entry.startedAt) / 1000).toFixed(1)} s` : '—';
+      return `<tr><td>${index + 1}</td><td style="overflow-wrap:anywhere">${escape(entry.name)}</td>
+        <td>${entry.status}</td><td>${entry.startedAt ? new Date(entry.startedAt).toLocaleTimeString() : '—'}</td>
+        <td>${elapsed}</td><td style="overflow-wrap:anywhere">${escape(entry.detail || '')}</td></tr>`;
+    }).join('');
+    this._renderBatchSummary(host, run, panel.querySelector('#sec-batch-summary'));
+  },
+
+  _renderBatchSummary(host, run, element) {
+    if (!element) return;
+    if (run.running || !run.succeeded) { element.innerHTML = ''; return; }
+    const escape = Utils.escapeHtml;
+    const reportButton = (scan, label) => `<button type="button" class="btn btn-sm btn-secondary" data-batch-scan="${scan.id ?? scan.scanId}">${escape(label || `${scan.scanner} #${scan.id}`)}</button>`;
+    const summary = run.summary;
+    const retry = run.summaryLoading ? '' : '<button type="button" class="btn btn-sm btn-secondary" data-batch-summary-retry>Refresh summary</button>';
+    element.innerHTML = `<h4 style="margin:0 0 8px">Batch security summary</h4>
+      <p class="text-sm text-muted" role="status">${escape(run.summaryLoading ? 'DGX is analyzing the saved scan evidence…'
+    : run.summaryError || (summary?.dgxStatus === 'failed' ? `DGX unavailable: ${summary.dgxError}. Scan evidence is shown below.` : summary?.dgxStatus === 'disabled' ? 'Scan evidence summary. Enable DGX in Settings → AI for verification recommendations.'
+      : summary?.dgxStatus === 'no_findings' ? 'No vulnerabilities in the verified scans.'
+        : summary ? `DGX verification recommendations · ${summary.analysis?.model || ''}` : 'Preparing summary…'))}</p>
+      ${run.entries.length > 500 ? '<p class="text-sm text-muted">This summary covers up to 500 saved scans. The run log lists the entire batch.</p>' : ''}
+      ${summary ? `<div class="table-wrap"><table class="data-table"><thead><tr><th>Image</th><th>Critical</th><th>High</th><th>Fix available</th><th>Affected containers</th><th>Evidence</th></tr></thead><tbody>
+        ${summary.images.map(image => `<tr><td>${escape(image.image)}</td><td>${image.critical}</td><td>${image.high}</td><td>${image.fixable}</td>
+          <td>${escape(image.consumers.map(c => c.name).join(', ') || 'None')}</td><td>${image.scans.map(scan => reportButton(scan)).join(' ')}</td></tr>`).join('')}
+      </tbody></table></div>` : ''}
+      ${summary?.analysis?.findings?.length ? `<h4 style="margin:12px 0 6px">Priority checks</h4><ul>
+        ${summary.analysis.findings.map(finding => `<li style="margin-bottom:8px"><strong>${escape(finding.id)} · ${escape(finding.package)}</strong>
+          (${escape(finding.severity)}) · ${escape(summary.images.find(image => image.imageId === finding.imageId)?.image || '')}
+          <div>${escape(finding.nextCheck.replaceAll('_', ' '))} · ${escape(finding.remediation.replaceAll('_', ' '))}</div>
+          ${finding.sources.map(source => reportButton(source, `${source.scanner} #${source.scanId} · ${source.fixedIn || 'No published fix'}`)).join(' ')}</li>`).join('')}
+      </ul><p class="text-sm text-muted">Showing ${summary.analysis.findings.length} prioritized checks from ${summary.analysis.total} unique findings. Published fixes require candidate verification before migration.</p>` : ''}
+      ${retry}`;
+    element.querySelector('[data-batch-summary-retry]')?.addEventListener('click', () => this._summarizeBatch(host, run));
+    element.querySelectorAll('[data-batch-scan]').forEach(button => button.addEventListener('click', () => this._viewScanDetail(Number(button.dataset.batchScan), host)));
+  },
+
+  async _summarizeBatch(host, run) {
+    if (run.summaryLoading || this._batchRuns.get(host) !== run) return;
+    const scanIds = run.entries.filter(entry => entry.scanId && ['trivy', 'grype'].includes(entry.scanner)).map(entry => entry.scanId).slice(0, 500);
+    if (!scanIds.length) { run.summaryError = 'No verified Trivy or Grype results are available for this batch.'; this._renderBatchRun(host); return; }
+    run.summaryLoading = true;
+    run.summaryError = '';
+    this._renderBatchRun(host);
+    try {
+      run.summary = await Api.post(`/images/scan-batch-summary?hostId=${host}${run.hideSecondary ? '&secondary=hide' : ''}`, { scanIds });
+    } catch (error) {
+      run.summaryError = `Summary unavailable: ${error.message}. The saved scan results remain available in Scan History.`;
+    } finally {
+      run.summaryLoading = false;
+      this._renderBatchRun(host);
+    }
+  },
+
+  async _scanAll() {
+    const host = Api.getHostId();
+    if (this._batchRuns.get(host)?.running || this._batchConfirmations.has(host)) return;
+    this._batchConfirmations.add(host);
+    let ok;
+    try {
+      ok = await Modal.confirm('Scan all images for vulnerabilities? This may take several minutes.', { confirmText: 'Scan All' });
+    } finally {
+      this._batchConfirmations.delete(host);
+    }
+    if (!ok || Api.getHostId() !== host || !document.getElementById('sec-batch-log')) return;
+
+    const run = { startedAt: Date.now(), running: true, loading: true, entries: [], succeeded: 0, failed: 0, hideSecondary: !this._showSecondaryStacks };
+    this._batchRuns.set(host, run);
+    this._renderBatchRun(host, { open: true });
+    try {
+      const images = await Api.get(this._secondaryFilter(`/images?hostId=${host}`));
+      run.entries = images.map(img => ({ id: img.id, name: img.repoTags?.[0] || img.id, status: 'Queued' }));
+      run.loading = false;
+
+      for (const entry of run.entries) {
+        entry.startedAt = Date.now();
+        entry.status = 'Scanning';
+        this._renderBatchRun(host);
+        try {
+          const result = await Api.scanImage(encodeURIComponent(entry.id), 'auto', host);
+          if (!result.scanId) throw new Error(result.message || 'The scanner returned no saved result.');
+          run.succeeded++;
+          entry.scanId = result.scanId;
+          entry.scanner = result.scanner;
+          entry.status = 'Completed';
+          entry.detail = [result.scanner, result.summary && `${result.summary.total ?? 0} findings`].filter(Boolean).join(' · ');
+          Toast.info(`Scanned ${run.succeeded + run.failed}/${run.entries.length}: ${entry.name}`);
+        } catch (err) {
+          run.failed++;
+          entry.status = 'Failed';
+          entry.detail = err.message;
+        }
+        entry.finishedAt = Date.now();
+        this._renderBatchRun(host);
+      }
+    } catch (err) {
+      run.error = err.message;
+    } finally {
+      run.running = false;
+      run.loading = false;
+      this._renderBatchRun(host);
+    }
+
+    if (run.succeeded) this._summarizeBatch(host, run);
+    if (run.error) Toast.error(`Could not load images: ${run.error}`);
+    else if (run.failed) Toast.warning(`Scan finished: ${run.succeeded} succeeded, ${run.failed} failed`);
+    else if (run.entries.length) Toast.success(`Scan complete: ${run.succeeded}/${run.entries.length} images scanned`);
+    if (Api.getHostId() === host && document.getElementById('sec-content')) {
+      this._historyData = [];
+      await this._renderTab();
+    }
   },
 
   _cisBriefHtml(data) {

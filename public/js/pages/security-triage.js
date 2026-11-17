@@ -5,6 +5,7 @@ const SecurityTriage = {
 
   async render(element, showSecondary = false) {
     const escape = Utils.escapeHtml;
+    const t = key => i18n.t('dgx.' + key);
     const activeHost = Api.getHostId();
     element.innerHTML = `<div class="card" style="padding:12px">
       <div class="schedule-controls">
@@ -19,6 +20,9 @@ const SecurityTriage = {
       <div class="schedule-controls">
         <button class="btn btn-sm btn-secondary" type="button" data-triage-compare disabled>Compare scans</button>
         <button class="btn btn-sm btn-secondary" type="button" data-triage-export disabled>Export filtered SARIF</button>
+        <button class="btn btn-sm btn-primary" type="button" data-triage-dgx hidden disabled>${t('analyze')}</button>
+        <span data-triage-dgx-stack-wrap hidden><button class="btn btn-sm btn-primary" type="button" data-triage-dgx-stack disabled>${t('analyzeStack')}</button></span>
+        <span class="text-sm text-muted" data-triage-dgx-status role="status"></span>
       </div><p class="text-sm text-muted" data-triage-state role="status"></p><div data-triage-list></div>
     </div>`;
     const host = element.querySelector('[data-triage-host]');
@@ -30,6 +34,10 @@ const SecurityTriage = {
     const status = element.querySelector('[data-triage-state]');
     const compare = element.querySelector('[data-triage-compare]');
     const exportButton = element.querySelector('[data-triage-export]');
+    const dgxButton = element.querySelector('[data-triage-dgx]');
+    const stackDgxButton = element.querySelector('[data-triage-dgx-stack]');
+    const stackDgxWrap = element.querySelector('[data-triage-dgx-stack-wrap]');
+    const dgxStatus = element.querySelector('[data-triage-dgx-status]');
     const columns = [['id', 'Vulnerability'], ['severity', 'Severity'], ['package', 'Package'], ['version', 'Installed'],
       ['fixedIn', 'Fixed in'], ['image', 'Image'], ['running', 'Running containers']];
     const severities = ['critical', 'high', 'medium', 'low', 'negligible', 'unknown'];
@@ -38,6 +46,7 @@ const SecurityTriage = {
     let filtered = [];
     let request = 0;
     let page = 0;
+    let dgxBusy = false;
     const options = (select, values) => {
       select.innerHTML = '<option value="">All</option>' + values.map(([value, label]) =>
         `<option value="${escape(value)}">${escape(label)}</option>`).join('');
@@ -66,6 +75,10 @@ const SecurityTriage = {
       const visible = filtered.slice(start, start + 100);
       status.textContent = `${data.host.name || 'Local Docker'} · ${filtered.length} findings across verified scans${data.truncated ? ' · inventory limit reached' : ''}`;
       exportButton.disabled = !filtered.length;
+      dgxButton.hidden = !data.dgxAvailable;
+      dgxButton.disabled = dgxBusy || !image.value;
+      stackDgxWrap.hidden = !data.dgxAvailable;
+      stackDgxButton.disabled = dgxBusy || !data.stacks?.includes(stack.value);
       list.innerHTML = visible.length ? `<div class="file-list-scroll"><table class="data-table compact"><thead>
         <tr>${columns.map(([key, label]) => TableSort.header(key, label)).join('')}</tr>
         </thead><tbody>${visible.map(finding => {
@@ -107,13 +120,16 @@ const SecurityTriage = {
       page = 0;
       list.replaceChildren();
       compare.disabled = exportButton.disabled = true;
+      dgxButton.hidden = dgxButton.disabled = true;
+      stackDgxWrap.hidden = stackDgxButton.disabled = true;
+      dgxStatus.textContent = '';
       status.textContent = 'Loading verified scan results…';
       try {
         const response = await Api.get('/images/scan-triage?hostId=' + host.value + (showSecondary ? '' : '&secondary=hide'));
         if (!list.isConnected || id !== request) return;
         data = response;
         scanMap = new Map(data.scans.map(scan => [scan.id, scan]));
-        options(stack, [...new Set(data.scans.flatMap(scan => scan.consumers.map(container => container.stack)))].sort().map(name => [name, name]));
+        options(stack, [...new Set([...(data.stacks || []), ...data.scans.flatMap(scan => scan.consumers.map(container => container.stack))])].sort().map(name => [name, name]));
         options(image, data.scans.map(scan => [scan.verified_image_id, scan.image_name + ' · ' + Utils.shortImageId(scan.verified_image_id)]));
         compare.disabled = false;
         paint();
@@ -125,12 +141,168 @@ const SecurityTriage = {
     [stack, image, severity, fix].forEach(control => control.addEventListener('change', () => { page = 0; paint(); }));
     compare.addEventListener('click', () => this.compare(data.host.id, showSecondary).catch(error => Toast.error(error.message)));
     exportButton.addEventListener('click', () => this.exportSarif(filtered, scanMap, data.host));
+    dgxButton.addEventListener('click', async () => {
+      if (!data || !image.value || dgxBusy) return;
+      const imageId = image.value;
+      const currentRequest = request;
+      dgxBusy = dgxButton.disabled = true;
+      stackDgxButton.disabled = true;
+      dgxStatus.textContent = t('analyzing');
+      try {
+        const result = await Api.post('/images/scan-triage/dgx?hostId=' + data.host.id +
+          (showSecondary ? '' : '&secondary=hide'), { imageId });
+        if (list.isConnected && currentRequest === request) {
+          dgxStatus.textContent = '';
+          this.showDgxProposal(result);
+        }
+      } catch (error) {
+        if (list.isConnected && currentRequest === request) dgxStatus.textContent = error.message;
+      } finally {
+        dgxBusy = false;
+        dgxButton.disabled = !image.value || !data?.dgxAvailable;
+        stackDgxButton.disabled = !data?.dgxAvailable || !data.stacks?.includes(stack.value);
+      }
+    });
+    stackDgxButton.addEventListener('click', async () => {
+      if (!data?.stacks?.includes(stack.value) || dgxBusy) return;
+      const name = stack.value;
+      const currentRequest = request;
+      dgxBusy = dgxButton.disabled = stackDgxButton.disabled = true;
+      dgxStatus.textContent = t('analyzingStack');
+      try {
+        const result = await Api.post('/images/scan-triage/dgx/stack?hostId=' + data.host.id +
+          (showSecondary ? '' : '&secondary=hide'), { stack: name });
+        if (list.isConnected && currentRequest === request) {
+          dgxStatus.textContent = '';
+          this.showDgxStack(result);
+        }
+      } catch (error) {
+        if (list.isConnected && currentRequest === request) dgxStatus.textContent = error.message;
+      } finally {
+        dgxBusy = false;
+        dgxButton.disabled = !image.value || !data?.dgxAvailable;
+        stackDgxButton.disabled = !data?.dgxAvailable || !data.stacks?.includes(stack.value);
+      }
+    });
     try {
       const hosts = (await Api.getHosts()).filter(item => item.isActive && ['docker', 'podman'].includes(item.daemonType || 'docker'));
       if (!list.isConnected) return;
       if (hosts.length) host.innerHTML = hosts.map(item => `<option value="${item.id}" ${item.id === activeHost || (!activeHost && item.isDefault) ? 'selected' : ''}>${escape(item.name)}</option>`).join('');
     } catch { /* keep the active host as the fallback */ }
     if (list.isConnected) await load();
+  },
+
+  showDgxProposal(result) {
+    const t = (key, values) => i18n.t('dgx.' + key, values);
+    const escape = Utils.escapeHtml;
+    const rows = result.findings.map(item => `<tr>
+      <td>${escape(item.id)}<br><span class="badge">${escape(item.severity)}</span></td>
+      <td>${escape(item.package)} <span class="mono">${escape(item.version)}</span></td>
+      <td>${item.sources.map(source => `<div>${escape(source.scanner)} #${source.scanId} · ${escape(source.fixedIn || t('noFix'))}</div>`).join('')}</td>
+      <td>${t(item.remediation)}<br><span class="text-sm text-muted">${t(item.nextCheck)}</span></td>
+    </tr>`).join('');
+    Modal.open(`<div class="modal-header"><h3>${t('proposal')}</h3></div>
+      <div class="modal-body">
+        <p><strong>${escape(result.image)}</strong> · ${escape(Utils.shortImageId(result.imageId))} · ${escape(result.model)}</p>
+        <p class="text-sm text-muted">${t('coverage', { shown: result.findings.length, total: result.total })}</p>
+        <p class="text-sm text-muted">${result.scans.map(scan => escape(scan.scanner) + ' #' + scan.id + ' · ' + escape(scan.scannedAt)).join(' | ')}</p>
+        ${new Set(result.scans.map(scan => scan.scanner)).size < 2 ? `<p>${t('singleScanner')}</p>` : ''}
+        ${result.consumers.length ? `<p class="text-sm">${t('consumers')} ${result.consumers.map(container => escape(container.name) + ' (' + escape(container.stack) + ')').join(', ')}</p>` : ''}
+        ${rows ? `<div class="file-list-scroll"><table class="data-table compact">
+          <thead><tr><th>${t('finding')}</th><th>${t('package')}</th><th>${t('scannerFix')}</th><th>${t('nextSteps')}</th></tr></thead>
+          <tbody>${rows}</tbody></table></div>` : `<p>${t('empty')}</p>`}
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-dgx-copy type="button">${t('copyRecommendations')}</button>
+        <button class="btn btn-secondary" data-dgx-download type="button">${t('download')}</button>
+        <button class="btn btn-primary" data-dgx-close type="button">${i18n.t('common.close')}</button>
+      </div>`, { width: '1000px' });
+    Modal._content.querySelector('[data-dgx-download]').addEventListener('click', () => {
+      const url = URL.createObjectURL(new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'dgx-proposal-' + result.imageId.slice(7, 19) + '.json';
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    });
+    Modal._content.querySelector('[data-dgx-close]').addEventListener('click', () => Modal.close());
+    Modal._content.querySelector('[data-dgx-copy]').addEventListener('click', () => this.copyDgx([
+      result.image, ...result.findings.map(item => this.dgxFindingText(item, t)),
+    ].join('\n')));
+  },
+
+  dgxFindingText(item, t) {
+    const sources = item.sources.map(source => source.scanner + ' #' + source.scanId + ' · ' + (source.fixedIn || t('noFix'))).join(', ');
+    return [item.id, item.package + ' ' + item.version, sources, t(item.remediation), t(item.nextCheck)].join(' · ');
+  },
+
+  async copyDgx(text) {
+    try {
+      await Utils.copyToClipboard(text);
+      Toast.success(i18n.t('dgx.copied'));
+    } catch { Toast.error(i18n.t('dgx.copyFailed')); }
+  },
+
+  showDgxStack(result) {
+    const t = (key, values) => i18n.t('dgx.' + key, values);
+    const escape = Utils.escapeHtml;
+    const imageName = id => result.coverage.find(item => item.imageId === id)?.image || id;
+    const coverage = result.coverage.map(item => `<li>${escape(item.image)} · ${item.scans.length
+      ? item.scans.map(s => escape(s.scanner) + ' #' + s.id + ' · ' + escape(s.scannedAt)).join(' / ') : t('planReason.no_scan')}</li>`).join('');
+    const findings = result.findings.map(item => `<li>${escape(imageName(item.imageId))} · ${escape(this.dgxFindingText(item, t))}</li>`).join('');
+    const steps = result.plan.map((step, index) => {
+      if (!step.change) return `<li><strong>${escape(step.service)}</strong> · ${t('planReason.' + step.reason)}</li>`;
+      const { candidate, diff, file, kind, prepareCommands, deployCommands, gitBacked } = step.change;
+      return `<li><details open><summary><strong>${escape(step.service)}</strong> · ${escape(kind)} · ${t('fixedCount', { count: candidate.fixed.length })}</summary>
+        <p class="mono">${escape(file)} · ${escape(candidate.pinned)}</p>
+        <p>${candidate.checks.map(item => escape(item.scanner) + ' #' + item.previousScan + ' → #' + item.candidateScan + ' · ' +
+          t('blockerCount', { count: item.blockers })).join(' / ')}</p>
+        <p class="text-sm">${candidate.fixed.slice(0, 12).map(item => escape(item.id + ' · ' + item.package)).join(', ')}</p>
+        ${kind === 'dockerfile' ? `<p>${t('baseOnly')}</p>` : ''}
+        ${gitBacked ? `<p>${t('gitBacked')}</p>` : ''}
+        ${!candidate.admissionPassed ? `<p>${t('admissionBlocked')}</p>` : ''}
+        <details><summary>${t('diff')}</summary><pre class="file-list-scroll">${escape(diff)}</pre></details>
+        <details><summary>${t('prepare')}</summary><pre class="file-list-scroll">${escape(prepareCommands)}</pre>
+          <button type="button" class="btn btn-secondary" data-dgx-prepare="${index}">${t('copyLinux')}</button></details>
+        ${deployCommands ? `<details><summary>${t('deploy')}</summary><p>${t('deployWarning')}</p>
+          <pre class="file-list-scroll">${escape(deployCommands)}</pre>
+          <button type="button" class="btn btn-secondary" data-dgx-deploy="${index}">${t('copyLinux')}</button></details>` : ''}
+      </details></li>`;
+    }).join('');
+    Modal.open(`<div class="modal-header"><h3>${t('stackPlan')} · ${escape(result.stack)}</h3></div>
+      <div class="modal-body">
+        <p>${escape(result.model)} · ${t('coverage', { shown: result.findings.length, total: result.total })}</p>
+        <details><summary>${t('stackCoverage')}</summary><ul>${coverage}</ul></details>
+        <details><summary>${t('recommendations')}</summary><ul>${findings}</ul></details>
+        <ul class="bulk-plan-rows">${steps}</ul>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-dgx-copy-stack>${t('copyRecommendations')}</button>
+        <button type="button" class="btn btn-primary" data-dgx-close-stack>${i18n.t('common.close')}</button>
+      </div>`, { width: '1050px' });
+    const content = Modal._content;
+    content.querySelector('[data-dgx-close-stack]').addEventListener('click', () => Modal.close());
+    content.querySelector('[data-dgx-copy-stack]').addEventListener('click', () => this.copyDgx([
+      t('stackPlan') + ' · ' + result.stack,
+      ...result.findings.map(item => imageName(item.imageId) + ' · ' + this.dgxFindingText(item, t)),
+      ...result.plan.map(step => step.change
+        ? [
+          step.service + ' · ' + step.change.candidate.pinned,
+          ...step.change.candidate.checks.map(check => check.scanner + ' #' + check.previousScan + ' → #' + check.candidateScan
+            + ' · ' + t('blockerCount', { count: check.blockers })),
+          ...(step.change.candidate.admissionPassed ? [] : [t('admissionBlocked')]),
+          ...(step.change.kind === 'dockerfile' ? [t('baseOnly')] : []),
+          ...(step.change.gitBacked ? [t('gitBacked')] : []),
+          step.change.diff,
+        ].join('\n')
+        : step.service + ' · ' + t('planReason.' + step.reason)),
+    ].join('\n')));
+    content.querySelectorAll('[data-dgx-prepare]').forEach(button => button.addEventListener('click', () => {
+      this.copyDgx(result.plan[Number(button.dataset.dgxPrepare)].change.prepareCommands);
+    }));
+    content.querySelectorAll('[data-dgx-deploy]').forEach(button => button.addEventListener('click', () => {
+      this.copyDgx(result.plan[Number(button.dataset.dgxDeploy)].change.deployCommands);
+    }));
   },
 
   async compare(hostId, showSecondary = false) {

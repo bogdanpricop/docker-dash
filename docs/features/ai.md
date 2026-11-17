@@ -58,6 +58,18 @@ That's it. No account creation on our side. No telemetry. No data sent to us. Pr
 
 ## 3. Privacy + security model
 
+### DGX Spark Security Triage
+
+The DGX profile in **Settings → AI** is independent of the provider used for audit search. Enter the internal gateway HTTPS origin, the model ID, the private CA certificate in PEM format, and the gateway key. Save the profile, use **Test DGX connection**, and enable analysis. The test checks the selected model in `GET /v1/models`. Docker Dash stores the key encrypted and displays only whether one is saved.
+
+Use [Caddyfile.dgx](../../examples/deployments/Caddyfile.dgx) as the gateway configuration on the inference host. Leave vLLM on `127.0.0.1:8000`. Supply a server certificate whose SAN matches the gateway address, its private key, the intended Docker Dash source IP, and a generated gateway key. Keep the TLS private key and gateway key on their respective hosts. The listener allows authenticated Docker Dash requests to the model list and chat completion routes.
+
+In **Security → Triage**, select a verified image and choose **Analyze with DGX**. Docker Dash loads the latest verified scan from each available scanner for that image and selected host. It sends up to 12 prioritized findings as bounded advisory facts. The model chooses verification steps from those allowed for each finding. Exact package versions, image identifiers, affected containers, and scanner evidence are combined locally in the proposal. Download the proposal from the results dialog for manual review. The audit log records the scan IDs, model, outcome and hash of the facts sent.
+
+Select a Compose project and choose **Analyze stack with DGX** to review its running images and local remediation opportunities. The application generates a diff for a literal Compose image, or a simple Dockerfile with a verified pinned base. Candidate digests must be present on the same host and in the same release line. The comparison uses verified Trivy and Grype reports of the current and candidate image. Each report must be at most seven days old. The plan lists the scans, improvements and remaining policy blockers.
+
+For local socket hosts, expose the relevant deployment files at their original paths with read-only mounts and include their project directories in \`DD_DGX_SOURCE_ROOTS\` (defaults to \`/opt/stacks\`). The planner requires a single Compose configuration file and a verifiable source image. Git-backed changes use the source repository. **Copy recommendations** copies the plan and diff. **Copy Linux commands** copies candidate preparation or, for an eligible Compose candidate with zero policy blockers, a separate operator-reviewed deployment script. Preparation validates a temporary copy or builds a candidate image.
+
 ### What leaves the host (when AI is enabled and a feature is invoked)
 
 - The query/data for that specific call (after redaction — see §4)
@@ -267,3 +279,13 @@ Or in CI: `DD_FORCE_AI_DISABLED=1` env var (planned for v8.1.0 if there's demand
 - [`plans/spikes-ai-features.md`](../../plans/spikes-ai-features.md) — pre-implementation validation
 - [`SECURITY.md`](../../SECURITY.md) — encryption details for stored credentials
 - [`CHANGELOG.md`](../../CHANGELOG.md#800---2026-04-27--ai-features) — v8.0.0 release notes
+
+### DGX operations
+
+Security batch runs summarize the exact saved scan IDs from that run, rank affected images and link to scanner evidence. A failed or disabled DGX connection leaves the scan summary available and exposes a retry action.
+
+Container details offer a redacted diagnostics preview of health commands, health results, restart/exit/OOM state, logs and recent events. The operator submits the preview for inference. Diagnostic findings cite the preview evidence and preserve collection warnings.
+
+Successful image replacements and Compose deployments queue persisted security reviews when DGX is enabled. The worker compares immutable previous/current images with Trivy and Grype, retains scanner evidence and DGX advice, and requires manual review. The report does not perform a further deployment. Failed reviews support retry, and interrupted jobs are recovered.
+
+Docker Hosts includes an on-demand DGX status dialog. GPU activity, temperature and unified memory come from the selected SSH host. Model availability and latency describe the gateway configured in Settings → AI. Unsupported metrics and gateway failures appear independently.

@@ -108,6 +108,7 @@ const ContainersPageDetail = {
       <button class="btn btn-sm btn-accent" data-act="safe-update" title="Scan for vulnerabilities before updating"><i class="fas fa-shield-alt"></i> Safe Update</button>
       <button class="btn btn-sm btn-secondary" data-act="rollback" title="Rollback to previous image"><i class="fas fa-history"></i> Rollback</button>
       <button class="btn btn-sm btn-secondary" data-act="diagnose" title="Run troubleshooting wizard"><i class="fas fa-stethoscope"></i> Diagnose</button>
+      ${App.user?.role === 'admin' ? `<button class="btn btn-sm btn-accent" data-act="dgx-diagnostics"><i class="fas fa-microchip"></i> ${i18n.t('pages.containers.dgxDiagnostics')}</button>` : ''}
       <button class="btn btn-sm btn-accent" data-act="doctor" title="AI Container Doctor — deep analysis with log pattern matching"><i class="fas fa-user-md"></i> Doctor</button>
       <button class="btn btn-sm btn-secondary" data-act="rename"><i class="fas fa-pencil-alt"></i> Rename</button>
       <button class="btn btn-sm btn-secondary" data-act="clone"><i class="fas fa-clone"></i> Clone</button>
@@ -123,6 +124,7 @@ const ContainersPageDetail = {
         if (btn.dataset.act === 'rename') return this._renameContainer(this._detailId, info.name);
         if (btn.dataset.act === 'safe-update') return this._safeUpdateContainer(this._detailId, info.name, info.image);
         if (btn.dataset.act === 'diagnose') return this._diagnoseContainer(this._detailId, info.name);
+        if (btn.dataset.act === 'dgx-diagnostics') return this._dgxDiagnostics(this._detailId, info.name);
         if (btn.dataset.act === 'doctor') return this._doctorContainer(this._detailId, info.name);
         if (btn.dataset.act === 'clone') return this._cloneContainer(this._detailId, info.name, info.image);
         if (btn.dataset.act === 'deploy-swarm') return this._deployToSwarm();
@@ -487,6 +489,52 @@ const ContainersPageDetail = {
         Modal._content.querySelector('#blocked-close-btn').addEventListener('click', () => Modal.close());
       }
     } catch (err) { Toast.error(err.message); }
+  },
+
+  async _dgxDiagnostics(id, name) {
+    const hostId = Api.getHostId();
+    const endpoint = `/containers/${encodeURIComponent(id)}/dgx-diagnostics?hostId=${encodeURIComponent(hostId)}`;
+    try {
+      const preview = await Api.get(endpoint);
+      const escape = value => Utils.escapeHtml(String(value ?? ''));
+      Modal.open(`
+        <div class="modal-header"><h3>${i18n.t('pages.containers.dgxDiagnostics')} — ${escape(name)}</h3>
+          <button class="modal-close-btn" id="dgx-diag-close" aria-label="${escape(i18n.t('common.close'))}"><i class="fas fa-times"></i></button></div>
+        <div class="modal-body" style="max-height:70vh;overflow:auto">
+          <p>${i18n.t('pages.containers.dgxDiagnosticsPreview')}</p>
+          ${preview.warnings.map(message => `<p class="text-warning">${escape(message)}</p>`).join('')}
+          <div id="dgx-diag-result" aria-live="polite"></div>
+          <details open id="dgx-diag-evidence"><summary>${i18n.t('pages.containers.dgxDiagnosticsEvidence')}</summary>
+            <pre style="white-space:pre-wrap;overflow-wrap:anywhere">${escape(JSON.stringify(preview.evidence, null, 2))}</pre></details>
+        </div>
+        <div class="modal-footer"><button class="btn btn-primary" id="dgx-diag-analyze">${i18n.t('pages.containers.dgxDiagnosticsAnalyze')}</button></div>
+      `, { width: '850px' });
+      const modal = Modal._content;
+      modal.querySelector('#dgx-diag-close').addEventListener('click', () => Modal.close());
+      const button = modal.querySelector('#dgx-diag-analyze');
+      button.addEventListener('click', async () => {
+        button.disabled = true;
+        const output = modal.querySelector('#dgx-diag-result');
+        output.textContent = i18n.t('common.loading');
+        try {
+          const result = await Api.post(endpoint, { token: preview.token });
+          output.innerHTML = `<p>${escape(result.summary)}</p>
+            <p class="text-sm text-muted">${escape(result.model)} · ${escape(result.collectedAt)}</p>
+            ${result.findings.map(finding => `<div class="card" style="margin-bottom:10px"><div class="card-body">
+              <p>${escape(finding.explanation)}</p><p>${escape(i18n.t('pages.containers.dgxCheck_' + finding.nextCheck))}</p>
+              <p class="text-sm">${finding.evidenceIds.map(evidenceId => `<a href="#dgx-evidence-${escape(evidenceId)}" data-dgx-evidence="${escape(evidenceId)}">${escape(evidenceId)}</a>`).join(' · ')}</p>
+            </div></div>`).join('')}`;
+          modal.querySelector('#dgx-diag-evidence').innerHTML = `<summary>${i18n.t('pages.containers.dgxDiagnosticsEvidence')}</summary>`
+            + result.evidence.map(item => `<pre id="dgx-evidence-${escape(item.id)}" style="white-space:pre-wrap;overflow-wrap:anywhere">${escape(JSON.stringify(item, null, 2))}</pre>`).join('');
+          output.querySelectorAll('[data-dgx-evidence]').forEach(link => link.addEventListener('click', event => {
+            event.preventDefault();
+            modal.querySelector('#dgx-diag-evidence').open = true;
+            modal.querySelector('#dgx-evidence-' + link.dataset.dgxEvidence)?.scrollIntoView({ block: 'nearest' });
+          }));
+          button.hidden = true;
+        } catch (error) { output.textContent = error.message; button.disabled = false; }
+      });
+    } catch (error) { Toast.error(error.message); }
   },
 
   async _diagnoseContainer(id, name) {
@@ -1154,6 +1202,87 @@ const ContainersPageDetail = {
     el.querySelector('#pipeline-start-quick')?.addEventListener('click', () => startPipeline(true, true));
 
     this._loadPipelineHistory();
+    const securityPanel = document.createElement('section');
+    securityPanel.className = 'card mt-md';
+    el.appendChild(securityPanel);
+    this._loadDeploymentSecurity(securityPanel);
+  },
+
+  async _loadDeploymentSecurity(panel) {
+    const t = key => i18n.t('dgxDeploy.' + key);
+    const escape = value => Utils.escapeHtml(String(value ?? ''));
+    const hostId = Api.getHostId();
+    const containerId = this._detailId;
+    const endpoint = `/containers/${encodeURIComponent(containerId)}/deployment-security`;
+    const query = '?hostId=' + encodeURIComponent(hostId);
+    clearTimeout(panel._reviewTimer);
+    try {
+      const data = await Api.get(endpoint + query);
+      if (!panel.isConnected || this._detailId !== containerId) return;
+      const open = new Set([...panel.querySelectorAll('details[open]')].map(el => el.dataset.reviewId));
+      const canReview = ['admin', 'operator'].includes(App.user?.role);
+      const scanButton = (id, label) => `<button class="btn btn-sm btn-secondary" data-deploy-scan="${Number(id)}">${escape(label)} #${Number(id)}</button>`;
+      const findingList = rows => rows.map(item => `<li>${escape(item.id)} · ${escape(item.package)} ${escape(item.version)} · ${escape(item.severity)}${item.fixedIn ? ' → ' + escape(item.fixedIn) : ''}</li>`).join('');
+      panel.innerHTML = `
+        <div class="card-header"><h3>${escape(t('title'))}</h3><button class="btn btn-sm btn-secondary" data-deploy-refresh>${escape(t('refresh'))}</button></div>
+        <div class="card-body"><p class="text-sm text-muted">${escape(t('description'))}</p>
+          ${(data.reviews || []).map(row => {
+            const report = row.report;
+            return `<details data-review-id="${row.id}" ${open.has(String(row.id)) ? 'open' : ''} style="margin-top:12px">
+              <summary>${escape(Utils.formatDate(row.created_at))} · ${escape(t(row.status))}${row.reviewed_at ? ' · ' + escape(t('reviewed')) + ' ' + escape(row.reviewed_by) : ''}</summary>
+              <div class="text-sm" style="padding:12px;overflow-wrap:anywhere">
+                <div>${escape(t('previous'))} <code>${escape(row.previous_image_id)}</code></div>
+                <div>${escape(t('current'))} <code>${escape(row.current_image_id)}</code></div>
+                ${row.error ? `<p role="status">${escape(row.error)}</p>` : ''}
+                ${report ? `<p>${escape(t(report.promotionEligible ? 'eligible' : 'blocked'))}</p>
+                  ${(report.comparisons || []).map(c => `<section style="margin-top:12px">
+                    <h4>${escape(c.scanner)}</h4>
+                    <p>${escape(t('removed'))} ${c.removedCount} · ${escape(t('added'))} ${c.addedCount} · ${escape(t('remaining'))} ${c.fixableCount} · ${escape(t('blocker'))} ${c.blockerCount}</p>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">${scanButton(c.previousScanId, t('previous'))}${scanButton(c.currentScanId, t('current'))}</div>
+                    ${[['removed', c.removed], ['added', c.added], ['remaining', c.remainingFixable]].filter(([, rows]) => rows?.length).map(([key, rows]) => `<details><summary>${escape(t(key))}</summary><ul>${findingList(rows)}</ul></details>`).join('')}
+                    ${c.truncated ? `<p>${escape(t('limited'))}</p>` : ''}
+                  </section>`).join('')}
+                  ${(report.errors || []).map(error => `<p>${escape(error.scanner)} · ${escape(error.error)}</p>`).join('')}
+                  ${report.aiError ? `<p role="status">${escape(report.aiError)}</p>` : ''}
+                  ${(report.advice?.findings || []).map(f => `<p>${escape(f.id)} · ${escape(f.package)} · ${escape(t('nextCheck'))} ${escape(i18n.t('dgx.' + f.nextCheck))}</p>`).join('')}
+                  <button class="btn btn-sm btn-secondary" data-deploy-download="${row.id}">${escape(t('download'))}</button>
+                ` : ''}
+                ${canReview && ['complete', 'failed'].includes(row.status) ? `<button class="btn btn-sm btn-secondary" data-deploy-action="retry" data-deploy-review="${row.id}">${escape(t('retry'))}</button>` : ''}
+                ${canReview && row.status === 'complete' && !row.reviewed_at ? `<button class="btn btn-sm btn-primary" data-deploy-action="acknowledge" data-deploy-review="${row.id}">${escape(t('review'))}</button>` : ''}
+              </div>
+            </details>`;
+          }).join('') || `<p class="text-muted">${escape(t('empty'))}</p>`}
+        </div>`;
+      panel.querySelector('[data-deploy-refresh]').addEventListener('click', () => this._loadDeploymentSecurity(panel));
+      panel.querySelectorAll('[data-deploy-scan]').forEach(button => button.addEventListener('click', () => {
+        SecurityPage._viewScanDetail(Number(button.dataset.deployScan), hostId);
+      }));
+      panel.querySelectorAll('[data-deploy-download]').forEach(button => button.addEventListener('click', () => {
+        const row = data.reviews.find(item => item.id === Number(button.dataset.deployDownload));
+        const url = URL.createObjectURL(new Blob([JSON.stringify(row, null, 2)], { type: 'application/json' }));
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `deployment-security-${row.id}.json`;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }));
+      panel.querySelectorAll('[data-deploy-action]').forEach(button => button.addEventListener('click', async () => {
+        if (button.dataset.deployAction === 'acknowledge' && !await Modal.confirm(t('confirm'))) return;
+        button.disabled = true;
+        try {
+          await Api.post(`${endpoint}/${button.dataset.deployReview}/${button.dataset.deployAction}${query}`, {});
+          await this._loadDeploymentSecurity(panel);
+        } catch (error) { Toast.error(error.message); button.disabled = false; }
+      }));
+      if ((data.reviews || []).some(row => ['queued', 'running'].includes(row.status))) {
+        panel._reviewTimer = setTimeout(() => {
+          if (panel.isConnected && this._detailId === containerId) this._loadDeploymentSecurity(panel);
+        }, 5000);
+      }
+    } catch (error) {
+      if (panel.isConnected) panel.innerHTML = `<div class="card-body" role="status">${escape(t('error'))} · ${escape(error.message)} <button class="btn btn-sm btn-secondary">${escape(t('refresh'))}</button></div>`;
+      panel.querySelector('button')?.addEventListener('click', () => this._loadDeploymentSecurity(panel));
+    }
   },
 
   async _loadPipelineHistory() {

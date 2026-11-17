@@ -14,6 +14,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const { requireAuth, requireRole, writeable } = require('../middleware/auth');
 const { getClientIp } = require('../utils/helpers');
 const aiService = require('../services/ai');
+const dgx = require('../services/ai/dgx');
 const auditService = require('../services/audit');
 const AnthropicProvider = require('../services/ai/providers/anthropic');
 const OpenAiProvider = require('../services/ai/providers/openai');
@@ -79,6 +80,32 @@ router.get('/providers', asyncHandler((req, res) => {
 router.get('/settings', asyncHandler((req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json(aiService.getSettingsForApi());
+}));
+
+router.get('/dgx', asyncHandler((req, res) => {
+  res.set('Cache-Control', 'no-store').json(dgx.publicSettings());
+}));
+
+router.put('/dgx', writeable, asyncHandler((req, res) => {
+  let config;
+  try {
+    config = dgx.saveSettings(req.body || {});
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+  auditService.log({
+    userId: req.user.id, username: req.user.username,
+    action: 'settings_update', targetType: 'ai-settings', targetId: 'dgx-triage',
+    details: { enabled: config.enabled, model: config.model, keyChanged: Object.hasOwn(req.body, 'apiKey') },
+    ip: getClientIp(req),
+  });
+  res.set('Cache-Control', 'no-store').json(config);
+}));
+
+router.post('/dgx/test', asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try { res.json(await dgx.test()); }
+  catch (error) { res.status(502).json({ error: error.message }); }
 }));
 
 router.put('/settings', writeable, asyncHandler((req, res) => {

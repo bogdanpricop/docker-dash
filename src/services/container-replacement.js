@@ -119,6 +119,8 @@ async function replace({ docker, inspect, imageId, hostId = 0, action, username,
       db.prepare("UPDATE container_replacements SET phase='committed', updated_at=datetime('now') WHERE id=?").run(id);
     })();
     phase = 'committed'; committed = true;
+    require('./deployment-security').enqueue({ operationId: id, hostId, containerName: name,
+      previousImageId: inspect.Image, currentImageId: imageId });
     try { await old.remove({ v: false }); }
     catch {
       try { update('cleanup_required'); } catch { /* The committed journal and lock remain. */ }

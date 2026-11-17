@@ -239,6 +239,12 @@ router.get('/:id', requireAuth, requireHostAccess('view', { param: 'id' }), asyn
 }));
 
 // Get Docker info for a specific host (enriched with platform detection)
+router.get('/:id/dgx-status', requireAuth, requireRole('admin'), requireHostAccess('view', { param: 'id' }), asyncHandler(async (req, res) => {
+  const hostId = parseHostId(req.params.id);
+  if (hostId === null) return res.status(400).json({ error: 'Invalid host ID' });
+  res.set('Cache-Control', 'no-store').json(await require('../services/dgx-status').status(hostId));
+}));
+
 router.get('/:id/info', requireAuth, requireHostAccess('view', { param: 'id' }), asyncHandler(async (req, res) => {
   const hostId = parseInt(req.params.id);
   const info = await dockerService.getInfo(hostId);

@@ -171,7 +171,7 @@ const HostsPage = {
       return `<div class="host-card ${status} ${Api.getHostId() === h.id || (Api.getHostId() === 0 && h.isDefault) ? 'selected' : ''}" data-host-id="${h.id}">
         <div class="host-compact-main"><span class="host-tree-status ${dot}" aria-label="${dot}"></span><strong>${Utils.escapeHtml(h.name)}</strong><span class="text-xs text-muted">${Utils.escapeHtml(h.daemonType || 'docker')} · ${Utils.escapeHtml(h.environment || 'development')}</span></div>
         <div class="host-compact-groups">${groups}</div>
-        <div class="host-card-actions"><button type="button" class="btn btn-xs btn-secondary host-settings-overview" data-id="${h.id}" title="Host settings overview" aria-label="Host settings overview"><i class="fas fa-sliders-h"></i></button><button class="btn btn-xs btn-primary host-select" data-id="${h.id}" title="${i18n.t('pages.hosts.switchTo')}"><i class="fas fa-exchange-alt"></i></button><button class="btn btn-xs btn-secondary host-test" data-id="${h.id}" title="${i18n.t('pages.hosts.testConnection')}"><i class="fas fa-plug"></i></button><button class="btn btn-xs btn-secondary host-edit" data-id="${h.id}" title="${i18n.t('common.edit')}"><i class="fas fa-edit"></i></button></div>
+        <div class="host-card-actions"><button type="button" class="btn btn-xs btn-secondary host-dgx-status" data-id="${h.id}" title="DGX Spark status"><i class="fas fa-microchip"></i> DGX</button><button type="button" class="btn btn-xs btn-secondary host-settings-overview" data-id="${h.id}" title="Host settings overview" aria-label="Host settings overview"><i class="fas fa-sliders-h"></i></button><button class="btn btn-xs btn-primary host-select" data-id="${h.id}" title="${i18n.t('pages.hosts.switchTo')}"><i class="fas fa-exchange-alt"></i></button><button class="btn btn-xs btn-secondary host-test" data-id="${h.id}" title="${i18n.t('pages.hosts.testConnection')}"><i class="fas fa-plug"></i></button><button class="btn btn-xs btn-secondary host-edit" data-id="${h.id}" title="${i18n.t('common.edit')}"><i class="fas fa-edit"></i></button></div>
       </div>`;
     }).join('') : this._hosts.map(h => {
       const isOnline = h.healthy === true;
@@ -225,7 +225,7 @@ const HostsPage = {
             ${h.hasTls ? '<div class="text-sm" style="color:var(--green)"><i class="fas fa-lock"></i> TLS</div>' : ''}
             ${(isConnPaused || isConnFailing) && connReasonText ? `<div class="host-conn-reason text-sm"><i class="fas fa-exclamation-triangle"></i> ${Utils.escapeHtml(connReasonText)}${h.connLastErrorAt ? ` · ${Utils.timeAgo(h.connLastErrorAt)}` : ''}</div>` : ''}
           </div>
-          <div class="host-card-actions">
+          <div class="host-card-actions"><button type="button" class="btn btn-xs btn-secondary host-dgx-status" data-id="${h.id}" title="DGX Spark status"><i class="fas fa-microchip"></i> DGX</button>
             <button class="btn btn-xs btn-primary host-select" data-id="${h.id}" title="${i18n.t('pages.hosts.switchTo')}"><i class="fas fa-exchange-alt"></i> ${i18n.t('pages.hosts.switchTo')}</button>
             <button class="btn btn-xs btn-secondary host-test" data-id="${h.id}" title="${i18n.t('pages.hosts.testConnection')}"><i class="fas fa-plug"></i></button>
             <button type="button" class="btn btn-xs btn-secondary host-settings-overview" data-id="${h.id}" title="Host settings overview" aria-label="Host settings overview"><i class="fas fa-sliders-h"></i></button>
@@ -275,6 +275,34 @@ const HostsPage = {
           btn2.disabled = false;
           btn2.innerHTML = '<i class="fas fa-plug"></i>';
         }
+      });
+    });
+
+    grid.querySelectorAll('.host-dgx-status').forEach(button => {
+      button.addEventListener('click', async () => {
+        button.disabled = true;
+        try {
+          const result = await Api.get('/hosts/' + encodeURIComponent(button.dataset.id) + '/dgx-status');
+          const escape = value => Utils.escapeHtml(String(value ?? 'Unavailable'));
+          const gpu = result.gpu || {};
+          const gateway = result.gateway || {};
+          const memory = result.memory;
+          const rows = [
+            ['Architecture', result.architecture],
+            ['Configured DGX gateway', gateway.available ? 'Available' : gateway.error],
+            ['Model', gateway.model],
+            ['Latency', gateway.latencyMs == null ? null : gateway.latencyMs + ' ms'],
+            ['GPU', gpu.name],
+            ['GPU utilization', gpu.utilizationPercent == null ? null : gpu.utilizationPercent + '%'],
+            ['Temperature', gpu.temperatureC == null ? null : gpu.temperatureC + ' C'],
+            ['Unified memory', memory ? (memory.usedBytes / 1073741824).toFixed(1) + ' / ' + (memory.totalBytes / 1073741824).toFixed(1) + ' GiB' : null],
+            ['Sampled at', result.sampledAt],
+          ];
+          const body = '<table class="info-table">' + rows.map(([label, value]) => '<tr><td>' + escape(label) + '</td><td>' + escape(value) + '</td></tr>').join('') + '</table>' + (result.errors || []).map(error => '<p class="text-muted">' + escape(error) + '</p>').join('');
+          Modal.open('<div class="modal-header"><h2>DGX Spark status</h2><button type="button" class="btn btn-icon" id="dgx-status-close" aria-label="Close">&times;</button></div><div class="modal-body">' + body + '</div>');
+          document.getElementById('dgx-status-close').addEventListener('click', () => Modal.close());
+        } catch (error) { Toast.error(error.message); }
+        finally { button.disabled = false; }
       });
     });
 
@@ -1811,6 +1839,24 @@ ssh your-user@host "docker ps"</div>
 # Paste it in the "SSH Private Key" field when adding a host</div>
 
           <div class="text-sm text-muted" style="margin-top:12px"><i class="fas fa-shield-alt" style="color:var(--green);margin-right:4px"></i>${i18n.t('pages.hosts.guideSshKeyNote')}</div>
+
+          <section style="margin-top:16px;padding:12px;background:var(--surface2);border-radius:var(--radius-sm)">
+            <h4 class="text-sm" style="margin:0 0 6px"><i class="fas fa-server" aria-hidden="true" style="margin-right:6px;color:var(--accent)"></i>${i18n.t('pages.hosts.guideSshDgxTitle')}</h4>
+            <p class="text-sm text-muted" style="margin:0 0 6px">${i18n.t('pages.hosts.guideSshDgxDesc')}</p>
+            <ol class="text-sm text-muted" style="margin:0;padding-inline-start:20px">
+              <li style="margin-bottom:6px">
+                ${i18n.t('pages.hosts.guideSshDgxDocker')}
+                <div><code>docker info &gt;/dev/null</code></div>
+                <div>${i18n.t('pages.hosts.guideSshDgxSocat')}</div>
+                <div><code>sudo apt update &amp;&amp; sudo apt install -y socat</code></div>
+              </li>
+              <li style="margin-bottom:6px">
+                ${i18n.t('pages.hosts.guideSshDgxFingerprint')}
+                <div><code>ssh-keygen -E sha256 -lf /etc/ssh/ssh_host_ed25519_key.pub</code></div>
+              </li>
+              <li>${i18n.t('pages.hosts.guideSshDgxConnect')}</li>
+            </ol>
+          </section>
         </div>
       </div>
     `;

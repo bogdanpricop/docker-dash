@@ -1420,6 +1420,8 @@ class GitService {
   }
 
   async _composeUp(stackId, stack, hostId = stack.host_id) {
+    const deploymentSecurity = require('./deployment-security');
+    const securityBefore = await deploymentSecurity.snapshot(hostId, stack.stack_name);
     const repoDir = this._getRepoDir(stackId);
     const envFile = path.join(repoDir, '.env.override');
     const hasEnvOverride = fs.existsSync(envFile);
@@ -1462,6 +1464,8 @@ class GitService {
         ? buildArgs(['--env-file', envFile, 'up', '-d', '--remove-orphans'])
         : buildArgs(['up', '-d', '--remove-orphans']);
       this._execFile('docker', upArgs, opts);
+      await deploymentSecurity.afterStack({ hostId, stack: stack.stack_name, before: securityBefore,
+        operationId: 'git-' + stackId + '-' + require('node:crypto').randomUUID() });
     } finally {
       dockerEnv.cleanup();
     }
