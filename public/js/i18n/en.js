@@ -16,6 +16,17 @@ i18n.register('en', 'EN', 'English', {
     nextCheck: 'DGX suggested check', evidence: 'Scanner evidence', error: 'Unable to load deployment reviews',
   },
   dgx: {
+    refreshModels: 'Refresh DGX models',
+    loadingModels: 'Reading available DGX models…',
+    noModels: 'DGX returned no available models.',
+    availableModels: 'Available models',
+    selectModel: 'Select a model…',
+    modelOwner: 'Owner',
+    modelContext: 'Context length (tokens)',
+    modelCreated: 'Model timestamp',
+    modelsConfigure: 'Save the DGX address, CA certificate and gateway key to read available models.',
+    modelsSaveFirst: 'Save your changes to use the updated settings. Select a listed model and save to apply it.',
+
     analyzeStack: "Analyze stack with DGX",
     analyzingStack: "DGX is analyzing the selected stack…",
     stackPlan: "DGX stack remediation plan",

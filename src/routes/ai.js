@@ -102,6 +102,12 @@ router.put('/dgx', writeable, asyncHandler((req, res) => {
   res.set('Cache-Control', 'no-store').json(config);
 }));
 
+router.get('/dgx/models', asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try { res.json(await dgx.models()); }
+  catch (error) { res.status(502).json({ error: error.message }); }
+}));
+
 router.post('/dgx/test', asyncHandler(async (req, res) => {
   res.set('Cache-Control', 'no-store');
   try { res.json(await dgx.test()); }

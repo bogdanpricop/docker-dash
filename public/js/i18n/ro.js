@@ -15,6 +15,17 @@ i18n.register('ro', 'RO', "Română", {
     nextCheck: 'Verificare sugerată de DGX', evidence: 'Rapoarte de scanare', error: 'Rapoartele de deploy nu pot fi încărcate',
   },
   dgx: {
+    refreshModels: 'Actualizează modelele DGX',
+    loadingModels: 'Se citesc modelele disponibile pe DGX…',
+    noModels: 'DGX nu a returnat modele disponibile.',
+    availableModels: 'Modele disponibile',
+    selectModel: 'Alege un model…',
+    modelOwner: 'Proprietar',
+    modelContext: 'Context (tokenuri)',
+    modelCreated: 'Data raportată de model',
+    modelsConfigure: 'Salvează adresa DGX, certificatul CA și cheia gateway-ului pentru a citi modelele disponibile.',
+    modelsSaveFirst: 'Salvează modificările pentru a folosi setările actualizate. Alege un model din listă și salvează pentru a-l aplica.',
+
     analyzeStack: "Analizează stack-ul cu DGX",
     analyzingStack: "DGX analizează stack-ul selectat…",
     stackPlan: "Plan de remediere DGX pentru stack",

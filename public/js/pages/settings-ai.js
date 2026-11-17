@@ -258,13 +258,64 @@ const SettingsPageAi = {
         <button class="btn btn-primary" type="submit">${i18n.t('common.save')}</button>
         <button class="btn btn-secondary" type="button" data-dgx-test ${config.hasKey ? '' : 'disabled'}>${t('test')}</button>
         <span class="text-sm" role="status" data-dgx-state></span>
+        <div style="margin-top:16px">
+          <button class="btn btn-secondary" type="button" data-dgx-models-refresh>${t('refreshModels')}</button>
+          <p class="text-sm text-muted" role="status" data-dgx-models-state></p>
+          <div data-dgx-models-list></div>
+        </div>
       </form>
     </div>`;
     const form = element.querySelector('[data-dgx-form]');
     const test = form.querySelector('[data-dgx-test]');
     const save = form.querySelector('[type="submit"]');
     const status = form.querySelector('[data-dgx-state]');
-    form.addEventListener('input', () => { test.disabled = true; status.textContent = ''; });
+    const refresh = form.querySelector('[data-dgx-models-refresh]');
+    const modelState = form.querySelector('[data-dgx-models-state]');
+    const modelList = form.querySelector('[data-dgx-models-list]');
+    const configured = Boolean(config.hasKey && config.endpoint && config.caPem);
+    let dirty = false;
+    let loadingModels = false;
+    refresh.disabled = !configured;
+    const loadModels = async () => {
+      if (dirty || loadingModels || !configured) return;
+      loadingModels = true;
+      refresh.disabled = true;
+      modelState.textContent = t('loadingModels');
+      modelList.innerHTML = '';
+      try {
+        const result = await Api.get('/ai/dgx/models');
+        if (!element.isConnected || dirty) return;
+        modelState.textContent = result.models.length ? result.models.length + ' · ' + result.latencyMs + ' ms' : t('noModels');
+        if (!result.models.length) return;
+        modelList.innerHTML = `<label for="dgx-model-select">${t('availableModels')}</label>
+          <select id="dgx-model-select" class="form-control">
+            <option value="">${t('selectModel')}</option>
+            ${result.models.map(model => `<option value="${escape(model.id)}" ${model.id === form.elements.model.value ? 'selected' : ''}>${escape(model.id)}</option>`).join('')}
+          </select>
+          <div style="overflow-x:auto"><table class="info-table">
+            <thead><tr><th>${t('model')}</th><th>${t('modelOwner')}</th><th>${t('modelContext')}</th><th>${t('modelCreated')}</th></tr></thead>
+            <tbody>${result.models.map(model => `<tr><td>${escape(model.id)}</td><td>${escape(model.ownedBy || '—')}</td><td>${model.contextLength ?? '—'}</td><td>${model.created ? escape(new Date(model.created * 1000).toLocaleString()) : '—'}</td></tr>`).join('')}</tbody>
+          </table></div>`;
+        modelList.querySelector('select').addEventListener('change', event => {
+          if (!event.target.value) return;
+          form.elements.model.value = event.target.value;
+          form.elements.model.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+      } catch (error) {
+        if (element.isConnected && !dirty) modelState.textContent = error.message;
+      } finally {
+        loadingModels = false;
+        refresh.disabled = dirty || !configured;
+      }
+    };
+    refresh.addEventListener('click', loadModels);
+    if (!configured) modelState.textContent = t('modelsConfigure');
+    form.addEventListener('input', event => {
+      dirty = true;
+      test.disabled = refresh.disabled = true;
+      status.textContent = t('modelsSaveFirst');
+      if (['endpoint', 'caPem', 'apiKey', 'clearKey'].includes(event.target.name)) modelList.innerHTML = '';
+    });
     form.addEventListener('submit', async event => {
       event.preventDefault();
       const fields = new FormData(form);
@@ -290,8 +341,9 @@ const SettingsPageAi = {
         const result = await Api.post('/ai/dgx/test', {});
         status.textContent = `${result.model} · ${result.latencyMs} ms · HTTPS OK`;
       } catch (error) { status.textContent = error.message; }
-      finally { test.disabled = save.disabled = false; }
+      finally { test.disabled = dirty; save.disabled = false; }
     });
+    if (configured) await loadModels();
   },
 };
 

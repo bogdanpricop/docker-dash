@@ -142,13 +142,33 @@ function request(config, path, body, timeoutMs) {
   });
 }
 
-async function test(config = settings()) {
+async function models(config = settings(), fetch = request) {
   const started = Date.now();
-  const response = await request(config, '/v1/models', null, 8000);
-  if (!Array.isArray(response?.data) || !response.data.some(entry => entry?.id === config.model)) {
-    throw new Error('The configured model is not available on the DGX gateway.');
+  const response = await fetch(config, '/v1/models', null, 8000);
+  if (!Array.isArray(response?.data) || response.data.length > 500) {
+    throw new Error('DGX returned an invalid model list.');
   }
-  return { model: config.model, latencyMs: Date.now() - started };
+  const result = new Map();
+  for (const entry of response.data) {
+    if (!entry || typeof entry.id !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/.test(entry.id)) {
+      throw new Error('DGX returned an invalid model identifier.');
+    }
+    result.set(entry.id, {
+      id: entry.id,
+      ownedBy: typeof entry.owned_by === 'string' ? entry.owned_by.slice(0, 160) : null,
+      created: Number.isSafeInteger(entry.created) && entry.created > 0 && entry.created <= 253402300799 ? entry.created : null,
+      contextLength: Number.isSafeInteger(entry.max_model_len) && entry.max_model_len > 0 ? entry.max_model_len : null,
+    });
+  }
+  return { models: [...result.values()], latencyMs: Date.now() - started, fetchedAt: new Date().toISOString() };
 }
 
-module.exports = { settings, publicSettings, saveSettings, request, test };
+async function test(config = settings()) {
+  const result = await models(config);
+  if (!result.models.some(entry => entry.id === config.model)) {
+    throw new Error('The configured model is not available on the DGX gateway.');
+  }
+  return { model: config.model, latencyMs: result.latencyMs };
+}
+
+module.exports = { settings, publicSettings, saveSettings, request, test, models };

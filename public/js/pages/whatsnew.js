@@ -16,6 +16,7 @@ const WhatsNewPage = {
   // moves those entries into a new numbered release.
   _releases: [
     { version: '8.96.48', date: '2026-11-14', title: 'DGX Spark pilot and navigable vulnerability reports', changes: [
+      { type: 'feature', text: 'Settings → AI lists models served by the configured DGX gateway, displays available model metadata and lets you select a model before saving.' },
       { type: 'feature', text: 'Security batch scan logs summarize prioritized findings with links to scanner evidence and report DGX availability.' },
       { type: 'feature', text: 'Container diagnostics correlate health checks, restarts, recent logs and Docker events for DGX analysis.' },
       { type: 'feature', text: 'Deployment security reviews compare previous and new immutable images, retain scan evidence and support manual review.' },
