@@ -16,6 +16,7 @@ const WhatsNewPage = {
   // moves those entries into a new numbered release.
   _releases: [
     { version: '8.96.49', date: '2026-11-20', title: 'AI Compute and guarded DGX engine switching', changes: [
+      { type: 'security', text: 'The container uses the Node.js 24.22.3 security release and requires Alpine OpenSSL 3.5.9-r1 backports, resolving the November runtime findings without weakening vulnerability gates.' },
       { type: 'feature', text: 'AI Compute inventories existing inference and speech workloads on the selected Docker host, separates container state from API readiness and inspects cached model revisions.' },
       { type: 'feature', text: 'Opt-in minute-by-minute CPU, unified RAM, NVIDIA GPU and disk history with 1-hour, 24-hour, 7-day and 30-day charts.' },
       { type: 'security', text: 'Administrator-owned operation previews verify live resource budgets and container identities before switching engines. Per-host locks, retained restart policies and durable recovery protect existing workloads; speech and gateways are preserved.' },
