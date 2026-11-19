@@ -19,6 +19,11 @@ const configurationFingerprint = c => {
 };
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 const engines = ['vllm', 'ollama', 'llama', 'strata', 'basalt', 'ncm', 'speech'];
+async function stopContainer(container) {
+  // Stay below the host client's 30s idle timeout, including SSH overhead.
+  try { await container.stop({ t: 10 }); }
+  catch (err) { if ((await container.inspect()).State.Running) throw err; }
+}
 
 function engineOf(c) {
   const hint = `${c.Name || c.Names?.[0] || ''} ${c.Config?.Image || c.Image || ''}`.toLowerCase();
@@ -255,7 +260,7 @@ async function restore(row, client) {
     const c = client.getContainer(targetId), current = await c.inspect();
     if (row.created_container && current.Config.Labels?.['docker-dash.ai-compute.job'] !== row.id) fail('Replacement identity changed; manual review is required', 409);
     if (targetSnapshot && current.Image !== targetSnapshot.image) fail('Target identity changed; manual review is required', 409);
-    if (current.State.Running) await c.stop({ t: 20 });
+    if (current.State.Running) await stopContainer(c);
   }
   for (const item of stopped) {
     const c = client.getContainer(item.id), current = await c.inspect();
@@ -319,7 +324,7 @@ async function run(row) {
       const c = client.getContainer(id);
       // A deliberately stopped prior engine must not reappear on a host reboot.
       await c.update({ RestartPolicy: { Name: 'no', MaximumRetryCount: 0 } });
-      await c.stop({ t: 30 });
+      await stopContainer(c);
     }
     if (row.action !== 'stop') {
       let sample;

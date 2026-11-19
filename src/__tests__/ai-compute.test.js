@@ -45,7 +45,7 @@ beforeEach(() => {
     getContainer: id => ({
       inspect: async () => { if (!containers.has(id)) throw Object.assign(new Error('Missing'), { statusCode: 404 }); return JSON.parse(JSON.stringify(containers.get(id))); },
       update: async opts => { calls.push(['update', id, opts]); containers.get(id).HostConfig.RestartPolicy = opts.RestartPolicy; },
-      stop: async () => { calls.push(['stop', id]); containers.get(id).State.Running = false; containers.get(id).State.Status = 'exited'; },
+      stop: async opts => { if (opts.t >= 30) throw new Error('Host transport idle timeout'); calls.push(['stop', id]); containers.get(id).State.Running = false; containers.get(id).State.Status = 'exited'; },
       start: async () => { calls.push(['start', id]); containers.get(id).State.Running = true; containers.get(id).State.Status = 'running'; },
       exec: async opts => { calls.push(['exec', id, opts]); return {
         start: async () => { const stream = new PassThrough(); setImmediate(() => stream.end('AI_COMPUTE_READY\n')); return stream; },
