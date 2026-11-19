@@ -233,3 +233,14 @@ test('interrupted work retains its host lock and rollback evidence', async () =>
   await service.rollback(host, op.id, user);
   expect(service.getJob(host, op.id).status).toBe('rolled_back');
 });
+
+test('rollback restores the stopped target restart policy so a failed start cannot reappear after reboot', async () => {
+  const c = makeContainer('next-vllm', 'vllm', false);
+  c.HostConfig.RestartPolicy = { Name: 'no' };
+  const id = profile(c), op = await service.prepare(host, { action: 'start', profileId: id }, user);
+  c.State.Running = true; c.HostConfig.RestartPolicy = { Name: 'always' };
+  const row = db.prepare('SELECT * FROM ai_compute_jobs WHERE id=?').get(op.id);
+  await service._internals.restore(row, client);
+  expect(c.State.Running).toBe(false);
+  expect(c.HostConfig.RestartPolicy.Name).toBe('no');
+});

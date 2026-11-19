@@ -260,6 +260,7 @@ async function restore(row, client) {
     const c = client.getContainer(targetId), current = await c.inspect();
     if (row.created_container && current.Config.Labels?.['docker-dash.ai-compute.job'] !== row.id) fail('Replacement identity changed; manual review is required', 409);
     if (targetSnapshot && current.Image !== targetSnapshot.image) fail('Target identity changed; manual review is required', 409);
+    await c.update({ RestartPolicy: targetSnapshot?.restartPolicy || { Name: 'no', MaximumRetryCount: 0 } });
     if (current.State.Running) await stopContainer(c);
   }
   for (const item of stopped) {
