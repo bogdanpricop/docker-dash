@@ -75,6 +75,7 @@ test('profiles are host-scoped and validate memory, ports and speech exclusion',
   await expect(service.register(host, { containerId: c.Id, name: 'Speech', memoryGiB: 10, exclusive: true }, user)).rejects.toThrow('Speech');
   await expect(service.register(host, { containerId: c.Id, name: 'Speech', memoryGiB: 'NaN', exclusive: false }, user)).rejects.toThrow('memory');
   await service.register(host, { containerId: c.Id, name: 'Speech', memoryGiB: 10, exclusive: false, readyPort: null }, user);
+  expect((await service.inventory(host)).containers[0].profileName).toBe('Speech');
   expect((await service.inventory(otherHost)).profiles).toHaveLength(0);
 });
 

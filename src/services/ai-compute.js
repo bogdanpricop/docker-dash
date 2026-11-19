@@ -45,7 +45,7 @@ function describe(c, profile, totalMemory) {
   const engine = engineOf(c);
   return { id: c.Id, name: text(c.Name?.replace(/^\//, '')), image: text(c.Config?.Image, 250),
     imageId: c.Image, state: c.State?.Status, health: c.State?.Health?.Status || null,
-    engine, model: text(profile?.model || model) || null, profileId: profile?.id || null,
+    engine, model: text(profile?.model || model) || null, profileId: profile?.id || null, profileName: profile?.name || null,
     memoryBytes: profile?.memory_bytes || Math.ceil(c.HostConfig?.Memory || estimate) || null,
     exclusive: profile ? Boolean(profile.exclusive) : ['vllm', 'ollama', 'llama', 'strata', 'basalt'].includes(engine),
     desiredRestartPolicy: profile ? JSON.parse(profile.restart_policy) : c.HostConfig?.RestartPolicy,
