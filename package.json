@@ -1,6 +1,6 @@
 {
   "name": "docker-dash",
-  "version": "8.96.48",
+  "version": "8.96.49",
   "description": "Full-featured Docker management dashboard",
   "main": "src/server.js",
   "scripts": {
@@ -73,7 +73,7 @@
     "ioredis": "^6.0.0"
   },
   "engines": {
-    "node": ">=24.22.2 <25",
+    "node": ">=24.22.3 <25",
     "npm": ">=12.2.1 <13"
   },
   "overrides": {

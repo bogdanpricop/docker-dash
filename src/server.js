@@ -222,6 +222,7 @@ app.use('/api/remediate', apiLimiter, require('./routes/remediate'));
 app.use('/api/log-forwarders', apiLimiter, require('./routes/log-forwarders'));
 app.use('/api/observability', apiLimiter, require('./routes/observability'));
 app.use('/api/ai', apiLimiter, require('./routes/ai'));
+app.use('/api/ai-compute', apiLimiter, require('./routes/ai-compute'));
 app.use('/api/swarm', apiLimiter, require('./routes/swarm'));
 // v8.9.0-alpha.2 — Sprint 3 (Incus / LXD-successor). Feature-gated at
 // route level by daemon_type='incus' on the target hosts row.

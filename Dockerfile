@@ -19,7 +19,7 @@ RUN sh /build-compose.sh
 
 
 ### Base ###
-FROM node:24.22.2-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85 AS base
+FROM node:24.22.3-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS base
 
 # Keep the package manager itself pinned and audited alongside application code.
 RUN npm install --global npm@12.2.1 --ignore-scripts
@@ -31,7 +31,7 @@ RUN apk update && apk upgrade --no-cache
 # Compose is executed from inside Docker Dash for stack plans, Git deploys,
 # pull-request previews, and OCI Compose artifacts.
 # Require patched libexpat and zlib even when the Alpine upgrade layer is cached.
-RUN apk add --no-cache tini curl 'git>=2.54.1-r0' 'openssh-client-default>=10.3_p1-r2' openssl 'libexpat>=2.10.0-r0' 'zlib>=1.4-r0'
+RUN apk add --no-cache tini curl 'git>=2.54.1-r0' 'openssh-client-default>=10.3_p1-r2' 'openssl>=3.5.9-r1' 'libssl3>=3.5.9-r1' 'libcrypto3>=3.5.9-r1' 'libexpat>=2.10.0-r0' 'zlib>=1.4-r0'
 
 # Use the verified source build instead of Alpine's independently packaged CLI.
 COPY --from=scanner-build /out/docker-cli /usr/local/bin/docker

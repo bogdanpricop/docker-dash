@@ -793,6 +793,8 @@ router.get('/compare', (req, res) => {
     { feature: 'SSO (OAuth / LDAP)',                dockerDash: true,              portainerCE: 'BE only',        portainerBE: true,          coolify: true,          yacht: false,      rancher: true,         dockge: false,          dockhand: false },
     { feature: 'WebAuthn Passkeys', dockerDash: 'Local accounts',
       dockerDashNote: 'Enroll and revoke passkeys from the profile. Sign in on the configured HTTPS origin with user verification and any existing TOTP requirement.' },
+    { feature: 'AI Compute / DGX Spark', dockerDash: 'Profiles + guarded switching',
+      dockerDashNote: 'Selected-host inventory, opt-in 30-day CPU/unified-RAM/GPU/disk history, model cache inspection, API readiness and reviewed ARM64 Qwen deployment recipes. Explicit switch plans retain rollback evidence and preserve speech/gateways. Strata/NCM are attributed experimental entries requiring qualification.' },
     { feature: 'Health Score',                      dockerDash: true,              portainerCE: false,            portainerBE: false,         coolify: false,         yacht: false,      rancher: false,        dockge: false,          dockhand: false },
     { feature: 'Resource Forecasting',              dockerDash: true,              portainerCE: false,            portainerBE: false,         coolify: false,         yacht: false,      rancher: 'basic',      dockge: false,          dockhand: false },
     { feature: 'Cost Estimation',                   dockerDash: true,              portainerCE: false,            portainerBE: false,         coolify: false,         yacht: false,      rancher: 'basic',      dockge: false,          dockhand: false },
