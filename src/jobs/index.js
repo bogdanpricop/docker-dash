@@ -766,6 +766,11 @@ function startAll() {
     }
   }), 30000);
 
+  jobs.push(cron.schedule('* * * * *', _m('ai-compute-metrics', () => require('../services/ai-compute-metrics').capture())));
+  const computeTimer = setInterval(_m('ai-compute-operations', () => require('../services/ai-compute').tick()), 5000);
+  computeTimer.unref();
+  jobs.push({ stop: () => clearInterval(computeTimer) });
+
   log.info('Background jobs started');
 
   _alertInterval = alertInterval;

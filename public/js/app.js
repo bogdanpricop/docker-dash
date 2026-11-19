@@ -26,6 +26,7 @@ const App = {
     system:     () => SystemPage,
     firewall:   () => FirewallPage,
     hosts:      () => HostsPage,
+    'ai-compute': () => AIComputePage,
     about:      () => AboutPage,
     whatsnew:   () => WhatsNewPage,
     'git-stacks': () => GitStacksPage,
