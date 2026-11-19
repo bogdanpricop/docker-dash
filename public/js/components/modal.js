@@ -53,6 +53,12 @@ const Modal = {
 
   open(html, { width, onClose } = {}) {
     this._init();
+    // Complete the previous close before replacing its content. A rapid
+    // close/open must not let the old animation timer erase the new dialog.
+    if (this._finishClose) {
+      clearTimeout(this._closeTimer);
+      this._finishClose();
+    }
     // Save the previously focused element so close() can restore focus —
     // without this, screen readers and keyboard users get dropped to the
     // body element on close.
@@ -101,13 +107,16 @@ const Modal = {
 
   close() {
     if (!this._overlay) return;
+    if (this._finishClose) return;
     this._overlay.classList.remove('modal-visible');
     // v8.7.16 — `inert` auto-blurs any focused descendant BEFORE we hide,
     // which prevents the "aria-hidden on an element whose descendant
     // retained focus" console warning. aria-hidden kept as legacy fallback.
     this._overlay.setAttribute('inert', '');
     this._overlay.setAttribute('aria-hidden', 'true');
-    setTimeout(() => {
+    this._finishClose = () => {
+      this._finishClose = null;
+      this._closeTimer = null;
       this._overlay.classList.add('hidden');
       this._content.innerHTML = '';
       if (this._onClose) this._onClose();
@@ -117,7 +126,8 @@ const Modal = {
         try { this._previouslyFocused.focus(); } catch { /* element may have been removed */ }
       }
       this._previouslyFocused = null;
-    }, 200);
+    };
+    this._closeTimer = setTimeout(() => this._finishClose?.(), 200);
   },
 
   // Convenience: confirmation dialog
