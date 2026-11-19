@@ -51,6 +51,8 @@ async function main() {
     assert.match(await page.$eval('#compute-host', e => e.textContent), /DGX Spark.*Connected.*aarch64/);
     assert.match(await page.$eval('#compute-metrics', e => e.textContent), /Unified memory/);
     assert.equal(await page.$$eval('#compute-history canvas', nodes => nodes.length), 4);
+    assert.equal(await page.evaluate(() => AIComputePage._charts[0].options.scales.x.type), 'linear');
+    assert.equal(await page.evaluate(() => typeof AIComputePage._charts[0].data.datasets[0].data[0].x), 'number');
     assert.equal(await page.$$eval('[data-deploy]', nodes => nodes.length), 1);
     await page.click('[data-probe]');
     await page.waitForFunction(() => document.querySelector('[id^="probe-"]').textContent.includes('Ready'));

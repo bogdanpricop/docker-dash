@@ -85,7 +85,8 @@ const AIComputePage = {
     } catch (err) {
       if (token === this._token) {
         this._error(err);
-        this._container.querySelector('#compute-host').textContent = 'Selected host unavailable · last successful values retained below';
+        const name = this._inventory?.hostName || App._hostSelectorHosts?.find(h => h.id === this._hostId)?.name || this._hostId;
+        this._container.querySelector('#compute-host').textContent = `Host ${name} · Connection unavailable · last successful values retained below`;
       }
     } finally { if (token === this._token) this._loading = false; }
   },
@@ -115,8 +116,10 @@ const AIComputePage = {
     });
     const getters = [p => p.cpuPercent, p => p.memory ? p.memory.usedBytes / 1024 ** 3 : null, p => p.gpu?.utilizationPercent, p => p.disk ? p.disk.availableBytes / 1024 ** 3 : null];
     getters.forEach((get,i) => this._charts.push(new Chart(host.querySelector(`#compute-chart-${i}`), {
-      type: 'line', data: { labels: data.map(p => new Date(p.sampledAt).toLocaleString()), datasets: [{ data: data.map(p => get(p) ?? null), borderColor: ['#4c8dff','#a78bfa','#22c55e','#eab308'][i], borderWidth: 2, pointRadius: 0, spanGaps: false }] },
-      options: { responsive: true, maintainAspectRatio: false, animation: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { maxTicksLimit: 3 } }, y: { min: 0, ...(i % 2 === 0 ? { max: 100 } : {}) } } },
+      type: 'line', data: { datasets: [{ data: data.map(p => ({ x: Date.parse(p.sampledAt), y: get(p) ?? null })), borderColor: ['#4c8dff','#a78bfa','#22c55e','#eab308'][i], borderWidth: 2, pointRadius: data.length < 3 ? 2 : 0, spanGaps: false }] },
+      options: { responsive: true, maintainAspectRatio: false, animation: false,
+        plugins: { legend: { display: false }, tooltip: { callbacks: { title: items => new Date(items[0].parsed.x).toLocaleString() } } },
+        scales: { x: { type: 'linear', min: Date.now() - hours * 3600000, max: Date.now(), ticks: { maxTicksLimit: 3, callback: value => new Date(value).toLocaleString() } }, y: { min: 0, ...(i % 2 === 0 ? { max: 100 } : {}) } } },
     })));
   },
   _workloads() {
