@@ -15,6 +15,10 @@ const WhatsNewPage = {
   // Contributors add their entry to _unreleased below; the release process
   // moves those entries into a new numbered release.
   _releases: [
+    { version: '8.96.52', date: '2026-11-20', title: 'Gemma 3 model catalog', changes: [
+      { type: 'feature', text: 'AI Compute adds Gemma 3 4B, 12B and 27B with pinned Ollama Q4_K_M artifacts, including their image projectors, Download and Plan deploy.' },
+      { type: 'improvement', text: 'Information dialogs explain use cases, integration, memory/context budgets and the Gemma license. Adding a catalog entry does not change running models or API Gateway configuration.' },
+    ] },
     { version: '8.96.51', date: '2026-11-20', title: 'Model explanations and specialist catalog', changes: [
       { type: 'feature', text: 'Every AI Compute model card has an information dialog with concrete use cases, integration requirements, source summaries, limitations and attributed links.' },
       { type: 'feature', text: 'Adds 14 specialist catalog entries for OCR, reranking, coding, forecasting, multimodal search, translation, extraction, SQL, segmentation, FLUX/Z-Image generation and Qwen/Piper speech synthesis, including a Romanian voice.' },
