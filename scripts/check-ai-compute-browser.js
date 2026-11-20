@@ -28,6 +28,7 @@ async function main() {
         _initHostSelector:async()=>{},_activateHost:(id,route)=>{window.fullLogsNavigation={id,route};} };
       window.i18n = { t: key => key };
       const c = { id: 'a'.repeat(64), name: 'foliantstudio-vllm', model: 'Qwen/Qwen3-4B', engine: 'vllm', state: 'running', memoryBytes: 24 * 1024 ** 3, profileId: 3, readyPort: 8000, exclusive: true };
+      window.computeWorkload = c; window.computeJobs = [];
       window.Api = {
         getHostId: () => window.hostId,
         get: async url => {
@@ -39,7 +40,7 @@ async function main() {
           if (url.includes('/inventory')) return { hostId: requested, containers: [c], monitoring: false, architecture: 'aarch64' };
           if (url.includes('/metrics')) return { sampledAt: new Date().toISOString(), cpus: 20, cpuPercent: 12, unified: true, memory: { totalBytes: 128 * 1024 ** 3, usedBytes: 45 * 1024 ** 3, availableBytes: 83 * 1024 ** 3 }, disk: { availableBytes: 3 * 1024 ** 4 }, gpu: { name: 'NVIDIA GB10', utilizationPercent: 2, temperatureC: 41 } };
           if (url.includes('/history')) return [0,1,2].map(i => ({ sampledAt: new Date(Date.now() - (2-i)*60000).toISOString(), cpuPercent: i * 5, memory: { usedBytes: 45 * 1024 ** 3 }, gpu: { utilizationPercent: i } }));
-          if (url.includes('/jobs')) return [];
+          if (url.includes('/jobs')) return window.computeJobs;
           if (url.includes('/catalog')) return [{ id: 'qwen3-4b', name: 'Qwen3-4B', source: 'https://huggingface.co/Qwen/Qwen3-4B', deployable: true, contextLengths: [4096,8192], memoryBytes: 20 * 1024 ** 3, diskBytes: 16 * 1024 ** 3, license: 'Apache-2.0' }, { id: 'ncm', name: 'NCM', source: 'https://github.com/HazyResearch/ncm', deployable: false, reason: 'Requires qualification' }];
           throw new Error('Unexpected URL ' + url);
         },
@@ -47,6 +48,12 @@ async function main() {
           window.submissions.push({ url, data });
           if (url.includes('/probe')) return { ready: true, detail: 'Model API ready', checkedAt: new Date().toISOString() };
           if (url.includes('/cache')) return { models: [{ model: 'Qwen/Qwen3-4B', state: 'cached weights present', cachedRevisions: ['revision'] }], note: 'Cache does not imply readiness', checkedAt: new Date().toISOString() };
+          if (url.includes('/profiles')) {
+            if (window.deferProfile) await new Promise(resolve => { window.resolveProfile = resolve; });
+            c.profileId = 3;
+            return { containers: [c] };
+          }
+          if (url.includes('/execute')) { window.computeJobs = [{ id: 'plan-1', action: 'stop', status: 'queued', updatedAt: new Date().toISOString(), plan: { target: c } }]; return {}; }
           if (url.includes('/plans')) return { id: 'plan-1', action: data.action, plan: { target: c, stop: [], expiresAt: new Date(Date.now()+60000).toISOString(), warning: 'Cached weights retained' } };
           return {};
         },
@@ -80,6 +87,48 @@ async function main() {
     await page.waitForSelector('#cache-close');
     assert.match(await page.$eval('#modal-content', e => e.textContent), /Qwen\/Qwen3-4B.*cached weights/s);
     await page.click('#cache-close');
+    // Detected services expose controls before a profile has been registered.
+    await page.evaluate(async () => { computeWorkload.profileId = null; await AIComputePage._refresh(); });
+    assert.equal(await page.$$eval('[data-operation="stop"]', nodes => nodes.length), 1);
+    assert.equal(await page.$$eval('[data-operation="restart"]', nodes => nodes.length), 1);
+    const plansBefore = await page.evaluate(() => submissions.filter(s => s.url.includes('/plans')).length);
+    await page.click('[data-operation="stop"]');
+    await page.waitForSelector('#compute-form');
+    assert.match(await page.$eval('#compute-form', e => e.textContent), /Saving this profile does not start or stop/);
+    await page.click('#compute-cancel');
+    assert.equal(await page.evaluate(() => submissions.filter(s => s.url.includes('/profiles')).length), 0);
+    assert.equal(await page.evaluate(() => submissions.filter(s => s.url.includes('/plans')).length), plansBefore);
+    await page.click('[data-operation="stop"]');
+    await page.waitForSelector('#compute-form');
+    await page.click('#compute-form [type=submit]');
+    await page.waitForSelector('#modal-ok');
+    assert.match(await page.$eval('#modal-content', e => e.textContent), /unloads all models.*Requests.*interrupted/s);
+    assert.equal(await page.evaluate(() => submissions.filter(s => s.url.includes('/execute')).length), 0);
+    assert.deepEqual(await page.evaluate(() => submissions.filter(s => s.url.includes('/plans')).at(-1)), { url: '/ai-compute/plans?hostId=9', data: { action: 'stop', profileId: 3 } });
+    await page.click('#modal-ok');
+    await page.waitForFunction(() => document.querySelector('[data-operation="stop"]').disabled);
+    assert.match(await page.$eval('#compute-jobs', e => e.textContent), /queued/);
+    assert.equal(await page.evaluate(() => submissions.filter(s => s.url.includes('/execute')).length), 1);
+    // Completed stop exposes Start; cancelling its preview submits no operation.
+    await page.evaluate(async () => { computeJobs = []; computeWorkload.state = 'exited'; await AIComputePage._refresh(); });
+    assert.equal(await page.$('[data-operation="stop"]'), null);
+    await page.click('[data-operation="start"]');
+    await page.waitForSelector('#modal-ok');
+    assert.equal(await page.$eval('#modal-ok', e => e.textContent.trim()), 'Start service');
+    await page.click('#modal-cancel');
+    assert.equal(await page.evaluate(() => submissions.filter(s => s.url.includes('/execute')).length), 1);
+    // First-use Start also guides through profile review and a separate confirmation.
+    await page.evaluate(async () => { computeWorkload.profileId = null; await AIComputePage._refresh(); });
+    await page.click('[data-operation="start"]');
+    await page.waitForSelector('#compute-form');
+    await page.click('#compute-form [type=submit]');
+    await page.waitForSelector('#modal-ok');
+    assert.equal(await page.evaluate(() => submissions.filter(s => s.url.includes('/plans')).at(-1).data.action), 'start');
+    await page.click('#modal-cancel');
+    assert.equal(await page.evaluate(() => submissions.filter(s => s.url.includes('/execute')).length), 1);
+    await page.evaluate(async () => { computeWorkload.state = 'paused'; await AIComputePage._refresh(); });
+    assert.equal(await page.$eval('[data-operation="start"]', e => e.disabled), true);
+    await page.evaluate(async () => { computeWorkload.state = 'running'; await AIComputePage._refresh(); });
     await page.select('#compute-range', '24');
     await page.type('#compute-filter', 'not-found');
     assert.equal(await page.$('[data-register]'), null);
@@ -94,11 +143,26 @@ async function main() {
     await page.waitForFunction(()=>document.querySelector('#compute-host').textContent.includes('Other host'));
     await page.click('#compute-form [type=submit]');
     await page.waitForFunction(() => document.querySelector('#compute-form-error').textContent.includes('host changed'));
-    assert.equal(await page.evaluate(() => submissions.filter(s => s.url.includes('/profiles')).length), 0);
+    assert.equal(await page.evaluate(() => submissions.filter(s => s.url.includes('/profiles')).length), 2);
     await page.click('#compute-cancel');
     assert.match(await page.$eval('#compute-host', e => e.textContent), /Other host/);
     assert.equal(await page.$eval('#compute-range', e => e.value), '1');
     assert.equal(await page.evaluate(()=>window.hostId),0);
+    // Saving on the original host may finish late, but must never open/execute a plan on the new one.
+    await page.evaluate(() => { window.deferProfile = true; });
+    await page.click('[data-register]');
+    await page.waitForSelector('#compute-form');
+    await page.click('#compute-form [type=submit]');
+    await page.waitForFunction(() => typeof window.resolveProfile === 'function');
+    const plansBeforeChange = await page.evaluate(() => submissions.filter(s => s.url.includes('/plans')).length);
+    await page.select('#compute-target', '9');
+    await page.waitForFunction(() => AIComputePage._hostId === 9);
+    await page.evaluate(() => { window.resolveProfile(); window.deferProfile = false; });
+    await page.waitForFunction(() => document.querySelector('#compute-form-error').textContent.includes('original host'));
+    assert.equal(await page.evaluate(() => submissions.filter(s => s.url.includes('/plans')).length), plansBeforeChange);
+    await page.click('#compute-cancel');
+    await page.select('#compute-target', '10');
+    await page.waitForFunction(() => document.querySelector('#compute-host').textContent.includes('Other host'));
     await page.evaluate(()=>{window.computeHosts=window.computeHosts.filter(h=>h.id!==10);window.hostId=111;});
     await page.click('#compute-refresh');
     await page.waitForFunction(()=>document.querySelector('#compute-host').textContent.includes('DGX Spark'));
@@ -108,7 +172,7 @@ async function main() {
     assert.equal(await page.evaluate(() => AIComputePage._charts.length), 0);
     assert.deepEqual(errors, []);
     if (process.env.DD_BROWSER_SCREENSHOT) await page.screenshot({ path: process.env.DD_BROWSER_SCREENSHOT, fullPage: true });
-    console.log('AI Compute browser: real charts, retained filters, catalog tiers, API/cache states, cross-host form guard and cleanup passed.');
+    console.log('AI Compute browser: visible service controls, first-use profile review, explicit confirmations, busy/state guards, charts, retained filters, scoped logs and cross-host async guards passed.');
   } finally { if (browser) await browser.close(); await new Promise(resolve => server.close(resolve)); }
 }
 main().catch(err => { console.error(err); process.exitCode = 1; });

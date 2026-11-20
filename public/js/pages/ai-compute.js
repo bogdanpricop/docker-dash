@@ -90,6 +90,7 @@ const AIComputePage = {
       ]);
       if (token !== this._token) return;
       this._inventory = inventory;
+      this._activeJob = jobs.find(job => ['queued', 'running', 'needs_review'].includes(job.status));
       this._catalogEntries = catalog;
       const host = this._hosts.find(h => h.id === this._hostId);
       this._container.querySelector('#compute-host').innerHTML = `<i class="fas fa-server"></i> Host <strong>${this._e(host?.name || inventory.hostName || inventory.hostId)}</strong> · Connected · ${this._e(inventory.architecture)} · Last sample ${this._e(new Date(sample.sampledAt).toLocaleString())}`;
@@ -144,12 +145,16 @@ const AIComputePage = {
     const rows = (this._inventory?.containers || []).filter(c => `${c.name} ${c.model || ''}`.toLowerCase().includes(this._filter.toLowerCase()));
     const el = this._container.querySelector('#compute-workloads');
     if (!rows.length) { el.innerHTML = '<p class="text-muted">No matching AI workloads. Choose a standard catalog recipe below or register a detected engine.</p>'; return; }
-    el.innerHTML = `<table class="data-table"><thead><tr><th>Workload / model</th><th>Container state</th><th>Memory budget</th><th>Profile / API</th><th>Actions</th></tr></thead><tbody>${rows.map(c => `<tr>
+    el.innerHTML = `${this._activeJob ? `<p role="status">${this._activeJob.status === 'needs_review' ? 'An interrupted operation needs review' : 'An AI operation is in progress'}. See Operation history below. Service controls are temporarily unavailable.</p>` : ''}<table class="data-table"><thead><tr><th>Workload / model</th><th>Container state</th><th>Memory budget</th><th>Profile / API</th><th>Actions</th></tr></thead><tbody>${rows.map(c => `<tr>
       <td><strong>${this._e(c.name)}</strong><div class="text-muted text-sm">${this._e(c.engine)} · ${this._e(c.model || 'Model not identified')}</div></td>
       <td>${this._e(c.state)}<div class="text-muted text-sm">Health: ${this._e(c.health || 'No Docker healthcheck')}</div></td>
       <td>${this._bytes(c.memoryBytes)}<div class="text-muted text-sm">${c.profileId ? 'Configured reservation' : 'Estimated · review on registration'}</div></td>
       <td>${c.profileName ? `<div class="text-sm">${this._e(c.profileName)}</div>` : ''}<button type="button" class="btn btn-xs btn-secondary" data-register="${c.id}">${c.profileId ? 'Edit profile' : 'Register profile'}</button> <button type="button" class="btn btn-xs btn-secondary" data-probe="${c.id}">Check API</button> <button type="button" class="btn btn-xs btn-secondary" data-cache="${c.id}">Cached models</button><div id="probe-${c.id}" class="text-sm" role="status">${this._e(this._probes?.get(c.id) || 'API not checked')}</div></td>
-      <td><button type="button" class="btn btn-xs btn-secondary" data-logs="${c.id}">Logs</button> ${c.profileId ? (c.state === 'running' ? ['stop','restart'] : ['start', ...(c.exclusive ? ['switch'] : [])]).map(action => `<button type="button" class="btn btn-xs btn-secondary" data-operation="${action}" data-profile="${c.profileId}">${action[0].toUpperCase()+action.slice(1)}</button>`).join(' ') : ''}</td></tr>`).join('')}</tbody></table>`;
+      <td><div style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="btn btn-xs btn-secondary" data-logs="${c.id}">Logs</button> ${(c.state === 'running' ? ['stop','restart'] : ['start', ...(c.exclusive && ['created','exited'].includes(c.state) ? ['switch'] : [])]).map(action => {
+        const supported = ['running','created','exited'].includes(c.state);
+        const hint = this._activeJob ? 'Review Operation history before another action' : !supported ? `Service is ${c.state}. Manage this state in Containers first.` : c.profileId ? 'Review and confirm this service operation' : 'Review the service profile, then confirm the operation';
+        return `<button type="button" class="btn btn-xs ${action === 'stop' ? 'btn-danger' : 'btn-secondary'}" data-operation="${action}" data-workload="${c.id}" ${!supported || this._activeJob ? 'disabled' : ''} title="${this._e(hint)}">${action[0].toUpperCase()+action.slice(1)}</button>`;
+      }).join(' ')}</div></td></tr>`).join('')}</tbody></table>`;
     el.querySelectorAll('[data-logs]').forEach(b => b.addEventListener('click', async () => {
       const token = this._token, hostId = this._hostId;
       const c = rows.find(c => c.id === b.dataset.logs);
@@ -171,7 +176,14 @@ const AIComputePage = {
       finally { b.disabled = false; }
     }));
     el.querySelectorAll('[data-register]').forEach(b => b.addEventListener('click', () => this._register(b.dataset.register)));
-    el.querySelectorAll('[data-operation]').forEach(b => b.addEventListener('click', () => this._preview({ action: b.dataset.operation, profileId: Number(b.dataset.profile) })));
+    el.querySelectorAll('[data-operation]').forEach(b => b.addEventListener('click', async () => {
+      const c = rows.find(c => c.id === b.dataset.workload);
+      b.disabled = true;
+      try {
+        if (c.profileId) await this._preview({ action: b.dataset.operation, profileId: c.profileId });
+        else this._register(c.id, b.dataset.operation);
+      } finally { if (b.isConnected && !this._activeJob) b.disabled = false; }
+    }));
     el.querySelectorAll('[data-cache]').forEach(b => b.addEventListener('click', async () => {
       const token = this._token, url = this._url('cache'); b.disabled = true;
       try {
@@ -195,8 +207,8 @@ const AIComputePage = {
       finally { b.disabled = false; }
     }));
   },
-  _form(title, body, submit) {
-    Modal.open(`<form id="compute-form"><div class="modal-header"><h2>${this._e(title)}</h2></div><div class="modal-body">${body}<p id="compute-form-error" class="text-danger" role="alert"></p></div><div class="modal-footer"><button type="button" class="btn btn-secondary" id="compute-cancel">Cancel</button><button type="submit" class="btn btn-primary">Continue</button></div></form>`, { width: '600px' });
+  _form(title, body, submit, submitText = 'Continue') {
+    Modal.open(`<form id="compute-form"><div class="modal-header"><h2>${this._e(title)}</h2></div><div class="modal-body">${body}<p id="compute-form-error" class="text-danger" role="alert"></p></div><div class="modal-footer"><button type="button" class="btn btn-secondary" id="compute-cancel">Cancel</button><button type="submit" class="btn btn-primary">${this._e(submitText)}</button></div></form>`, { width: '600px' });
     const form = Modal._content.querySelector('#compute-form');
     form.querySelector('#compute-cancel').addEventListener('click', () => Modal.close());
     form.addEventListener('submit', async event => {
@@ -207,17 +219,24 @@ const AIComputePage = {
       finally { button.disabled = false; }
     });
   },
-  _register(id) {
+  _register(id, nextAction = null) {
     const c = this._inventory.containers.find(c => c.id === id), token = this._token, url = this._url('profiles');
-    this._form('AI workload profile', `<p>Review the memory reservation. Exclusive LLMs can be stopped only by a confirmed Switch plan. Speech is always preserved.</p>
+    this._form(nextAction ? `Set up ${c.name} controls` : 'AI workload profile', `${nextAction ? `<p>First use: review this service profile so its memory budget and restart policy are saved for future starts. Next, review and confirm <strong>${this._e(nextAction)}</strong>. Saving this profile does not start or stop the service.</p>` : ''}<p>Review the memory reservation. Switch plans can stop other exclusive LLMs; other speech services are preserved.</p>
       <div class="form-group"><label for="compute-name">Profile name</label><input type="text" class="form-control" id="compute-name" name="name" required maxlength="120" value="${this._e(c.profileName || c.name)}"></div>
       <div class="form-group"><label for="compute-memory">Memory budget (GiB)</label><input class="form-control" id="compute-memory" name="memory" type="number" min="1" max="2048" step="0.5" required value="${Math.ceil((c.memoryBytes || 8 * 1024 ** 3) / 1024 ** 3)}"></div>
       <div class="form-group"><label for="compute-port">API port inside container (optional; requires Python 3)</label><input class="form-control" id="compute-port" name="port" type="number" min="1" max="65535" value="${c.readyPort || ''}"></div>
       <label><input name="exclusive" type="checkbox" ${c.exclusive ? 'checked' : ''} ${c.engine === 'speech' ? 'disabled' : ''}> Exclusive LLM</label>`, async data => {
       if (token !== this._token) throw new Error('The selected host changed. Close this dialog and try again.');
-      await Api.post(url, { containerId: id, name: data.get('name'), memoryGiB: Number(data.get('memory')), readyPort: data.get('port'), exclusive: data.has('exclusive') });
-      Modal.close(); await this._refresh();
-    });
+      const inventory = await Api.post(url, { containerId: id, name: data.get('name'), memoryGiB: Number(data.get('memory')), readyPort: data.get('port'), exclusive: data.has('exclusive') });
+      if (token !== this._token) throw new Error('The selected host changed. The profile was saved on the original host; no operation was submitted.');
+      const profile = inventory.containers.find(row => row.id === id);
+      if (nextAction && !profile?.profileId) throw new Error('The service profile could not be verified. Refresh and try again.');
+      this._inventory = inventory;
+      this._workloads();
+      Modal.close();
+      if (nextAction) await this._preview({ action: nextAction, profileId: profile.profileId });
+      else await this._refresh();
+    }, nextAction ? `Save profile and review ${nextAction}` : 'Save profile');
   },
   _catalog(entries) {
     const el = this._container.querySelector('#compute-catalog');
@@ -245,10 +264,11 @@ const AIComputePage = {
       if (token !== this._token) throw new Error('Host changed. The plan was not submitted.');
       const plan = result.plan;
       const message = `<p><strong>${this._e(result.action.toUpperCase())} · ${this._e(plan.target.name)}</strong></p><p>Host: ${this._e(this._container.querySelector('#compute-host').textContent)}</p>
-        <p>Memory reservation: ${this._bytes(plan.target.memoryBytes)} · 4 GiB additional host reserve.</p>
+        ${payload.action === 'stop' ? '<p>This stops the AI service and unloads all models it serves. Requests to this service will be interrupted until it is started again. Cached model files are retained.</p>' : `<p>Memory reservation: ${this._bytes(plan.target.memoryBytes)} · 4 GiB additional host reserve.</p>${payload.action === 'restart' ? '<p>Requests to this service will be interrupted while its models reload.</p>' : ''}`}
         <p>${plan.stop.length ? 'These engines will stop:' : 'No other engines will stop.'}</p><ul>${plan.stop.map(c => `<li>${this._e(c.name)} <code>${this._e(c.id.slice(0,12))}</code></li>`).join('')}</ul>
-        <p>${this._e(plan.warning)}</p><p class="text-muted text-sm">Plan expires ${this._e(new Date(plan.expiresAt).toLocaleTimeString())}. Speech and gateway containers are excluded.</p>`;
-      if (await Modal.confirm(message, { title: 'Review AI operation', html: true, danger: plan.stop.length > 0 || payload.action === 'stop', confirmText: 'Execute plan', width: '620px' })) {
+        <p>${payload.action === 'stop' ? 'The service stays stopped until you start it again.' : this._e(plan.warning)}</p><p class="text-muted text-sm">Plan expires ${this._e(new Date(plan.expiresAt).toLocaleTimeString())}. Other speech services and gateway containers are excluded from automatic conflict stopping.</p>`;
+      const label = { start: 'Start service', stop: 'Stop service', restart: 'Restart service' }[payload.action] || 'Execute plan';
+      if (await Modal.confirm(message, { title: 'Review AI operation', html: true, danger: plan.stop.length > 0 || ['stop','restart'].includes(payload.action), confirmText: label, width: '620px' })) {
         if (token !== this._token) throw new Error('Host changed. Create a fresh plan.');
         await Api.post(`/ai-compute/plans/${result.id}/execute?hostId=${hostId}`, {});
         await this._refresh();
@@ -272,6 +292,7 @@ const AIComputePage = {
     clearInterval(this._timer);
     this._token = null;
     this._loading = false;
+    this._activeJob = null;
     this._charts.forEach(chart => chart.destroy());
     this._charts = [];
   },
