@@ -54,13 +54,15 @@
     "reviewedAt": "2026-11-20"
   },
   "ollama-nomic-embed-text": {
-    "problem": "Retrieve relevant internal documents by meaning and group similar text across a search collection.",
-    "summary": "Nomic Embed Text v1.5 converts text into vectors for retrieval and similarity tasks.",
+    "problem": "Build semantic search over internal manuals, support tickets and other text documents.",
+    "summary": "Nomic Embed Text v1.5 is a text embedding model: it produces search vectors rather than chat responses.",
     "integration": [
       "Use the existing pinned Ollama recipe and connect a client to its embedding API.",
       "Add a vector index with consistent document/query preprocessing; compare results on real searches."
     ],
-    "notes": [],
+    "notes": [
+      "Evaluate the actual language mix and retrieval quality before choosing this over the multilingual alternatives."
+    ],
     "sources": [
       {
         "label": "Source model card",
@@ -70,8 +72,8 @@
     "reviewedAt": "2026-11-20"
   },
   "ollama-nomic-embed-text-v2-moe": {
-    "problem": "Retrieve relevant internal documents by meaning and group similar text across a search collection.",
-    "summary": "Nomic Embed Text v2 MoE converts text into vectors for retrieval and similarity tasks.",
+    "problem": "Find related documents even when a question and its source material use different languages.",
+    "summary": "Nomic Embed Text v2 MoE is a multilingual mixture-of-experts embedding model for retrieval and similarity tasks.",
     "integration": [
       "Use the existing pinned Ollama recipe and connect a client to its embedding API.",
       "Add a vector index with consistent document/query preprocessing; compare results on real searches."
@@ -88,8 +90,8 @@
     "reviewedAt": "2026-11-20"
   },
   "ollama-granite3-2-vision": {
-    "problem": "Inspect supplied images, describe their content and assist with questions about product photos or document pages.",
-    "summary": "Granite 3.2 Vision 2B is a vision-language model that combines image inputs with text instructions.",
+    "problem": "Answer questions about document pages, tables and charts without relying only on text extracted by OCR.",
+    "summary": "IBM Granite 3.2 Vision is a compact vision-language model oriented toward visual document understanding.",
     "integration": [
       "Use the existing pinned Ollama recipe and connect a client to its inference API.",
       "Add a bounded image upload workflow and evaluate outputs against representative source images."
@@ -104,8 +106,8 @@
     "reviewedAt": "2026-11-20"
   },
   "ollama-llama3-2-vision": {
-    "problem": "Inspect supplied images, describe their content and assist with questions about product photos or document pages.",
-    "summary": "Llama 3.2 Vision 11B is a vision-language model that combines image inputs with text instructions.",
+    "problem": "Describe photos and answer questions about the objects, text and relationships visible in an image.",
+    "summary": "Llama 3.2 Vision combines image understanding with text generation; this catalog keeps its incompatible upstream artifact download-only.",
     "integration": [
       "Use the existing pinned Ollama recipe and connect a client to its inference API.",
       "Add a bounded image upload workflow and evaluate outputs against representative source images."
@@ -122,8 +124,8 @@
     "reviewedAt": "2026-11-20"
   },
   "ollama-llava": {
-    "problem": "Inspect supplied images, describe their content and assist with questions about product photos or document pages.",
-    "summary": "LLaVA 1.6 7B is a vision-language model that combines image inputs with text instructions.",
+    "problem": "Add a local question-and-answer assistant for screenshots, product photographs and simple visual explanations.",
+    "summary": "LLaVA v1.6 is a visual instruction-following model that accepts an image together with a text prompt.",
     "integration": [
       "Use the existing pinned Ollama recipe and connect a client to its inference API.",
       "Add a bounded image upload workflow and evaluate outputs against representative source images."
@@ -138,13 +140,15 @@
     "reviewedAt": "2026-11-20"
   },
   "ollama-minicpm-v": {
-    "problem": "Inspect supplied images, describe their content and assist with questions about product photos or document pages.",
-    "summary": "MiniCPM-V 2.6 8B is a vision-language model that combines image inputs with text instructions.",
+    "problem": "Read photographed documents and answer detailed questions about product or packaging images.",
+    "summary": "MiniCPM-V 2.6 is an 8B vision-language model for image understanding, OCR-oriented tasks and visual question answering.",
     "integration": [
       "Use the existing pinned Ollama recipe and connect a client to its inference API.",
       "Add a bounded image upload workflow and evaluate outputs against representative source images."
     ],
-    "notes": [],
+    "notes": [
+      "The managed recipe is qualified with still images; a complete video ingestion workflow is a separate client integration."
+    ],
     "sources": [
       {
         "label": "Source model card",
@@ -154,8 +158,8 @@
     "reviewedAt": "2026-11-20"
   },
   "ollama-minicpm-v4-6": {
-    "problem": "Inspect supplied images, describe their content and assist with questions about product photos or document pages.",
-    "summary": "MiniCPM-V 4.6 1B is a vision-language model that combines image inputs with text instructions.",
+    "problem": "Evaluate a smaller vision service for image descriptions and lightweight visual checks before using a larger model.",
+    "summary": "This separately versioned MiniCPM-V 4.6 entry uses the reviewed 1B artifact and a smaller resource budget than the 8B recipe.",
     "integration": [
       "Use the existing pinned Ollama recipe and connect a client to its inference API.",
       "Add a bounded image upload workflow and evaluate outputs against representative source images."
@@ -170,8 +174,8 @@
     "reviewedAt": "2026-11-20"
   },
   "ollama-moondream": {
-    "problem": "Inspect supplied images, describe their content and assist with questions about product photos or document pages.",
-    "summary": "Moondream 2 is a vision-language model that combines image inputs with text instructions.",
+    "problem": "Produce short image captions or answer targeted questions about a supplied picture with a modest model budget.",
+    "summary": "Moondream 2 is the small vision-language model served by the Ollama moondream 1.8B artifact; it is separate from Moondream 3.1.",
     "integration": [
       "Use the existing pinned Ollama recipe and connect a client to its inference API.",
       "Add a bounded image upload workflow and evaluate outputs against representative source images."
@@ -186,8 +190,8 @@
     "reviewedAt": "2026-11-20"
   },
   "ollama-qwen2-5vl": {
-    "problem": "Inspect supplied images, describe their content and assist with questions about product photos or document pages.",
-    "summary": "Qwen2.5 VL 7B is a vision-language model that combines image inputs with text instructions.",
+    "problem": "Assist with reading fields, tables and visible values from scanned pages, forms and dashboard screenshots.",
+    "summary": "Qwen2.5-VL combines text generation with visual understanding, including document and chart interpretation.",
     "integration": [
       "Use the existing pinned Ollama recipe and connect a client to its inference API.",
       "Add a bounded image upload workflow and evaluate outputs against representative source images."
@@ -202,8 +206,8 @@
     "reviewedAt": "2026-11-20"
   },
   "ollama-qwen3-vl": {
-    "problem": "Inspect supplied images, describe their content and assist with questions about product photos or document pages.",
-    "summary": "Qwen3 VL 8B is a vision-language model that combines image inputs with text instructions.",
+    "problem": "Combine visual evidence and written instructions when analyzing screenshots, product photos or document pages.",
+    "summary": "Qwen3-VL is the newer Qwen vision-language family, offered here as an independent 8B recipe rather than replacing Qwen2.5-VL.",
     "integration": [
       "Use the existing pinned Ollama recipe and connect a client to its inference API.",
       "Add a bounded image upload workflow and evaluate outputs against representative source images."
@@ -218,8 +222,8 @@
     "reviewedAt": "2026-11-20"
   },
   "ollama-qwen3-8": {
-    "problem": "Inspect supplied images, describe their content and assist with questions about product photos or document pages.",
-    "summary": "Qwen3.8 27B is a vision-language model that combines image inputs with text instructions.",
+    "problem": "Use a larger local multimodal model for detailed explanations, document questions and image-based analysis.",
+    "summary": "The reviewed Qwen3.8 27B recipe combines text and vision capabilities; its serving budget is separate from the much larger Flash Next model.",
     "integration": [
       "Use the existing pinned Ollama recipe and connect a client to its inference API.",
       "Add a bounded image upload workflow and evaluate outputs against representative source images."
@@ -234,8 +238,8 @@
     "reviewedAt": "2026-11-20"
   },
   "ollama-llama4": {
-    "problem": "Inspect supplied images, describe their content and assist with questions about product photos or document pages.",
-    "summary": "Llama 4 Scout is a vision-language model that combines image inputs with text instructions.",
+    "problem": "Evaluate comparisons across visual material and text, such as product images with accompanying specifications.",
+    "summary": "Llama 4 Scout is a multimodal mixture-of-experts model; the reviewed Ollama artifact remains independent from Llama 3.2 Vision.",
     "integration": [
       "Use the existing pinned Ollama recipe and connect a client to its inference API.",
       "Add a bounded image upload workflow and evaluate outputs against representative source images."
@@ -250,8 +254,8 @@
     "reviewedAt": "2026-11-20"
   },
   "ollama-qwen3-8-flash-next": {
-    "problem": "Inspect supplied images, describe their content and assist with questions about product photos or document pages.",
-    "summary": "Qwen3.8 Flash Next Q4_K_M is a vision-language model that combines image inputs with text instructions.",
+    "problem": "Retain the large Flash Next model files for a future host or separately qualified lower-memory serving approach.",
+    "summary": "This entry pins the Linux-compatible Q4_K_M GGUF artifact for Qwen3.8 Flash Next, not the separate Apple MLX distribution.",
     "integration": [
       "Use the existing pinned Ollama recipe and connect a client to its inference API.",
       "Add a bounded image upload workflow and evaluate outputs against representative source images."
@@ -269,8 +273,8 @@
     "reviewedAt": "2026-11-20"
   },
   "ollama-granite-vision-4-1-4b-gguf": {
-    "problem": "Inspect supplied images, describe their content and assist with questions about product photos or document pages.",
-    "summary": "Granite Vision 4.1 4B is a vision-language model that combines image inputs with text instructions.",
+    "problem": "Evaluate a newer IBM document-vision model for questions about forms, tables, charts and scanned business pages.",
+    "summary": "The Granite Vision 4.1 entry uses the reviewed 4B Q4_K_M GGUF from the IBM Granite repository as a separate model generation.",
     "integration": [
       "Use the existing pinned Ollama recipe and connect a client to its inference API.",
       "Add a bounded image upload workflow and evaluate outputs against representative source images."
