@@ -44,6 +44,7 @@ const AIComputePage = {
         <div class="card-body" id="compute-history" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px"></div></div>
       <div class="card" style="margin-top:16px"><div class="card-header" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap"><h3>AI workloads</h3>
         <input type="search" id="compute-filter" class="form-control" style="max-width:320px" aria-label="Filter AI workloads" placeholder="Filter workloads or models…" value="${this._e(this._filter)}"></div>
+        <div id="compute-operation" role="status" aria-live="polite" aria-atomic="true" hidden style="margin:12px 16px;padding:12px;border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:6px"></div>
         <div class="card-body" id="compute-workloads" style="overflow:auto"></div></div>
       <div class="card" style="margin-top:16px"><div class="card-header"><h3>Model catalog</h3></div>
         <div class="card-body"><p class="text-muted text-sm">Standard recipes use pinned model revisions, a reviewed NVIDIA ARM64 runtime and a shared model cache. Memory/disk budgets are estimates; live checks run before starting. APIs bind to host loopback.</p>
@@ -79,18 +80,142 @@ const AIComputePage = {
     const el = this._container?.querySelector('#compute-error');
     if (el) el.innerHTML = `<p class="text-danger">${this._e(err.message)}</p>`;
   },
+  _operationPending(job = this._operation) { return job && ['submitting', 'queued', 'running'].includes(job.status); },
+  _operationFeedback() {
+    const el = this._container?.querySelector('#compute-operation'), job = this._operation;
+    if (!el || !job) return;
+    const pending = this._operationPending(), failed = ['failed', 'rolled_back', 'needs_review', 'submission_failed'].includes(job.status);
+    const labels = { submitting: 'Submitting operation…', queued: 'Queued — waiting for the worker…',
+      running: { stop: 'Stopping service…', start: 'Starting service — waiting for its API to become ready…', restart: 'Restarting service — waiting for its API to become ready…', switch: 'Switching engines — waiting for the new API…', deploy: 'Deploying model — downloads and loading can take several minutes…' }[job.action] || 'Operation in progress…',
+      completed: 'Operation completed', failed: 'Operation failed', rolled_back: 'Operation failed — previous engines restored',
+      needs_review: 'Operation needs review — check recovery options below', submission_failed: 'Operation could not be submitted' };
+    const message = labels[job.status] || job.status;
+    const detail = [job.error, this._pollError || (this._syncingOperation ? 'Refreshing service state automatically…' : job.error ? '' : pending ? 'Checking automatically every 2 seconds. You can stay on this page.' : 'Service state has been refreshed.')].filter(Boolean).join(' ');
+    const key = JSON.stringify([job.id, job.status, detail]);
+    el.hidden = false;
+    el.setAttribute('role', failed ? 'alert' : 'status');
+    el.style.borderLeftColor = failed ? 'var(--red)' : job.status === 'completed' ? 'var(--green)' : 'var(--accent)';
+    if (el.dataset.feedback !== key) {
+      el.dataset.feedback = key;
+      el.innerHTML = `<div><i class="fas ${pending || this._syncingOperation ? 'fa-spinner fa-spin' : failed ? 'fa-exclamation-triangle' : 'fa-check-circle'}" aria-hidden="true"></i> <strong>${this._e(message)} · ${this._e(job.plan.target.name)}</strong></div><p style="margin:6px 0">${this._e(detail)}</p><div id="compute-operation-time" class="text-muted text-sm" aria-live="off"></div>`;
+    }
+    const elapsed = Math.max(0, Math.floor((Date.now() - this._operationStartedAt) / 1000));
+    el.querySelector('#compute-operation-time').textContent = `Host: ${this._hosts.find(h => h.id === this._hostId)?.name || this._hostId} · ${elapsed}s elapsed${this._operationCheckedAt ? ' · Last checked ' + new Date(this._operationCheckedAt).toLocaleTimeString() : ''}`;
+  },
+  _setOperation(job) {
+    const previous = this._operation;
+    if (previous?.id === job.id) {
+      // A slower execute response or page refresh cannot reverse a polled result.
+      if (!this._operationPending(previous) && this._operationPending(job)) return;
+      if (previous.status === 'running' && ['queued', 'submitting'].includes(job.status)) return;
+    } else {
+      clearTimeout(this._operationTimer); this._operationTimer = null;
+      this._operationAbort?.abort(); this._operationAbort = null;
+      this._operationPolling = false;
+      this._syncingOperation = false;
+      this._pollError = null;
+      this._operationCheckedAt = null;
+      if (previous) this._inventoryGeneration++;
+      this._operationStartedAt = Date.now();
+    }
+    const wasLocked = Boolean(this._activeJob);
+    this._operation = job;
+    this._activeJob = this._operationPending() || job.status === 'needs_review' || this._syncingOperation ? job : null;
+    this._jobsData = [job, ...(this._jobsData || []).filter(row => row.id !== job.id)];
+    this._operationFeedback();
+    this._jobs(this._jobsData);
+    if (previous?.id !== job.id || previous?.status !== job.status || wasLocked !== Boolean(this._activeJob)) this._workloads();
+  },
+  _watchOperation(job) {
+    this._setOperation(job);
+    if (this._operationPending() && !this._operationTimer && !this._operationPolling) {
+      const token = this._token, id = job.id;
+      this._operationTimer = setTimeout(() => this._pollOperation(token, id), 2000);
+    }
+  },
+  async _reloadOperationInventory(token, signal) {
+    const generation = ++this._inventoryGeneration;
+    const inventory = await Api.request('GET', this._url('inventory'), null, { signal });
+    if (token !== this._token || generation !== this._inventoryGeneration) return;
+    this._inventory = inventory;
+    this._workloads();
+  },
+  async _pollOperation(token, id) {
+    this._operationTimer = null;
+    if (token !== this._token || this._operation?.id !== id) return;
+    this._operationPolling = true;
+    const controller = new AbortController();
+    this._operationAbort = controller;
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    let delay = 2000, retry = true;
+    try {
+      if (!this._syncingOperation) {
+        const job = await Api.request('GET', this._url(`jobs/${encodeURIComponent(id)}`), null, { signal: controller.signal });
+        if (token !== this._token || this._operation?.id !== id) return;
+        if (this._operation.status === 'submission_failed') { retry = false; return; }
+        // An execute request can still be in flight; never submit it a second time.
+        if (job.status === 'prepared') {
+          if (Date.parse(job.plan.expiresAt) < Date.now()) {
+            this._pollError = null;
+            this._setOperation({ ...job, status: 'submission_failed', error: 'The plan expired before execution was confirmed. Review a new plan.' });
+            retry = false; return;
+          }
+          this._pollError = 'Execution has not been confirmed yet. Checking automatically; no duplicate request will be sent.';
+          this._operationFeedback(); return;
+        }
+        this._pollError = null;
+        this._operationCheckedAt = Date.now();
+        this._syncingOperation = !this._operationPending(job);
+        this._setOperation(job);
+      }
+      if (this._syncingOperation) {
+        await this._reloadOperationInventory(token, controller.signal);
+        if (token !== this._token || this._operation?.id !== id) return;
+        this._syncingOperation = false;
+        this._pollError = null;
+        this._setOperation(this._operation);
+        retry = false;
+      }
+    } catch (err) {
+      if (token !== this._token || this._operation?.id !== id) return;
+      if (this._operation.status === 'submission_failed') { retry = false; return; }
+      retry = ![401, 403, 404].includes(err.status);
+      delay = Math.max(2000, Math.min(60000, Number(err.body?.retryAfter || 0) * 1000));
+      this._pollError = `${this._syncingOperation ? 'Could not refresh service state' : 'Could not check operation status'}: ${err.name === 'AbortError' ? 'The request timed out' : err.message}. ${retry ? 'Retrying automatically; the last confirmed state is retained.' : 'Status monitoring stopped. Check access and refresh this page.'}`;
+      this._operationFeedback();
+    } finally {
+      clearTimeout(timeout);
+      if (this._operationAbort === controller) this._operationAbort = null;
+      if (token === this._token && this._operation?.id === id) {
+        this._operationPolling = false;
+        if (retry) this._operationTimer = setTimeout(() => this._pollOperation(token, id), delay);
+      }
+    }
+  },
+  _receivedJobs(jobs) {
+    this._jobsData = jobs;
+    const active = jobs.find(job => ['queued', 'running', 'needs_review'].includes(job.status));
+    if (active && (!this._operation || (!this._operationPending() && active.id !== this._operation.id))) this._watchOperation(active);
+    const recovered = jobs.find(job => job.id === this._operation?.id && job.status === 'rolled_back');
+    if (this._operation?.status === 'needs_review' && recovered) this._setOperation(recovered);
+    this._activeJob = this._operationPending() || this._syncingOperation || this._operation?.status === 'needs_review' ? this._operation : active;
+    if (this._operation) this._jobsData = [this._operation, ...jobs.filter(job => job.id !== this._operation.id)];
+    this._jobs(this._jobsData);
+  },
   async _refresh() {
     if (this._loading) return;
     const token = this._token;
+    const inventoryGeneration = this._inventoryGeneration;
     this._loading = true;
     try {
-      const [inventory, sample, jobs, catalog] = await Promise.all([
+      // Discover/resume operations even when metrics or inventory are unavailable.
+      const jobsRequest = Api.get(this._url('jobs')).then(jobs => { if (token === this._token) this._receivedJobs(jobs); });
+      const [inventory, sample, catalog] = await Promise.all([
         Api.get(this._url('inventory')), Api.get(this._url('metrics')),
-        Api.get(this._url('jobs')), Api.get(this._url('catalog')),
+        Api.get(this._url('catalog')), jobsRequest,
       ]);
       if (token !== this._token) return;
-      this._inventory = inventory;
-      this._activeJob = jobs.find(job => ['queued', 'running', 'needs_review'].includes(job.status));
+      if (inventoryGeneration === this._inventoryGeneration) this._inventory = inventory;
       this._catalogEntries = catalog;
       const host = this._hosts.find(h => h.id === this._hostId);
       this._container.querySelector('#compute-host').innerHTML = `<i class="fas fa-server"></i> Host <strong>${this._e(host?.name || inventory.hostName || inventory.hostId)}</strong> · Connected · ${this._e(inventory.architecture)} · Last sample ${this._e(new Date(sample.sampledAt).toLocaleString())}`;
@@ -99,7 +224,7 @@ const AIComputePage = {
       this._metrics(sample);
       this._workloads();
       this._catalog(catalog);
-      this._jobs(jobs);
+      this._jobs(this._jobsData);
       await this._history(token);
     } catch (err) {
       if (token === this._token) {
@@ -260,6 +385,7 @@ const AIComputePage = {
   async _preview(payload, fromForm = false) {
     const token = this._token, hostId = this._hostId;
     try {
+      if (this._activeJob) throw new Error('An AI operation is already active on this host. Follow its progress before starting another operation.');
       const result = await Api.post(this._url('plans'), payload);
       if (token !== this._token) throw new Error('Host changed. The plan was not submitted.');
       const plan = result.plan;
@@ -270,8 +396,27 @@ const AIComputePage = {
       const label = { start: 'Start service', stop: 'Stop service', restart: 'Restart service' }[payload.action] || 'Execute plan';
       if (await Modal.confirm(message, { title: 'Review AI operation', html: true, danger: plan.stop.length > 0 || ['stop','restart'].includes(payload.action), confirmText: label, width: '620px' })) {
         if (token !== this._token) throw new Error('Host changed. Create a fresh plan.');
-        await Api.post(`/ai-compute/plans/${result.id}/execute?hostId=${hostId}`, {});
-        await this._refresh();
+        this._pollError = null;
+        this._operationCheckedAt = null;
+        this._watchOperation({ ...result, status: 'submitting' });
+        try {
+          const accepted = await Api.post(`/ai-compute/plans/${result.id}/execute?hostId=${hostId}`, {});
+          if (token !== this._token) return;
+          if (this._operationPending()) {
+            this._pollError = null;
+            this._watchOperation({ ...result, ...accepted, status: accepted.status || 'queued' });
+          }
+        } catch (err) {
+          if (token !== this._token || !this._operationPending()) return;
+          if (err.status >= 400 && err.status < 500) {
+            clearTimeout(this._operationTimer); this._operationTimer = null;
+            this._operationAbort?.abort();
+            this._setOperation({ ...result, status: 'submission_failed', error: err.message });
+          } else {
+            this._pollError = `Confirmation was not received: ${err.message}. Checking operation status automatically; no duplicate request will be sent.`;
+            this._operationFeedback();
+          }
+        }
       }
     } catch (err) { if (fromForm) throw err; if (token === this._token) this._error(err); }
   },
@@ -285,11 +430,27 @@ const AIComputePage = {
       const job = jobs.find(j => j.id === b.dataset.rollback);
       if (!await Modal.confirm(`Restore previously running engines: ${job.stopped.map(s => s.name).join(', ') || 'none'}. The newly started engine will stop. Review current host activity before proceeding.`, { title: 'Recover interrupted operation', confirmText: 'Restore engines', danger: true })) return;
       if (token !== this._token) return;
-      try { await Api.post(url, {}); await this._refresh(); } catch (err) { this._error(err); }
+      try {
+        const restored = await Api.post(url, {});
+        if (token !== this._token) return;
+        this._pollError = null;
+        this._setOperation(restored);
+        await this._refresh();
+      } catch (err) { if (token === this._token) this._error(err); }
     }));
   },
   destroy() {
     clearInterval(this._timer);
+    clearTimeout(this._operationTimer);
+    this._operationAbort?.abort();
+    this._operationAbort = null;
+    this._operationTimer = null;
+    this._operationPolling = false;
+    this._operation = null;
+    this._jobsData = [];
+    this._syncingOperation = false;
+    this._pollError = null;
+    this._inventoryGeneration = 0;
     this._token = null;
     this._loading = false;
     this._activeJob = null;
