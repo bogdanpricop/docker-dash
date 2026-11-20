@@ -72,7 +72,7 @@ beforeEach(() => {
 });
 
 test('requested Ollama families have distinct immutable artifacts and explicit runtime eligibility', () => {
-  const entries = catalog.entries.filter(e => e.engine === 'ollama');
+  const entries = catalog.entries.filter(e => e.engine === 'ollama' && !e.integrationRequired);
   expect(entries).toHaveLength(14);
   expect(new Set(entries.map(e => e.id)).size).toBe(entries.length);
   for (const e of entries) {
@@ -423,4 +423,21 @@ test('rollback restores the stopped target restart policy so a failed start cann
   await service._internals.restore(row, client);
   expect(c.State.Running).toBe(false);
   expect(c.HostConfig.RestartPolicy.Name).toBe('no');
+});
+
+
+test('specialist catalog entries remain informative and cannot bypass download or deploy qualification', async () => {
+  const entries = catalog.entries.filter(e => e.integrationRequired);
+  expect(entries).toHaveLength(14);
+  const cards = await service.catalogForHost(host);
+  for (const entry of entries) {
+    expect(cards.find(e => e.id === entry.id)).not.toHaveProperty('cacheState');
+    for (const action of ['deploy', 'download']) {
+      await expect(service.prepare(host, { action, catalogId: entry.id, contextLength: 4096, port: 18000 }, user)).rejects.toThrow('Select a standard recipe');
+    }
+  }
+  expect(service.jobs(host)).toEqual([]);
+  expect(docker.pullImage).not.toHaveBeenCalled();
+  expect(secureRuntime.ensure).not.toHaveBeenCalled();
+  expect(calls).toEqual([]);
 });

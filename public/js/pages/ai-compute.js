@@ -47,7 +47,7 @@ const AIComputePage = {
         <div id="compute-operation" role="status" aria-live="polite" aria-atomic="true" hidden style="margin:12px 16px;padding:12px;border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:6px"></div>
         <div class="card-body" id="compute-workloads" style="overflow:auto"></div></div>
       <div class="card" style="margin-top:16px"><div class="card-header"><h3>Model catalog</h3></div>
-        <div class="card-body"><p class="text-muted text-sm">Recipes pin model revisions and their serving runtime. Download prepares weights without starting inference; Plan deploy starts a service with a local API. Memory/disk budgets are estimates and checked before starting. Downloaded weights are retained after Stop.</p>
+        <div class="card-body"><p class="text-muted text-sm">Standard recipes pin model revisions and their serving runtime. Specialist entries marked Integration required describe future service integrations; open their information button for use cases, source descriptions and requirements. Download prepares weights without starting inference; Plan deploy starts a service with a local API. Memory/disk budgets are estimates and checked before starting. Downloaded weights are retained after Stop.</p>
         <div id="compute-catalog" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px"></div></div></div>
       <div class="card" style="margin-top:16px"><div class="card-header"><h3>Operation history</h3></div><div class="card-body" id="compute-jobs" aria-live="polite"></div></div>`;
     container.querySelector('#compute-refresh').addEventListener('click', () => this.render(container));
@@ -408,18 +408,57 @@ const AIComputePage = {
       else await this._refresh();
     }, nextAction ? `Save profile and review ${nextAction}` : 'Save profile');
   },
+  _modelLink(value) {
+    try {
+      const url = new URL(value);
+      if (url.protocol === 'https:' && !url.username && !url.password && !url.port
+        && ['huggingface.co', 'ollama.com', 'hf.co', 'github.com'].includes(url.hostname)) return url.href;
+    } catch { /* Untrusted or malformed source links are not rendered. */ }
+    return null;
+  },
+  _modelStatus(entry) {
+    return entry.integrationRequired ? 'Integration required' : entry.deployable ? 'Standard recipe' : entry.downloadable ? 'Download only' : 'Experimental';
+  },
+  _modelInfo(entry) {
+    const token = this._token, details = entry.details || {};
+    const list = values => Array.isArray(values) && values.length ? `<ul style="padding-left:20px">${values.map(v => `<li style="margin:6px 0">${this._e(v)}</li>`).join('')}</ul>` : '';
+    const links = (Array.isArray(details.sources) ? details.sources : [{ label: 'Project / model card', url: entry.source }])
+      .flatMap(source => { const url = this._modelLink(source.url); return url ? [`<li style="margin:6px 0"><a href="${this._e(url)}" target="_blank" rel="noopener noreferrer">${this._e(source.label)} <i class="fas fa-external-link-alt" aria-hidden="true"></i></a></li>`] : []; });
+    Modal.open(`<div class="modal-header"><h3 style="overflow-wrap:anywhere">${this._e(entry.name)}</h3><button type="button" class="modal-close-btn" id="compute-model-info-x" aria-label="Close dialog"><i class="fas fa-times" aria-hidden="true"></i></button></div>
+      <div class="modal-body" style="max-height:70vh;overflow:auto;overflow-wrap:anywhere">
+        <p><span class="badge ${entry.deployable ? 'badge-success' : 'badge-warning'}">${this._modelStatus(entry)}</span> ${entry.capability ? `<span class="badge">${this._e(entry.capability)}</span>` : ''}</p>
+        <section aria-labelledby="compute-model-problem"><h4 id="compute-model-problem">Problem it can solve</h4><p>${this._e(details.problem || 'Review the source model card for the intended use cases.')}</p></section>
+        <section aria-labelledby="compute-model-integration" style="margin-top:18px"><h4 id="compute-model-integration">What integration requires</h4>${list(details.integration) || `<p>${this._e(entry.reason || 'Connect a client application to the model API and validate it with representative inputs.')}</p>`}</section>
+        <section aria-labelledby="compute-model-description" style="margin-top:18px"><h4 id="compute-model-description">About the model · source summary</h4><p>${this._e(details.summary || 'See the original project description using the source links below.')}</p></section>
+        ${details.notes?.length ? `<section aria-labelledby="compute-model-notes" style="margin-top:18px"><h4 id="compute-model-notes">Notes and limitations</h4>${list(details.notes)}</section>` : ''}
+        <dl style="display:grid;grid-template-columns:minmax(80px,1fr) minmax(0,2fr);gap:8px 16px;margin-top:18px"><dt class="text-muted">License</dt><dd style="margin:0">${this._e(entry.license || 'See upstream terms')}</dd>
+          ${entry.sourceRevision ? `<dt class="text-muted">Reviewed source</dt><dd style="margin:0"><code>${this._e(entry.sourceRevision)}</code><br>Source metadata reference; not a qualified serving artifact.</dd>` : ''}</dl>
+        ${entry.integrationRequired ? '<p class="text-warning">Catalog information is available. Managed download and deployment require a pinned recipe and runtime qualification; they are not enabled for this entry yet.</p>' : ''}
+        <h4 style="margin-top:18px">Sources</h4><ul style="padding-left:20px">${links.join('')}</ul>
+        ${details.reviewedAt ? `<p class="text-muted text-sm">Description reviewed ${this._e(details.reviewedAt)}. Summaries are paraphrased from the linked sources; use cases and integration steps are application proposals.</p>` : ''}
+      </div><div class="modal-footer"><button type="button" class="btn btn-secondary" id="compute-model-info-close">Close</button></div>`,
+    { width: '660px', onClose: () => {
+      // Restore the current card after the modal's own saved-element restoration.
+      // A refresh may have replaced that element; a newly opened dialog keeps focus.
+      queueMicrotask(() => {
+        if (token === this._token && Modal._overlay?.hasAttribute('inert')) this._container.querySelector(`[data-model-info="${CSS.escape(entry.id)}"]`)?.focus();
+      });
+    } });
+    for (const id of ['compute-model-info-x', 'compute-model-info-close']) document.getElementById(id).addEventListener('click', () => Modal.close());
+  },
   _catalog(entries) {
     const el = this._container.querySelector('#compute-catalog');
-    el.innerHTML = entries.map(entry => `<div class="card" id="compute-recipe-${this._e(entry.id)}"><div class="card-body"><span class="badge ${entry.deployable ? 'badge-success' : 'badge-warning'}">${entry.deployable ? 'Standard recipe' : 'Experimental'}</span> ${entry.capability ? `<span class="badge">${this._e(entry.capability)}</span>` : ''}<h3>${this._e(entry.name)}</h3>
+    el.innerHTML = entries.map(entry => `<div class="card" id="compute-recipe-${this._e(entry.id)}"><div class="card-body"><span class="badge ${entry.deployable ? 'badge-success' : 'badge-warning'}">${this._modelStatus(entry)}</span> ${entry.capability ? `<span class="badge">${this._e(entry.capability)}</span>` : ''}<div style="display:flex;align-items:center;gap:8px;margin:12px 0"><h3 style="margin:0;flex:1;min-width:0;overflow-wrap:anywhere">${this._e(entry.name)}</h3><button type="button" class="btn btn-sm btn-ghost" style="padding:2px 5px;min-width:24px" data-model-info="${this._e(entry.id)}" title="Model information" aria-label="Information about ${this._e(entry.name)}" aria-haspopup="dialog"><i class="fas fa-info-circle" aria-hidden="true"></i></button></div>
       <p class="text-sm">${this._e(entry.model || entry.name)}${entry.quantization ? ' · ' + this._e(entry.quantization) : ''}</p>
       <p class="text-sm">${entry.memoryBytes ? `${this._bytes(entry.memoryBytes)} memory · ${this._bytes(entry.diskBytes)} disk (estimates)` : 'Resources require qualification'}</p>
       <p class="text-muted text-sm">${this._e(entry.reason || `${entry.license} · pinned weights · ${entry.runtimeVersion || 'ARM64 NVIDIA vLLM'}`)}</p>
       ${entry.successorId ? `<p class="text-sm">Newer generation: <a href="#" data-successor="${this._e(entry.successorId)}">${this._e(entries.find(e => e.id === entry.successorId)?.name || entry.successorId)}</a>. Kept as a separate recipe.</p>` : ''}
       ${entry.cacheState ? `<p class="text-sm" data-cache-state="${this._e(entry.id)}"><strong>${this._e({ downloaded: 'Downloaded · pinned revision verified', not_downloaded: 'Not downloaded', unavailable: 'Cache status unavailable' }[entry.cacheState])}</strong>${entry.cacheError ? '<br>' + this._e(entry.cacheError) : ''}</p>` : ''}
-      ${entry.verifiedAt ? `<p class="text-muted text-sm">Version checked ${this._e(entry.verifiedAt)} · <code title="${this._e(entry.revision)}">${this._e(entry.revision.slice(0, 19))}…</code></p>` : ''}
-      <a href="${this._e(entry.source)}" target="_blank" rel="noopener noreferrer">Project / model card</a>
+      ${entry.verifiedAt && entry.revision ? `<p class="text-muted text-sm">Version checked ${this._e(entry.verifiedAt)} · <code title="${this._e(entry.revision)}">${this._e(entry.revision.slice(0, 19))}…</code></p>` : ''}
+      ${this._modelLink(entry.source) ? `<a href="${this._e(this._modelLink(entry.source))}" target="_blank" rel="noopener noreferrer">Project / model card</a>` : '<span class="text-muted">Source link unavailable</span>'}
       ${entry.downloadable ? `<button type="button" class="btn btn-sm btn-secondary" data-download="${this._e(entry.id)}" style="margin-left:12px" ${entry.cacheState === 'downloaded' || entry.runtimeAvailable === false || this._activeJob ? 'disabled' : ''}>${entry.cacheState === 'downloaded' ? 'Downloaded' : 'Download'}</button>` : ''}
       ${entry.deployable ? `<button type="button" class="btn btn-sm btn-primary" data-deploy="${this._e(entry.id)}" style="margin-left:12px" ${entry.runtimeAvailable === false || this._activeJob ? 'disabled' : ''}>Plan deploy</button>` : ''}</div></div>`).join('');
+    el.querySelectorAll('[data-model-info]').forEach(button => button.addEventListener('click', () => this._modelInfo(entries.find(entry => entry.id === button.dataset.modelInfo))));
     el.querySelectorAll('[data-successor]').forEach(link => link.addEventListener('click', event => {
       event.preventDefault();
       document.getElementById('compute-recipe-' + link.dataset.successor)?.scrollIntoView({ behavior: 'smooth', block: 'center' });

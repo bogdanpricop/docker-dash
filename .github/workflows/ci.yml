@@ -79,6 +79,7 @@ jobs:
           node scripts/check-nav-pins-browser.js
           node scripts/check-rollback-history-browser.js
           node scripts/check-ai-compute-browser.js
+          node scripts/check-ai-catalog-browser.js
           npm run check:inventory-browser
 
       - name: Check for high and critical vulnerabilities (production deps only)

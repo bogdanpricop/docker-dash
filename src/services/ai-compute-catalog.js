@@ -33,5 +33,9 @@ const photon = { id: 'photon-moondream31', name: 'Moondream 3.1 · 9B A2B', mode
   ] };
 
 const ollama = require('./ai-compute-ollama-catalog.json').map(entry => ({ ...entry, runtime: ollamaRuntime, runtimeVersion: 'Ollama 0.40.16 · security build 1', architectures: ['arm64', 'amd64'] }));
+const specialists = require('./ai-compute-specialist-catalog.json');
+const information = require('./ai-compute-model-info.json');
+const entries = [...standard, ...ollama, photon, ...experimental, ...specialists]
+  .map(entry => ({ ...entry, details: information[entry.id] || entry.details }));
 
-module.exports = { entries: [...standard, ...ollama, photon, ...experimental], runtime, ollamaRuntime, GiB };
+module.exports = { entries, runtime, ollamaRuntime, GiB };
