@@ -23,7 +23,7 @@ async function main() {
     for (const script of ['/lib/chart.umd.min.js', '/js/utils.js', '/js/components/modal.js', '/js/pages/ai-compute.js']) await page.addScriptTag({ url: base + script });
     await page.evaluate(async () => {
       window.hostId = 0; window.submissions = []; window.computeRequests=[];
-      window.computeHosts=[{ id:9,name:'DGX Spark',recommended:true,reason:'GPU detected' },{ id:10,name:'Other host',recommended:false,reason:'SSH configured' }];
+      window.computeHosts=[{ id:9,name:'DGX Spark',connectionType:'ssh',recommended:true,reason:'GPU detected' },{ id:10,name:'Other host',recommended:false,reason:'SSH configured' }];
       window.App = { user: { role: 'admin' }, _hostSelectorHosts: [{ id: 9, name: 'DGX Spark' }, { id: 10, name: 'Other host' }],
         _initHostSelector:async()=>{},_activateHost:(id,route)=>{window.fullLogsNavigation={id,route};} };
       window.i18n = { t: key => key };
@@ -37,6 +37,7 @@ async function main() {
           window.computeRequests.push(url);
           const requested=Number(new URL(url,'http://test').searchParams.get('hostId'));
           if(![9,10].includes(requested))throw new Error('Compute request did not select its own host');
+          if(url.includes('/connection')) { if(window.deferConnection) await new Promise(resolve => { window.resolveConnection=resolve; }); return { name:'DGX <img src=x onerror=alert(1)>', configurationAvailable:true, endpoint:'172.23.0.1',port:12223,authentication:'SSH key',socket:'/var/run/docker.sock',fingerprint:'SHA256:public',recordStatus:'recorded',deployment:{title:'Private tunnel',route:['DGX → VPS'],protections:['Key-only account <img src=x>'],operations:['Keepalives'],verifiedAt:new Date().toISOString()}}; }
           if(url.includes('/containers/'))return {lines:['safe <img src=x onerror=alert(1)> log'],truncated:false};
           if (url.includes('/inventory')) {
             if (window.failOperationInventory && AIComputePage._syncingOperation) { window.failOperationInventory = false; throw new Error('Temporary Docker connection outage'); }
@@ -78,6 +79,12 @@ async function main() {
       await AIComputePage.render(document.getElementById('test'));
     });
     assert.match(await page.$eval('#compute-host', e => e.textContent), /DGX Spark.*Connected.*aarch64/);
+    await page.click('#compute-connection-info');
+    await page.waitForSelector('#compute-connection-close');
+    assert.match(await page.$eval('#modal-content', e => e.textContent), /Private tunnel.*172.23.0.1:12223.*Docker socket.*SHA256:public.*Security controls.*Access and availability.*Deployment inspected/s);
+    assert.equal(await page.$('#modal-content img'), null);
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => document.activeElement.id === 'compute-connection-info');
     assert.equal(await page.evaluate(()=>window.hostId),0);
     await page.evaluate(async()=>{window.hostId=10;await AIComputePage.render(document.getElementById('test'));});
     assert.equal(await page.$eval('#compute-target',e=>e.value),'9');
@@ -224,11 +231,40 @@ async function main() {
     await page.waitForFunction(()=>document.querySelector('#compute-host').textContent.includes('DGX Spark'));
     assert.equal(await page.$eval('#compute-target',e=>e.value),'9');
     assert.equal(await page.evaluate(()=>window.hostId),111);
+    // Downloads have their own confirmation and leave live service controls usable.
+    await page.evaluate(() => {
+      AIComputePage._catalog([{ id:'embed',name:'Nomic embedding',model:'nomic-embed-text:v1.5',capability:'embedding',engine:'ollama',runtimeVersion:'0.40.16',source:'https://ollama.com/library/nomic-embed-text',downloadable:true,deployable:true,contextLengths:[2048],memoryBytes:3*1024**3,diskBytes:1024**3,cacheState:'not_downloaded' },
+        {id:'unavailable',name:'Photon',engine:'photon',source:'https://docs.moondream.ai',downloadable:true,deployable:true,runtimeAvailable:false,contextLengths:[4096]}]);
+    });
+    assert.equal(await page.$eval('[data-download="unavailable"]', e => e.disabled),true);
+    assert.equal(await page.$eval('[data-deploy="unavailable"]', e => e.disabled),true);
+    await page.click('[data-download="embed"]');
+    await page.waitForSelector('#modal-ok');
+    assert.match(await page.$eval('#modal-content',e=>e.textContent),/persistent cache.*does not load/s);
+    assert.equal(await page.$eval('#modal-ok',e=>e.textContent.trim()),'Download model');
+    await page.click('#modal-ok');
+    await page.waitForFunction(()=>AIComputePage._operation?.action==='download');
+    assert.equal(await page.$eval('[data-operation="stop"]',e=>e.disabled),false);
+    await page.evaluate(()=>{computeJobs[0].status='running';computeJobs[0].progress={message:'Downloading 42% <img src=x>'};});
+    await page.waitForFunction(()=>document.querySelector('#compute-operation').textContent.includes('Downloading 42%'),{timeout:4000});
+    assert.equal(await page.$('#compute-operation img'),null);
+    await page.evaluate(()=>{computeJobs[0].status='completed';});
+    await page.waitForFunction(()=>AIComputePage._operation?.status==='completed',{timeout:4000});
     await page.evaluate(() => { AIComputePage._watchOperation({ ...preparedPlan, id: 'destroy-job', status: 'queued' }); AIComputePage.destroy(); });
     assert.equal(await page.evaluate(() => AIComputePage._charts.length), 0);
     assert.equal(await page.evaluate(async () => { const n = jobReads.length; await new Promise(r => setTimeout(r, 2200)); return jobReads.length === n; }), true);
     assert.deepEqual(errors, []);
     if (process.env.DD_BROWSER_SCREENSHOT) await page.screenshot({ path: process.env.DD_BROWSER_SCREENSHOT, fullPage: true });
+    await page.evaluate(async () => { window.computeHosts.push({id:10,name:'Other host',connectionType:'ssh',reason:'SSH configured'}); localStorage.setItem('dd-ai-compute-host','9'); await AIComputePage.render(document.getElementById('test')); window.deferConnection=true; });
+    await page.click('#compute-connection-info');
+    await page.waitForFunction(() => Boolean(window.resolveConnection));
+    await page.evaluate(async () => { localStorage.setItem('dd-ai-compute-host','10'); await AIComputePage.render(document.getElementById('test')); window.resolveConnection(); });
+    await new Promise(resolve => setTimeout(resolve, 250));
+    assert.equal(await page.$('#compute-connection-close'), null);
+    await page.evaluate(async () => { window.deferConnection=false; window.failMetrics=true; await AIComputePage._refresh(); });
+    assert.match(await page.$eval('#compute-host', e => e.textContent), /Connection unavailable/);
+    assert.ok(await page.$('#compute-connection-info'));
+    assert.deepEqual(errors, []);
     console.log('AI Compute browser: immediate feedback, serialized 2s job polling, automatic completion/error refresh, outage recovery, terminal cleanup, host/disposal guards and existing service controls passed.');
   } finally { if (browser) await browser.close(); await new Promise(resolve => server.close(resolve)); }
 }

@@ -6,11 +6,17 @@ jest.mock('../services/docker', () => ({ getDocker: jest.fn(), pullImage: jest.f
 jest.mock('../services/ai-compute-metrics', () => ({ sample: jest.fn() }));
 jest.mock('../services/provider-operations/policy', () => ({ assertAllowed: jest.fn() }));
 jest.mock('../services/audit', () => ({ log: jest.fn() }));
+jest.mock('../services/ai-compute-ollama', () => ({ ...jest.requireActual('../services/ai-compute-ollama'), states: jest.fn(), download: jest.fn(), warm: jest.fn(), probe: jest.fn() }));
+jest.mock('../services/ai-compute-photon', () => ({ ...jest.requireActual('../services/ai-compute-photon'), state: jest.fn() }));
+jest.mock('../services/ai-compute-runtime', () => ({ ...jest.requireActual('../services/ai-compute-runtime'), find: jest.fn(), ensure: jest.fn() }));
 const { getDb, closeDb } = require('../db');
 const docker = require('../services/docker');
 const metrics = require('../services/ai-compute-metrics');
 const policy = require('../services/provider-operations/policy');
 const service = require('../services/ai-compute');
+const ollama = require('../services/ai-compute-ollama');
+const catalog = require('../services/ai-compute-catalog');
+const secureRuntime = require('../services/ai-compute-runtime');
 const { PassThrough } = require('stream');
 const GiB = 1024 ** 3;
 let db, user, host, otherHost, containers, calls, client;
@@ -58,6 +64,145 @@ beforeEach(() => {
   metrics.sample.mockReset().mockResolvedValue({ sampledAt: new Date().toISOString(), memory: { totalBytes: 128 * GiB, availableBytes: 80 * GiB },
     disk: { availableBytes: 100 * GiB }, cacheDisk: { availableBytes: 100 * GiB }, gpu: { name: 'NVIDIA GB10' } });
   policy.assertAllowed.mockReset();
+  ollama.states.mockResolvedValue([]);
+  ollama.download.mockReset().mockResolvedValue();
+  ollama.warm.mockReset().mockResolvedValue();
+  secureRuntime.find.mockReset().mockResolvedValue({ Id: 'hardened', Architecture: 'arm64' });
+  secureRuntime.ensure.mockReset().mockResolvedValue('hardened');
+});
+
+test('requested Ollama families have distinct immutable artifacts and explicit runtime eligibility', () => {
+  const entries = catalog.entries.filter(e => e.engine === 'ollama');
+  expect(entries).toHaveLength(14);
+  expect(new Set(entries.map(e => e.id)).size).toBe(entries.length);
+  for (const e of entries) {
+    expect(e.downloadable).toBe(true);
+    expect(e.revision).toMatch(/^sha256:[a-f0-9]{64}$/);
+    expect(e.runtime).toMatch(/^ollama\/ollama@sha256:[a-f0-9]{64}$/);
+    expect(e.downloadBytes).toBeGreaterThan(0);
+    expect(e.model).not.toMatch(/mlx/i);
+  }
+  expect(entries.find(e => e.id === 'ollama-moondream').successorId).toBe('photon-moondream31');
+  expect(entries.filter(e => e.deployable)).toHaveLength(13);
+  expect(entries.find(e => e.id === 'ollama-llama3-2-vision')).toMatchObject({ deployable: false, reason: expect.stringContaining('mllama') });
+});
+
+test('model download is CPU-only and does not require a GPU or snapshot running engines', async () => {
+  makeContainer('current-vllm', 'vllm', true);
+  metrics.sample.mockResolvedValue({ sampledAt: new Date().toISOString(), memory: null, gpu: null, cacheDisk: { availableBytes: 1000 * GiB } });
+  const op = await service.prepare(host, { action: 'download', catalogId: 'ollama-qwen3-8-flash-next' }, user);
+  expect(op.plan).toMatchObject({ stop: [], snapshots: [], target: { memoryBytes: 0, exclusive: false } });
+  expect(calls).toEqual([]);
+  expect(op.plan.downloadBytes).toBeGreaterThan(100 * GiB);
+});
+
+test('oversized Flash GGUF stays downloadable but deploy respects the host reserve', async () => {
+  metrics.sample.mockResolvedValue({ sampledAt: new Date().toISOString(), memory: { totalBytes: 121.7 * GiB, availableBytes: 121 * GiB }, gpu: { name: 'GB10' }, cacheDisk: { availableBytes: 1000 * GiB } });
+  await expect(service.prepare(host, { action: 'deploy', catalogId: 'ollama-qwen3-8-flash-next', contextLength: 4096, port: 18000 }, user)).rejects.toThrow('Insufficient estimated memory');
+});
+
+test('download queue accepts different models and prevents duplicate model requests', async () => {
+  const first = await service.prepare(host, { action: 'download', catalogId: 'ollama-nomic-embed-text' }, user);
+  const second = await service.prepare(host, { action: 'download', catalogId: 'ollama-moondream' }, user);
+  const duplicate = await service.prepare(host, { action: 'download', catalogId: 'ollama-nomic-embed-text' }, user);
+  service.execute(host, first.id, user); service.execute(host, second.id, user);
+  expect(() => service.execute(host, duplicate.id, user)).toThrow('already queued');
+  expect(service.jobs(host).filter(j => j.status === 'queued')).toHaveLength(2);
+});
+
+test('long-running download does not block a confirmed stop on the same host', async () => {
+  const target = makeContainer('current-vllm', 'vllm', true), profileId = profile(target);
+  const op = await service.prepare(host, { action: 'download', catalogId: 'ollama-nomic-embed-text' }, user);
+  client.getImage = () => ({ inspect: async () => ({ Id: 'image', Architecture: 'arm64' }) });
+  let finish, started;
+  const ready = new Promise(resolve => { started = resolve; });
+  ollama.download.mockImplementation(async (_client,_recipe,_image,check,progress) => { check(); progress('42%'); started(); await new Promise(resolve => { finish = resolve; }); });
+  service.execute(host, op.id, user);
+  const active = service.downloadTick();
+  await ready;
+  try {
+    expect(service.getJob(host, op.id)).toMatchObject({ status: 'running', progress: { message: '42%' } });
+    const stop = await service.prepare(host, { action: 'stop', profileId }, user);
+    service.execute(host, stop.id, user); await service.tick();
+    expect(service.getJob(host, stop.id).status).toBe('completed');
+    expect(target.State.Running).toBe(false);
+  } finally { finish(); await active; }
+  expect(service.getJob(host, op.id).status).toBe('completed');
+  expect(calls.filter(c => c[0] === 'stop')).toHaveLength(1);
+});
+
+test('catalog drift rejects an already reviewed download before pulling or mutating engines', async () => {
+  const op = await service.prepare(host, { action: 'download', catalogId: 'ollama-nomic-embed-text' }, user);
+  const plan = { ...op.plan, recipeRevision: 'sha256:' + '0'.repeat(64) };
+  db.prepare('UPDATE ai_compute_jobs SET plan_json=? WHERE id=?').run(JSON.stringify(plan), op.id);
+  service.execute(host, op.id, user); await service.downloadTick();
+  expect(service.getJob(host, op.id)).toMatchObject({ status: 'failed', error: expect.stringContaining('catalog recipe changed') });
+  expect(docker.pullImage).not.toHaveBeenCalled(); expect(ollama.download).not.toHaveBeenCalled();
+  expect(calls).toEqual([]);
+});
+
+test('Moondream 3.1 remains download-only after the GPU kernel qualification failure', async () => {
+  await expect(service.prepare(host, { action: 'deploy', catalogId: 'photon-moondream31', contextLength: 4096, port: 18000 }, user)).rejects.toThrow('Select a standard recipe');
+  const op = await service.prepare(host, { action: 'download', catalogId: 'photon-moondream31' }, user);
+  expect(op.plan).toMatchObject({ recipeId: 'photon-moondream31', stop: [], target: { memoryBytes: 0 } });
+});
+
+test('the incompatible upstream mllama artifact cannot be deployed but can still be downloaded', async () => {
+  await expect(service.prepare(host, { action: 'deploy', catalogId: 'ollama-llama3-2-vision', contextLength: 4096, port: 18000 }, user)).rejects.toThrow('Select a standard recipe');
+  expect((await service.prepare(host, { action: 'download', catalogId: 'ollama-llama3-2-vision' }, user)).plan.stop).toEqual([]);
+});
+
+test('catalog cache status does not claim verification for a mislabeled alias', async () => {
+  client.getImage = () => ({ inspect: async () => ({}) });
+  const entry = catalog.entries.find(e => e.id === 'ollama-nomic-embed-text');
+  ollama.states.mockResolvedValue([{ name: entry.alias, digest: '0'.repeat(12) }]);
+  expect((await service.catalogForHost(host)).find(e => e.id === entry.id).cacheState).toBe('not_downloaded');
+  ollama.states.mockResolvedValue([{ name: entry.alias, digest: entry.revision.slice(7,19) }]);
+  expect((await service.catalogForHost(host)).find(e => e.id === entry.id).cacheState).toBe('downloaded');
+});
+
+test('an offline host still exposes reviewed catalog metadata without cache side effects', async () => {
+  docker.getDocker.mockImplementationOnce(() => { throw new Error('SSH connection not ready'); });
+  const result = await service.catalogForHost(host);
+  expect(result.find(e => e.id === 'ollama-nomic-embed-text')).toMatchObject({ cacheState: 'unavailable', cacheError: 'SSH connection not ready', downloadable: true });
+  expect(ollama.states).not.toHaveBeenCalled();
+});
+
+test('the first security runtime build requires a real CPU memory budget', async () => {
+  secureRuntime.find.mockResolvedValue(null);
+  metrics.sample.mockResolvedValue({ sampledAt: new Date().toISOString(), memory: { availableBytes: 4 * GiB }, gpu: null, cacheDisk: { availableBytes: 100 * GiB } });
+  await expect(service.prepare(host, { action: 'download', catalogId: 'ollama-nomic-embed-text' }, user)).rejects.toThrow('8 GiB');
+  expect(secureRuntime.ensure).not.toHaveBeenCalled(); expect(calls).toEqual([]);
+});
+
+test('large model cache space cannot hide a full Docker runtime build filesystem', async () => {
+  secureRuntime.find.mockResolvedValue(null);
+  metrics.sample.mockResolvedValue({ sampledAt: new Date().toISOString(), memory: { availableBytes: 80 * GiB }, gpu: null,
+    cacheDisk: { availableBytes: 1000 * GiB }, runtimeDisk: { availableBytes: GiB } });
+  await expect(service.prepare(host, { action: 'download', catalogId: 'ollama-nomic-embed-text' }, user)).rejects.toThrow('Docker runtime filesystem');
+  expect(secureRuntime.ensure).not.toHaveBeenCalled();
+});
+
+test('a stale security build recipe is rejected before pulling or modifying services', async () => {
+  const op = await service.prepare(host, { action: 'download', catalogId: 'ollama-nomic-embed-text' }, user);
+  db.prepare('UPDATE ai_compute_jobs SET plan_json=? WHERE id=?').run(JSON.stringify({ ...op.plan, runtimeRecipe: 'changed' }), op.id);
+  service.execute(host, op.id, user); await service.downloadTick();
+  expect(service.getJob(host, op.id)).toMatchObject({ status: 'failed', error: expect.stringContaining('security runtime recipe changed') });
+  expect(docker.pullImage).not.toHaveBeenCalled(); expect(calls).toEqual([]);
+});
+
+test('legacy managed runtimes can be stopped but cannot silently restart without the security update', async () => {
+  const c = makeContainer('legacy-managed-ollama','ollama',true);c.Config.Labels['docker-dash.ai-compute.catalog']='ollama-nomic-embed-text';
+  const id=profile(c,false); client.getImage=()=>({inspect:async()=>({Config:{Labels:{}}})});
+  await expect(service.prepare(host,{action:'restart',profileId:id},user)).rejects.toThrow('predates the current security runtime');
+  expect((await service.prepare(host,{action:'stop',profileId:id},user)).plan.target.id).toBe(c.Id);
+  expect(calls).toEqual([]);
+});
+
+test('a cache container is excluded even when its name contains an engine', async () => {
+  const c = makeContainer('ollama-cache', 'ollama', true);
+  c.Config.Labels['docker-dash.ai-compute.role'] = 'cache';
+  expect(service._internals.engineOf(c)).toBeNull();
 });
 
 test('inventory recognizes engines but excludes speech gateway and tunnel infrastructure', async () => {

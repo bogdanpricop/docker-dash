@@ -38,3 +38,10 @@ test('missing host fields never produce fabricated zero-valued metrics', () => {
   const result = decode('', {});
   expect(result.memory).toBeNull(); expect(result.gpu).toBeNull(); expect(result.disk).toBeNull(); expect(result.cpuPercent).toBeNull();
 });
+
+test('the Docker build filesystem stays separate from host root and model cache space', () => {
+  const result = decode(output + 'CACHEDISK\n900000 800000\nRUNTIMEDISK\n700000 600000\n', {});
+  expect(result.cacheDisk.availableBytes).toBe(800000);
+  expect(result.runtimeDisk.availableBytes).toBe(600000);
+  expect(result.disk.availableBytes).toBe(3000000000000);
+});
