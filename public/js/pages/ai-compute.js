@@ -49,7 +49,7 @@ const AIComputePage = {
         <div class="card-body"><p class="text-muted text-sm">Standard recipes use pinned model revisions, a reviewed NVIDIA ARM64 runtime and a shared model cache. Memory/disk budgets are estimates; live checks run before starting. APIs bind to host loopback.</p>
         <div id="compute-catalog" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px"></div></div></div>
       <div class="card" style="margin-top:16px"><div class="card-header"><h3>Operation history</h3></div><div class="card-body" id="compute-jobs" aria-live="polite"></div></div>`;
-    container.querySelector('#compute-refresh').addEventListener('click', () => this._refresh());
+    container.querySelector('#compute-refresh').addEventListener('click', () => this.render(container));
     container.querySelector('#compute-target').addEventListener('change', event => {
       localStorage.setItem('dd-ai-compute-host', event.target.value);
       this.render(container);
@@ -157,8 +157,16 @@ const AIComputePage = {
       try {
         const result = await Api.get(`/containers/${c.id}/logs?tail=200&hostId=${hostId}`);
         if (token !== this._token) return;
-        Modal.open(`<div class="modal-header"><h2>${this._e(c.name)} · Logs</h2></div><div class="modal-body"><p>Host: ${this._e(this._hosts.find(h => h.id === hostId)?.name)} · Last 200 lines${result.truncated ? ' · Truncated' : ''}</p><pre style="white-space:pre-wrap;overflow:auto;max-height:60vh">${this._e(result.lines.join('\n') || 'No log lines available.')}</pre></div><div class="modal-footer"><button type="button" class="btn btn-secondary" id="compute-logs-close">Close</button></div>`, { width: '900px' });
+        Modal.open(`<div class="modal-header"><h2>${this._e(c.name)} · Logs</h2></div><div class="modal-body"><p>Host: ${this._e(this._hosts.find(h => h.id === hostId)?.name)} · Last 200 lines${result.truncated ? ' · Truncated' : ''}</p><pre style="white-space:pre-wrap;overflow:auto;max-height:60vh">${this._e(result.lines.join('\n') || 'No log lines available.')}</pre></div><div class="modal-footer"><button type="button" class="btn btn-primary" id="compute-full-logs" title="Switch sidebar host and open the complete log viewer">Open full logs on this host</button><button type="button" class="btn btn-secondary" id="compute-logs-close">Close</button></div>`, { width: '900px' });
         Modal._content.querySelector('#compute-logs-close').addEventListener('click', () => Modal.close());
+        Modal._content.querySelector('#compute-full-logs').addEventListener('click', async () => {
+          try {
+            await App._initHostSelector();
+            if (token !== this._token) return;
+            Modal.close();
+            App._activateHost(hostId, `#/containers/${c.id}/logs`);
+          } catch (err) { if (token === this._token) this._error(err); }
+        });
       } catch (err) { if (token === this._token) this._error(err); }
       finally { b.disabled = false; }
     }));

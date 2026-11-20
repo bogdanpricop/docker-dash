@@ -24,7 +24,8 @@ async function main() {
     await page.evaluate(async () => {
       window.hostId = 0; window.submissions = []; window.computeRequests=[];
       window.computeHosts=[{ id:9,name:'DGX Spark',recommended:true,reason:'GPU detected' },{ id:10,name:'Other host',recommended:false,reason:'SSH configured' }];
-      window.App = { user: { role: 'admin' }, _hostSelectorHosts: [{ id: 9, name: 'DGX Spark' }, { id: 10, name: 'Other host' }] };
+      window.App = { user: { role: 'admin' }, _hostSelectorHosts: [{ id: 9, name: 'DGX Spark' }, { id: 10, name: 'Other host' }],
+        _initHostSelector:async()=>{},_activateHost:(id,route)=>{window.fullLogsNavigation={id,route};} };
       window.i18n = { t: key => key };
       const c = { id: 'a'.repeat(64), name: 'foliantstudio-vllm', model: 'Qwen/Qwen3-4B', engine: 'vllm', state: 'running', memoryBytes: 24 * 1024 ** 3, profileId: 3, readyPort: 8000, exclusive: true };
       window.Api = {
@@ -63,7 +64,9 @@ async function main() {
     assert.match(await page.$eval('#modal-content pre',e=>e.textContent),/<img/);
     assert.equal(await page.$('#modal-content img'),null);
     assert.equal(await page.evaluate(()=>computeRequests.filter(u=>u.includes('/containers/')).at(-1).endsWith('hostId=9')),true);
-    await page.click('#compute-logs-close');
+    await page.click('#compute-full-logs');
+    await page.waitForFunction(()=>window.fullLogsNavigation);
+    assert.deepEqual(await page.evaluate(()=>window.fullLogsNavigation),{id:9,route:'#/containers/'+'a'.repeat(64)+'/logs'});
     assert.match(await page.$eval('#compute-metrics', e => e.textContent), /Unified memory/);
     assert.equal(await page.$$eval('#compute-history canvas', nodes => nodes.length), 4);
     assert.equal(await page.evaluate(() => AIComputePage._charts[0].options.scales.x.type), 'linear');
@@ -96,7 +99,9 @@ async function main() {
     assert.match(await page.$eval('#compute-host', e => e.textContent), /Other host/);
     assert.equal(await page.$eval('#compute-range', e => e.value), '1');
     assert.equal(await page.evaluate(()=>window.hostId),0);
-    await page.evaluate(async()=>{window.computeHosts=window.computeHosts.filter(h=>h.id!==10);window.hostId=111;await AIComputePage.render(document.getElementById('test'));});
+    await page.evaluate(()=>{window.computeHosts=window.computeHosts.filter(h=>h.id!==10);window.hostId=111;});
+    await page.click('#compute-refresh');
+    await page.waitForFunction(()=>document.querySelector('#compute-host').textContent.includes('DGX Spark'));
     assert.equal(await page.$eval('#compute-target',e=>e.value),'9');
     assert.equal(await page.evaluate(()=>window.hostId),111);
     await page.evaluate(() => AIComputePage.destroy());
