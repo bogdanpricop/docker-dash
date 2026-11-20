@@ -22,7 +22,7 @@ const engines = ['vllm', 'ollama', 'llama', 'strata', 'basalt', 'ncm', 'speech']
 
 function hosts() {
   const rows = getDb().prepare(`SELECT h.id,h.name,h.connection_type,
-    CASE WHEN h.ssh_config IS NOT NULL AND h.ssh_config<>'' THEN 1 ELSE 0 END AS ssh_configured,
+    CASE WHEN h.ssh_config IS NOT NULL AND h.ssh_config NOT IN ('','{}','null') THEN 1 ELSE 0 END AS ssh_configured,
     COALESCE(a.monitoring,0) AS monitoring,
     EXISTS(SELECT 1 FROM ai_compute_profiles p WHERE p.host_id=h.id) AS has_profiles,
     (SELECT sample_json FROM ai_compute_samples s WHERE s.host_id=h.id ORDER BY bucket DESC LIMIT 1) AS sample

@@ -78,6 +78,8 @@ test('host discovery prioritizes configured AI devices without connecting or dis
   expect(result[0]).toMatchObject({ id: host, recommended: true, reason: 'Recording enabled', sshConfigured: true });
   expect(JSON.stringify(result)).not.toContain('private-credential');
   expect(docker.getDocker).not.toHaveBeenCalled();
+  db.prepare('UPDATE docker_hosts SET ssh_config=? WHERE id=?').run('{}',host);
+  expect(service.hosts().find(h=>h.id===host).sshConfigured).toBe(false);
   db.prepare('UPDATE docker_hosts SET ssh_config=NULL WHERE id=?').run(host);
 });
 
