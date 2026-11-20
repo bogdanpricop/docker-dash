@@ -57,8 +57,15 @@ async function manager(client, create = false, imageId) {
   if (info) {
     if (info.Config.Labels?.['docker-dash.ai-compute.role'] !== 'cache'
       || info.HostConfig.Privileged || info.HostConfig.NetworkMode === 'host' || info.HostConfig.DeviceRequests?.length
-      || Object.values(info.HostConfig.PortBindings || {}).some(ports => ports?.length) || (imageId && info.Image !== imageId)
+      || Object.values(info.HostConfig.PortBindings || {}).some(ports => ports?.length)
       || !info.Mounts?.some(m => m.Name === volumeName && m.Destination === '/models')) fail('The model cache service identity changed. Review it before continuing.');
+    if (imageId && info.Image !== imageId) {
+      const base = await client.getImage(catalog.ollamaRuntime).inspect();
+      if (info.Image !== base.Id || info.Config.Labels?.['docker-dash.ai-compute.managed'] !== 'true') fail('Review the previous model cache image before upgrading it.');
+      if (info.State.Running) await instance.stop({ t: 5 });
+      await instance.remove({ v: false });
+      return manager(client, true, imageId);
+    }
     if (!info.State.Running) { if (!create) return null; await instance.start(); }
   } else {
     try {

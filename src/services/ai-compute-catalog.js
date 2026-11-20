@@ -23,7 +23,7 @@ const experimental = [
 
 const photon = { id: 'photon-moondream31', name: 'Moondream 3.1 · 9B A2B', model: 'moondream/moondream3.1-9B-A2B',
   revision: '1da27e6c2d2f9118de14560df456881dc62d91f3', engine: 'photon', tier: 'experimental', capability: 'vision',
-  runtime: 'nvcr.io/nvidia/vllm@sha256:cb38bbefdbc3e9fe045f931dd72cbd58cd48985c7e09916bcc6c15c10f39b929', runtimeVersion: 'Photon 2.6.1 / Kestrel 0.9.1 qualification', architectures: ['arm64'],
+  runtime: ollamaRuntime, runtimeVersion: 'Download only · Photon qualification pending', architectures: ['arm64', 'amd64'],
   source: 'https://huggingface.co/moondream/moondream3.1-9B-A2B', license: 'moondream-model-license-1.0', verifiedAt: '2026-11-20',
   memoryBytes: 24 * GiB, diskBytes: 12 * GiB, downloadBytes: 10508963782, contextLengths: [4096,8192], downloadable: true, deployable: false, supersedes: 'ollama-moondream',
   reason: 'Latest official Moondream weights can be downloaded. Deployment is unavailable: the official Photon FP8 MoE kernels failed qualification on DGX GB10 / SM121. The Ollama Moondream 2 recipe remains separate.',
@@ -32,6 +32,6 @@ const photon = { id: 'photon-moondream31', name: 'Moondream 3.1 · 9B A2B', mode
     {"repo": "moondream/starmie-v1", "revision": "35192e10a54e36eabe0a7cc57a2c1aab371cafc5", "name": "tokenizer.json", "sha256": "0512fdcac4a5f9e7746cbefce4a468dc93bf0f93f11e701b84f8b31bff199e9c", "bytes": 3694206}
   ] };
 
-const ollama = require('./ai-compute-ollama-catalog.json').map(entry => ({ ...entry, runtime: ollamaRuntime, runtimeVersion: '0.40.16', architectures: ['arm64', 'amd64'] }));
+const ollama = require('./ai-compute-ollama-catalog.json').map(entry => ({ ...entry, runtime: ollamaRuntime, runtimeVersion: 'Ollama 0.40.16 · security build 1', architectures: ['arm64', 'amd64'] }));
 
 module.exports = { entries: [...standard, ...ollama, photon, ...experimental], runtime, ollamaRuntime, GiB };

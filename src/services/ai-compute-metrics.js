@@ -16,7 +16,7 @@ const parse = value => {
 };
 
 function decode(stdout, info, previous) {
-  const parts = Object.fromEntries([...stdout.matchAll(/^(CPU|MEM|DISK|NET|GPU|CACHEDISK)\n([\s\S]*?)(?=^(?:CPU|MEM|DISK|NET|GPU|CACHEDISK)\n|$(?![\s\S]))/gm)]
+  const parts = Object.fromEntries([...stdout.matchAll(/^(CPU|MEM|DISK|NET|GPU|CACHEDISK|RUNTIMEDISK)\n([\s\S]*?)(?=^(?:CPU|MEM|DISK|NET|GPU|CACHEDISK|RUNTIMEDISK)\n|$(?![\s\S]))/gm)]
     .map(match => [match[1], match[2]]));
   const memory = Object.fromEntries([...String(parts.MEM || '').matchAll(/^(MemTotal|MemAvailable|SwapTotal|SwapFree):\s+(\d+) kB/gm)]
     .map(match => [match[1], Number(match[2]) * 1024]));
@@ -27,6 +27,7 @@ function decode(stdout, info, previous) {
   const busy = delta > 0 ? 100 * (1 - (idle - previous.cpuIdle) / delta) : null;
   const disk = (parts.DISK || '').trim().split(/\s+/).map(parse);
   const cacheDisk = (parts.CACHEDISK || '').trim().split(/\s+/).map(parse);
+  const runtimeDisk = (parts.RUNTIMEDISK || '').trim().split(/\s+/).map(parse);
   const gpu = (parts.GPU || '').trim().split('\n')[0].split(',').map(value => value.trim());
   const unified = /GB10/i.test(gpu[0] || '');
   const network = [...String(parts.NET || '').matchAll(/^\s*([^:]+):\s*(.+)$/gm)]
@@ -41,6 +42,7 @@ function decode(stdout, info, previous) {
       swapTotalBytes: memory.SwapTotal ?? null, swapUsedBytes: memory.SwapTotal - memory.SwapFree } : null,
     disk: disk.length === 2 && disk.every(Number.isFinite) ? { totalBytes: disk[0], availableBytes: disk[1] } : null,
     cacheDisk: cacheDisk.length === 2 && cacheDisk.every(Number.isFinite) ? { totalBytes: cacheDisk[0], availableBytes: cacheDisk[1] } : null,
+    runtimeDisk: runtimeDisk.length === 2 && runtimeDisk.every(Number.isFinite) ? { totalBytes: runtimeDisk[0], availableBytes: runtimeDisk[1] } : null,
     gpu: gpu.length === 6 ? { name: gpu[0], utilizationPercent: parse(gpu[1]), temperatureC: parse(gpu[2]),
       powerWatts: parse(gpu[3]), totalBytes: unified ? null : parse(gpu[4]) === null ? null : parse(gpu[4]) * 1024 ** 2,
       usedBytes: unified ? null : parse(gpu[5]) === null ? null : parse(gpu[5]) * 1024 ** 2 } : null,
@@ -64,7 +66,9 @@ async function sample(hostId, force = false) {
       // Only a conservative absolute host path can enter this read-only df command.
       const cacheCommand = typeof cachePath === 'string' && /^\/[a-zA-Z0-9_./-]{1,240}$/.test(cachePath)
         ? `\nprintf 'CACHEDISK\\n'; df -B1 --output=size,avail '${cachePath}' 2>/dev/null | tail -n 1` : '';
-      const out = await ssh.exec(hostId, command + cacheCommand, { timeoutMs: 10000 });
+      const runtimeCommand = typeof info.DockerRootDir === 'string' && /^\/[a-zA-Z0-9_./-]{1,240}$/.test(info.DockerRootDir)
+        ? `\nprintf 'RUNTIMEDISK\\n'; df -B1 --output=size,avail '${info.DockerRootDir}' 2>/dev/null | tail -n 1` : '';
+      const out = await ssh.exec(hostId, command + cacheCommand + runtimeCommand, { timeoutMs: 10000 });
       result = decode(out.stdout, info, previous);
       if (!result.memory || !result.disk) result.warning = 'Some host metrics could not be collected.';
     } catch {

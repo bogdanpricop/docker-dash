@@ -10,7 +10,7 @@ is a separate choice: it does not silently replace the requested model.
 | Qwen3.8 Flash Next | 125B A6B Q4_K_M, 120.1 GB | The MLX variant is for Apple hardware; it is not a Linux CUDA recipe |
 | Nomic Embed Text | v1.5 | Nomic Embed Text v2 MoE |
 | Granite 3.2 Vision | 2B | IBM Granite Vision 4.1 4B Q4_K_M, including its projector |
-| Llama 3.2 Vision | 11B | Llama 4 Scout; Maverick exceeds this host's capacity |
+| Llama 3.2 Vision | 11B, download-only after runtime qualification failed | Llama 4 Scout; Maverick exceeds this host's capacity |
 | LLaVA | v1.6 | Latest tag in the requested Ollama family |
 | MiniCPM-V | 2.6 / 8B | MiniCPM-V 4.6 / 1B |
 | Moondream | Moondream 2 / 1.8B in Ollama | Official Moondream 3.1 / 9B A2B, download-only |
@@ -52,6 +52,14 @@ has been benchmarked. Memory/context and disk estimates remain explicit.
 
 ## Limits reproduced on the configured Spark
 
+The current official Llama 3.2 Vision GGUF uses the `mllama` architecture. The
+latest Ollama 0.40.16 Linux runtime rejected it with `unknown model architecture:
+'mllama'`. A normal native pull of the current official tag was also checked;
+the tag still resolves to the same legacy artifact. Its files remain downloadable,
+but deployment is disabled until a compatible artifact/runtime is qualified. An
+older unreviewed runtime is not silently installed. Llama 4 Scout is a separate
+successor, not a claimed fix for the original artifact.
+
 The host has about 121.7 GiB of unified memory. The 120.1 GB Flash Next Q4 recipe
 requires a conservative 124 GiB budget plus the 4 GiB host reserve. Its files can
 be downloaded, but deployment fails preflight on this host. Strata's smaller IQ3
@@ -72,3 +80,28 @@ readiness, duplicate queues, download/Stop concurrency, stale recipe rejection,
 host-scoped private catalog reads and browser download confirmation/progress.
 Live smoke tests use temporary services and preserve the original production
 container identities and running/stopped states.
+
+## Security runtime rebuild
+
+The official 0.40.16 ARM64 image contained fixable findings in apt/libapt
+(CVE-2026-109518), `golang.org/x/net` (CVE-2026-78661) and
+`golang.org/x/crypto` (GO-2026-5932). The reviewed Dockerfile retains the pinned
+official CUDA/llama-server libraries, verifies Ollama source commit
+`d63b702609c4300a2ca07be2bdb0adb9834725e5`, rebuilds its Go server with Go 1.27.4,
+x/net 0.63.0 and x/crypto 0.59.0, and applies Ubuntu security updates. The resulting
+ARM64 runtime passed Trivy with no HIGH, CRITICAL or UNKNOWN findings. Native
+Docker API builds, patched HTTPS pulls and standard-library Hugging Face download
+resume/checksum verification were exercised on the configured Spark.
+
+Runtime images carry the complete build-recipe checksum. A cross-instance Docker
+name reservation prevents duplicate builds on the same host. First preparation
+requires 8 GiB available RAM and 20 GiB verified Docker-filesystem space; compilation
+is CPU-only and limited to 4 GiB. Later jobs reuse the checked image. Only recognized
+CPU cache services can be replaced during security upgrades; named model volumes
+are retained. Managed inference profiles cannot silently restart an old security
+runtime. New preparation is required if the reviewed recipe changes.
+
+Moondream artifact downloads use Python's standard HTTPS and SHA256 libraries in
+the same patched image, without the large inference SDK. Redirects stay on trusted
+Hugging Face HTTPS domains, response size/ranges are checked, and files become ready
+only after complete checksum validation.

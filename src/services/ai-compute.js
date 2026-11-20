@@ -7,6 +7,7 @@ const metrics = require('./ai-compute-metrics');
 const catalog = require('./ai-compute-catalog');
 const ollama = require('./ai-compute-ollama');
 const photon = require('./ai-compute-photon');
+const secureRuntime = require('./ai-compute-runtime');
 const policy = require('./provider-operations/policy');
 const audit = require('./audit');
 const config = require('../config');
@@ -20,7 +21,7 @@ const configurationFingerprint = c => {
   return crypto.createHash('sha256').update(JSON.stringify([c.Id, c.Image, c.Config, hostConfig])).digest('hex');
 };
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
-const engines = ['vllm', 'ollama', 'photon', 'llama', 'strata', 'basalt', 'ncm', 'speech'];
+const engines = ['vllm', 'ollama', 'llama', 'strata', 'basalt', 'ncm', 'speech'];
 
 function hosts() {
   const rows = getDb().prepare(`SELECT h.id,h.name,h.connection_type,
@@ -67,9 +68,9 @@ function describe(c, profile, totalMemory) {
     imageId: c.Image, state: c.State?.Status, health: c.State?.Health?.Status || null,
     engine, model: text(profile?.model || model) || null, profileId: profile?.id || null, profileName: profile?.name || null,
     memoryBytes: profile?.memory_bytes || Math.ceil(c.HostConfig?.Memory || estimate) || null,
-    exclusive: profile ? Boolean(profile.exclusive) : c.Config?.Labels?.['docker-dash.ai-compute.capability'] === 'embedding' ? false : ['vllm', 'ollama', 'photon', 'llama', 'strata', 'basalt'].includes(engine),
+    exclusive: profile ? Boolean(profile.exclusive) : c.Config?.Labels?.['docker-dash.ai-compute.capability'] === 'embedding' ? false : ['vllm', 'ollama', 'llama', 'strata', 'basalt'].includes(engine),
     desiredRestartPolicy: profile ? JSON.parse(profile.restart_policy) : c.HostConfig?.RestartPolicy,
-    readyPort: profile ? profile.ready_port : Number(arg('--port')) || ({ vllm: 8000, ollama: 11434, photon: 8000, llama: 8080, strata: 8080 }[engine] || null) };
+    readyPort: profile ? profile.ready_port : Number(arg('--port')) || ({ vllm: 8000, ollama: 11434, llama: 8080, strata: 8080 }[engine] || null) };
 }
 
 async function inventory(hostId) {
@@ -146,10 +147,6 @@ async function cache(hostId, containerId) {
   const state = await inventory(hostId);
   const c = state.containers.find(c => c.id === containerId && c.state === 'running');
   if (!c) fail('Choose a running AI workload to inspect its model cache');
-  if (c.engine === 'photon') {
-    const recipe = catalog.entries.find(e => e.engine === 'photon');
-    return { containerId, checkedAt: now(), models: await photon.state(docker.getDocker(hostId), recipe) ? [{ model: recipe.model, state: 'verified downloaded artifacts', cachedRevisions: [recipe.revision] }] : [], note: 'Downloaded artifacts are separate from a ready inference API.' };
-  }
   if (c.engine === 'ollama') return { containerId, checkedAt: now(), models: ollama.parseList(await ollama.exec(docker.getDocker(hostId).getContainer(c.id), ['ollama', 'list'])).map(m => ({ model: m.name, state: 'downloaded model', cachedRevisions: [m.digest] })), note: 'Downloaded models are separate from resident models; Check API verifies the selected model is loaded.' };
   const script = `import os,json,itertools
 roots=[os.path.join(os.environ.get('HF_HOME','/root/.cache/huggingface'),'hub'),'/models/hub','/root/.cache/huggingface/hub']
@@ -239,7 +236,7 @@ async function prepare(hostId, body, user) {
   allowed(hostId, user.id, ['deploy', 'download'].includes(action));
   const client = docker.getDocker(hostId);
   const state = await inventory(hostId);
-  let target, recipe;
+  let target, recipe, managedRuntimeHash;
   if (['deploy', 'download'].includes(action)) {
     recipe = catalog.entries.find(e => e.id === body.catalogId && (action === 'download' ? e.downloadable : e.deployable));
     if (!recipe || (action === 'deploy' && !recipe.contextLengths.includes(Number(body.contextLength)))) fail('Select a standard recipe and supported context length');
@@ -255,6 +252,14 @@ async function prepare(hostId, body, user) {
     if (!target) fail('Register a profile for the selected workload first');
     if (action === 'restart' && target.state !== 'running') fail('Only a running workload can be restarted');
     if (action === 'switch' && !target.exclusive) fail('Switch is only available for exclusive LLM profiles');
+    if (action !== 'stop' && target.engine === 'ollama') {
+      const current = await client.getContainer(target.id).inspect();
+      if (catalog.entries.some(e => e.engine === 'ollama' && e.id === current.Config.Labels?.['docker-dash.ai-compute.catalog'])) {
+        managedRuntimeHash = secureRuntime.descriptor().hash;
+        const image = await client.getImage(current.Image).inspect();
+        if (image.Config?.Labels?.['docker-dash.ai-compute.recipe'] !== managedRuntimeHash) fail('This managed service predates the current security runtime. Deploy its reviewed catalog recipe before starting it again.', 409);
+      }
+    }
   }
   const conflicts = target.exclusive && action !== 'stop' ? state.containers.filter(c => c.id !== target.id && c.exclusive && c.state === 'running') : [];
   if (conflicts.length && !(action === 'switch' || (action === 'deploy' && body.stopConflicts === true))) {
@@ -268,6 +273,10 @@ async function prepare(hostId, body, user) {
       wasRunning: Boolean(inspect.State.Running), restartPolicy: inspect.HostConfig.RestartPolicy });
   }
   const sample = await metrics.sample(hostId, true);
+  const usesSecurityRuntime = recipe && ['ollama', 'photon'].includes(recipe.engine);
+  const runtimeBuildRequired = Boolean(usesSecurityRuntime && !await secureRuntime.find(client));
+  if (runtimeBuildRequired && (!sample.memory || sample.memory.availableBytes < 8 * catalog.GiB)) fail('Preparing the security-patched runtime requires 8 GiB of available RAM (CPU build plus host reserve). Free memory first; no GPU is used by this build.', 409);
+  if (runtimeBuildRequired && (!sample.runtimeDisk || sample.runtimeDisk.availableBytes < 20 * catalog.GiB)) fail('Preparing the security-patched runtime requires 20 GiB of verified free space on the Docker runtime filesystem.', 409);
   const starts = ['start', 'switch', 'deploy', 'restart'].includes(action);
   if (starts && (!sample.memory || !sample.gpu)) fail('Fresh SSH memory and NVIDIA GPU metrics are required before starting an engine', 409);
   const reclaimable = conflicts.reduce((sum, c) => sum + (c.memoryBytes || 0), 0)
@@ -276,9 +285,11 @@ async function prepare(hostId, body, user) {
   if (recipe && (!sample.cacheDisk || sample.cacheDisk.availableBytes < recipe.diskBytes)) fail('Cannot verify sufficient free space on the Docker model-cache filesystem', 409);
   const plan = { target, snapshots, stop: conflicts.map(c => ({ id: c.id, name: c.name, memoryBytes: c.memoryBytes })),
     recipeId: recipe?.id, recipeRevision: recipe?.revision, runtime: recipe?.runtime, downloadBytes: recipe?.downloadBytes,
+    runtimeRecipe: usesSecurityRuntime ? secureRuntime.descriptor().hash : undefined, runtimeBuildRequired, managedRuntimeHash,
     contextLength: recipe && action === 'deploy' ? Number(body.contextLength) : undefined, port: recipe && action === 'deploy' ? Number(body.port) : undefined,
     estimated: true, sampledAt: sample.sampledAt, warning: action === 'download' ? 'Only the CPU cache service may start. Inference and other services are unchanged. Verified files are reused; partial files are retained on interruption.' : 'Memory and disk budgets are estimates. Weight downloads may take several minutes. Failed starts restore the previous running engines. Model caches are retained.',
     expiresAt: new Date(Date.now() + 600000).toISOString() };
+  if (runtimeBuildRequired) plan.warning += ' Initial security runtime preparation uses a CPU-only build limited to 4 GiB and may need 20 GiB of additional disk space. Its patched image is retained for reuse.';
   const id = crypto.randomUUID(), at = now();
   getDb().prepare('INSERT INTO ai_compute_jobs(id,host_id,user_id,action,status,plan_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)')
     .run(id, hostId, user.id, action, 'prepared', JSON.stringify(plan), at, at);
@@ -348,6 +359,7 @@ async function run(row) {
   try {
     check();
     client = docker.getDocker(row.host_id);
+    if (plan.managedRuntimeHash && plan.managedRuntimeHash !== secureRuntime.descriptor().hash) fail('The managed security runtime changed after this preview. Prepare a fresh plan.', 409);
     for (const snapshot of plan.snapshots) {
       if (fingerprint(await client.getContainer(snapshot.id).inspect()) !== snapshot.fingerprint) fail('Workload changed after the preview. Create a new plan.', 409);
     }
@@ -356,6 +368,7 @@ async function run(row) {
     if (['deploy', 'download'].includes(row.action)) {
       const recipe = catalog.entries.find(e => e.id === plan.recipeId);
       if (!recipe || (plan.recipeRevision && recipe.revision !== plan.recipeRevision) || (plan.runtime && recipe.runtime !== plan.runtime)) fail('The catalog recipe changed after this preview. Create a new plan.', 409);
+      if (['ollama','photon'].includes(recipe.engine) && plan.runtimeRecipe !== secureRuntime.descriptor().hash) fail('The reviewed security runtime recipe changed. Prepare a fresh plan.', 409);
       progress('Preparing the pinned runtime image.');
       await docker.pullImage(recipe.runtime, row.host_id);
       const image = await client.getImage(recipe.runtime).inspect();
@@ -363,6 +376,15 @@ async function run(row) {
       const architecture = { aarch64: 'arm64', x86_64: 'amd64' }[hostArchitecture] || hostArchitecture;
       if (image.Architecture !== architecture) fail('The selected image is not compatible with the host architecture (ARM64 on Spark)', 409);
       imageId = image.Id; touch(); check();
+      if (['ollama','photon'].includes(recipe.engine)) {
+        if (!await secureRuntime.find(client)) {
+          const budget = await metrics.sample(row.host_id, true);
+          if (!budget.memory || budget.memory.availableBytes < 8 * catalog.GiB) fail('The security runtime build requires 8 GiB of available RAM. Existing inference services are unchanged.', 409);
+          if (!budget.runtimeDisk || budget.runtimeDisk.availableBytes < 20 * catalog.GiB) fail('The security runtime build requires 20 GiB of free Docker runtime space. Existing inference services are unchanged.', 409);
+        }
+        imageId = await secureRuntime.ensure(client, imageId, check, progress);
+        if ((await client.getImage(imageId).inspect()).Architecture !== architecture) fail('The patched runtime architecture does not match this host.', 409);
+      }
       if (recipe.engine === 'ollama') await ollama.download(client, recipe, imageId, check, progress);
       if (recipe.engine === 'photon') await photon.download(client, recipe, imageId, check, progress);
       if (row.action === 'download') {

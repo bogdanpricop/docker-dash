@@ -1,7 +1,7 @@
 'use strict';
 
 const ollama = require('./ai-compute-ollama');
-const { GiB } = require('./ai-compute-catalog');
+const { GiB, ollamaRuntime } = require('./ai-compute-catalog');
 const volumeName = 'docker-dash-photon-model-cache';
 const managerName = 'dd-ai-photon-cache-gateway';
 const fail = message => { throw Object.assign(new Error(message), { status: 409 }); };
@@ -13,7 +13,15 @@ async function manager(client, imageId, create = false) {
   if (info) {
     if (info.Config.Labels?.['docker-dash.ai-compute.role'] !== 'cache' || info.HostConfig.Privileged || info.HostConfig.NetworkMode === 'host'
       || info.HostConfig.DeviceRequests?.length || Object.values(info.HostConfig.PortBindings || {}).some(ports => ports?.length)
-      || (imageId && info.Image !== imageId) || !info.Mounts?.some(m => m.Name === volumeName && m.Destination === '/models')) fail('The Photon cache service identity changed.');
+      || !info.Mounts?.some(m => m.Name === volumeName && m.Destination === '/models')) fail('The Photon cache service identity changed.');
+    if (imageId && info.Image !== imageId) {
+      const references = [ollamaRuntime, 'nvcr.io/nvidia/vllm@sha256:cb38bbefdbc3e9fe045f931dd72cbd58cd48985c7e09916bcc6c15c10f39b929'];
+      const trusted = await Promise.all(references.map(async ref => { try { return (await client.getImage(ref).inspect()).Id; } catch { return null; } }));
+      if (!trusted.includes(info.Image) || info.Config.Labels?.['docker-dash.ai-compute.managed'] !== 'true') fail('Review the previous Photon cache image before upgrading it.');
+      if (info.State.Running) await container.stop({ t: 5 });
+      await container.remove({ v: false });
+      return manager(client, imageId, true);
+    }
     if (!info.State.Running) { if (!create) return null; await container.start(); }
     return container;
   }
@@ -26,7 +34,7 @@ async function manager(client, imageId, create = false) {
   }
   container = await client.createContainer({ name: managerName, Image: imageId,
     Entrypoint: ['python3', '-u', '-c'], Cmd: ['import time; time.sleep(31536000)'],
-    Env: ['HF_HOME=/models/hf', 'HF_HUB_OFFLINE=0', 'HF_HUB_DISABLE_TELEMETRY=1', 'HOME=/tmp'],
+    Env: ['HOME=/tmp', 'CUDA_VISIBLE_DEVICES=-1', 'NVIDIA_VISIBLE_DEVICES=void'],
     Labels: { 'docker-dash.ai-compute.role': 'cache', 'docker-dash.ai-compute.managed': 'true' },
     HostConfig: { ReadonlyRootfs: true, CapDrop: ['ALL'], SecurityOpt: ['no-new-privileges:true'], Memory: 2 * GiB, NanoCpus: 1000000000, PidsLimit: 128,
       RestartPolicy: { Name: 'unless-stopped' }, Tmpfs: { '/tmp': 'rw,nosuid,size=64m,mode=1777' }, Mounts: [{ Type: 'volume', Source: volumeName, Target: '/models' }],
@@ -48,21 +56,50 @@ async function download(client, recipe, imageId, check, progress) {
   const container = await manager(client, imageId, true);
   // Coordinates come exclusively from the reviewed catalog. Python never runs
   // model repository code. Hash every artifact before recording a ready cache.
-  const script = `import os,json,hashlib,pathlib
-from huggingface_hub import hf_hub_download
+  const script = `import os,json,hashlib,pathlib,time,urllib.request,urllib.parse
 artifacts=json.loads(${JSON.stringify(JSON.stringify(recipe.artifacts))})
 p=pathlib.Path('/models')
-for a in artifacts:
- print('Downloading '+a['name'],flush=True)
- f=pathlib.Path(hf_hub_download(a['repo'],filename=a['name'],revision=a['revision']))
+class Redirect(urllib.request.HTTPRedirectHandler):
+ def redirect_request(self,req,fp,code,msg,headers,newurl):
+  u=urllib.parse.urlsplit(newurl);host=u.hostname or ''
+  if u.scheme!='https' or not any(host==h or host.endswith('.'+h) for h in ['huggingface.co','hf.co']):raise RuntimeError('Untrusted model download redirect')
+  return super().redirect_request(req,fp,code,msg,headers,newurl)
+opener=urllib.request.build_opener(Redirect())
+def valid(f,a):
+ if not f.is_file() or f.stat().st_size!=a['bytes']:return False
  h=hashlib.sha256()
- with f.open('rb') as src:
+ with f.open('rb')as src:
   while chunk:=src.read(8*1024*1024):h.update(chunk)
- if f.stat().st_size!=a['bytes'] or h.hexdigest()!=a['sha256']:raise RuntimeError('Model artifact checksum mismatch: '+a['name'])
- target=p/a['name']; temporary=p/(a['name']+'.tmp')
- if os.path.lexists(temporary):temporary.unlink()
- os.link(f.resolve(strict=True),temporary)
- os.replace(temporary,target)
+ return h.hexdigest()==a['sha256']
+for a in artifacts:
+ target=p/a['name']
+ if valid(target,a):
+  print('Reused verified '+a['name'],flush=True);continue
+ print('Downloading '+a['name'],flush=True)
+ temporary=p/(a['name']+'.partial')
+ for attempt in range(5):
+  try:
+   offset=temporary.stat().st_size if temporary.exists()else 0
+   if offset>a['bytes']:raise RuntimeError('Partial model exceeds expected size')
+   if offset<a['bytes']:
+    request=urllib.request.Request('https://huggingface.co/'+a['repo']+'/resolve/'+a['revision']+'/'+a['name'],headers={'Range':'bytes='+str(offset)+'-'}if offset else {})
+    with opener.open(request,timeout=60)as response:
+     if offset and response.status==200:offset=0
+     elif offset and (response.status!=206 or not response.headers.get('Content-Range','').startswith('bytes '+str(offset)+'-')):raise RuntimeError('Model server rejected download resume')
+     with temporary.open('ab'if offset else'wb')as dest:
+      last=time.monotonic()
+      while chunk:=response.read(8*1024*1024):
+       offset+=len(chunk)
+       if offset>a['bytes']:raise RuntimeError('Model download exceeds expected size')
+       dest.write(chunk)
+       if time.monotonic()-last>2:print(a['name']+': '+str(offset)+' / '+str(a['bytes'])+' bytes',flush=True);last=time.monotonic()
+   if not valid(temporary,a):
+    if temporary.exists()and temporary.stat().st_size==a['bytes']:temporary.unlink()
+    raise RuntimeError('Model artifact checksum mismatch: '+a['name'])
+   os.replace(temporary,target);break
+  except Exception:
+   if attempt==4:raise
+   time.sleep(3)
  print('Verified '+a['name'],flush=True)
 proof={'revision':${JSON.stringify(recipe.revision)},'artifacts':artifacts}
 (p/'verified.tmp').write_text(json.dumps(proof))

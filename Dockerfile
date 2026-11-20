@@ -76,6 +76,7 @@ FROM base AS production
 COPY --from=deps /app/node_modules ./node_modules
 COPY src/ ./src/
 COPY public/ ./public/
+COPY docker/ai-compute/ollama.Dockerfile ./docker/ai-compute/ollama.Dockerfile
 COPY entrypoint.sh ./
 COPY package.json README.md LICENSE CONTRIBUTING.md .env.example .gitignore ./
 # npm is needed only in the dependency stage. Removing it from the runtime image

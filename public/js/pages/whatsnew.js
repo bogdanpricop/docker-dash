@@ -18,7 +18,7 @@ const WhatsNewPage = {
     { version: '8.96.50', date: '2026-11-20', title: 'Reviewed vision and embedding model catalog', changes: [
       { type: 'feature', text: 'AI Compute adds pinned Ollama vision/embedding recipes, persistent CPU-only downloads, cache status and explicit links to separately reviewed newer model generations.' },
       { type: 'improvement', text: 'Model downloads use a separate resumable queue, retain partial files and show live progress without blocking Stop/Start of existing inference services.' },
-      { type: 'security', text: 'Deploy verifies runtime architecture and model revision before stopping confirmed conflicts. Managed Ollama inference uses a read-only cache, non-root user and loopback API port; oversized Flash Next and unqualified Moondream 3.1 runtime limits are explicit.' },
+      { type: 'security', text: 'Deploy verifies runtime architecture and model revision before stopping confirmed conflicts. Managed Ollama inference uses a read-only cache, non-root user and loopback API port; oversized Flash Next, incompatible Llama 3.2 artifacts and unqualified Moondream 3.1 kernels have explicit limits.' },
     ] },
     { version: '8.96.49', date: '2026-11-20', title: 'AI Compute and guarded DGX engine switching', changes: [
       { type: 'fix', text: 'AI operations show immediate progress, check status every two seconds independently of host metrics, automatically refresh service state and report detailed failures with safe connection retries.' },

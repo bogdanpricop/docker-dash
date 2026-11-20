@@ -8,6 +8,7 @@ jest.mock('../services/provider-operations/policy', () => ({ assertAllowed: jest
 jest.mock('../services/audit', () => ({ log: jest.fn() }));
 jest.mock('../services/ai-compute-ollama', () => ({ ...jest.requireActual('../services/ai-compute-ollama'), states: jest.fn(), download: jest.fn(), warm: jest.fn(), probe: jest.fn() }));
 jest.mock('../services/ai-compute-photon', () => ({ ...jest.requireActual('../services/ai-compute-photon'), state: jest.fn() }));
+jest.mock('../services/ai-compute-runtime', () => ({ ...jest.requireActual('../services/ai-compute-runtime'), find: jest.fn(), ensure: jest.fn() }));
 const { getDb, closeDb } = require('../db');
 const docker = require('../services/docker');
 const metrics = require('../services/ai-compute-metrics');
@@ -15,6 +16,7 @@ const policy = require('../services/provider-operations/policy');
 const service = require('../services/ai-compute');
 const ollama = require('../services/ai-compute-ollama');
 const catalog = require('../services/ai-compute-catalog');
+const secureRuntime = require('../services/ai-compute-runtime');
 const { PassThrough } = require('stream');
 const GiB = 1024 ** 3;
 let db, user, host, otherHost, containers, calls, client;
@@ -65,20 +67,24 @@ beforeEach(() => {
   ollama.states.mockResolvedValue([]);
   ollama.download.mockReset().mockResolvedValue();
   ollama.warm.mockReset().mockResolvedValue();
+  secureRuntime.find.mockReset().mockResolvedValue({ Id: 'hardened', Architecture: 'arm64' });
+  secureRuntime.ensure.mockReset().mockResolvedValue('hardened');
 });
 
-test('all requested Ollama families have distinct, immutable Linux-compatible recipes', () => {
+test('requested Ollama families have distinct immutable artifacts and explicit runtime eligibility', () => {
   const entries = catalog.entries.filter(e => e.engine === 'ollama');
   expect(entries).toHaveLength(14);
   expect(new Set(entries.map(e => e.id)).size).toBe(entries.length);
   for (const e of entries) {
-    expect(e).toMatchObject({ downloadable: true, deployable: true });
+    expect(e.downloadable).toBe(true);
     expect(e.revision).toMatch(/^sha256:[a-f0-9]{64}$/);
     expect(e.runtime).toMatch(/^ollama\/ollama@sha256:[a-f0-9]{64}$/);
     expect(e.downloadBytes).toBeGreaterThan(0);
     expect(e.model).not.toMatch(/mlx/i);
   }
   expect(entries.find(e => e.id === 'ollama-moondream').successorId).toBe('photon-moondream31');
+  expect(entries.filter(e => e.deployable)).toHaveLength(13);
+  expect(entries.find(e => e.id === 'ollama-llama3-2-vision')).toMatchObject({ deployable: false, reason: expect.stringContaining('mllama') });
 });
 
 test('model download is CPU-only and does not require a GPU or snapshot running engines', async () => {
@@ -141,6 +147,11 @@ test('Moondream 3.1 remains download-only after the GPU kernel qualification fai
   expect(op.plan).toMatchObject({ recipeId: 'photon-moondream31', stop: [], target: { memoryBytes: 0 } });
 });
 
+test('the incompatible upstream mllama artifact cannot be deployed but can still be downloaded', async () => {
+  await expect(service.prepare(host, { action: 'deploy', catalogId: 'ollama-llama3-2-vision', contextLength: 4096, port: 18000 }, user)).rejects.toThrow('Select a standard recipe');
+  expect((await service.prepare(host, { action: 'download', catalogId: 'ollama-llama3-2-vision' }, user)).plan.stop).toEqual([]);
+});
+
 test('catalog cache status does not claim verification for a mislabeled alias', async () => {
   client.getImage = () => ({ inspect: async () => ({}) });
   const entry = catalog.entries.find(e => e.id === 'ollama-nomic-embed-text');
@@ -155,6 +166,37 @@ test('an offline host still exposes reviewed catalog metadata without cache side
   const result = await service.catalogForHost(host);
   expect(result.find(e => e.id === 'ollama-nomic-embed-text')).toMatchObject({ cacheState: 'unavailable', cacheError: 'SSH connection not ready', downloadable: true });
   expect(ollama.states).not.toHaveBeenCalled();
+});
+
+test('the first security runtime build requires a real CPU memory budget', async () => {
+  secureRuntime.find.mockResolvedValue(null);
+  metrics.sample.mockResolvedValue({ sampledAt: new Date().toISOString(), memory: { availableBytes: 4 * GiB }, gpu: null, cacheDisk: { availableBytes: 100 * GiB } });
+  await expect(service.prepare(host, { action: 'download', catalogId: 'ollama-nomic-embed-text' }, user)).rejects.toThrow('8 GiB');
+  expect(secureRuntime.ensure).not.toHaveBeenCalled(); expect(calls).toEqual([]);
+});
+
+test('large model cache space cannot hide a full Docker runtime build filesystem', async () => {
+  secureRuntime.find.mockResolvedValue(null);
+  metrics.sample.mockResolvedValue({ sampledAt: new Date().toISOString(), memory: { availableBytes: 80 * GiB }, gpu: null,
+    cacheDisk: { availableBytes: 1000 * GiB }, runtimeDisk: { availableBytes: GiB } });
+  await expect(service.prepare(host, { action: 'download', catalogId: 'ollama-nomic-embed-text' }, user)).rejects.toThrow('Docker runtime filesystem');
+  expect(secureRuntime.ensure).not.toHaveBeenCalled();
+});
+
+test('a stale security build recipe is rejected before pulling or modifying services', async () => {
+  const op = await service.prepare(host, { action: 'download', catalogId: 'ollama-nomic-embed-text' }, user);
+  db.prepare('UPDATE ai_compute_jobs SET plan_json=? WHERE id=?').run(JSON.stringify({ ...op.plan, runtimeRecipe: 'changed' }), op.id);
+  service.execute(host, op.id, user); await service.downloadTick();
+  expect(service.getJob(host, op.id)).toMatchObject({ status: 'failed', error: expect.stringContaining('security runtime recipe changed') });
+  expect(docker.pullImage).not.toHaveBeenCalled(); expect(calls).toEqual([]);
+});
+
+test('legacy managed runtimes can be stopped but cannot silently restart without the security update', async () => {
+  const c = makeContainer('legacy-managed-ollama','ollama',true);c.Config.Labels['docker-dash.ai-compute.catalog']='ollama-nomic-embed-text';
+  const id=profile(c,false); client.getImage=()=>({inspect:async()=>({Config:{Labels:{}}})});
+  await expect(service.prepare(host,{action:'restart',profileId:id},user)).rejects.toThrow('predates the current security runtime');
+  expect((await service.prepare(host,{action:'stop',profileId:id},user)).plan.target.id).toBe(c.Id);
+  expect(calls).toEqual([]);
 });
 
 test('a cache container is excluded even when its name contains an engine', async () => {
