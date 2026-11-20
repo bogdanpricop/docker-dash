@@ -6,7 +6,8 @@
     "docs/audits/2026-09-20-scanner-rebuild-evidence.json",
     "docs/audits/2026-10-07-security-refresh.md",
     "docs/audits/2026-11-02-security-refresh.md",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "docs/audits/2026-11-20-containerd-manifest-validation.md"
   ],
   "artifacts": {
     "docker-cli": {
@@ -20,19 +21,19 @@
     },
     "docker-compose": {
       "path": "/usr/libexec/docker/cli-plugins/docker-compose",
-      "binarySha256": "c3423789ae8d34849842f52a903c9e366ea588351f96e7d987cddd709d2ab9ea",
+      "binarySha256": "055f2a083b1904b1f1e91072e72ee3caca898b24a0b8846f8251e812f8d4d9da",
       "metadata": {
         "packages.txt": "5ecc7e5da71aaa8e1ba53073c3095c4612ac78ac28a94288b79e666dc0107026",
-        "build-info.txt": "248c156fc2590fee743d0feac9c003be09eec52e6634ec1c147ca4781a6801fb",
+        "build-info.txt": "8e5481a316d73ad5a051d68b3edf160356fb6243f4e59484ff36f1e550b10015",
         "source.json": "cd74496e5abb0316bdb94f6b6829be9bea7ce9acb84517f8ee61b5f7520b5095"
       }
     },
     "trivy": {
       "path": "/usr/local/bin/trivy",
-      "binarySha256": "34978b23c1c151085a02bd9f661ca934ff1da2a521573edf8698123b112fd969",
+      "binarySha256": "51af5012a8c06710f1d427a9c03400ddfa89b8e4578124be886c41c694b2986a",
       "metadata": {
         "packages.txt": "cf1e2382c4b1b59c8d10e4f01c30e1413a3357ffee00145606e6de70b376fe9d",
-        "build-info.txt": "2d230003e7fa69acadf9016f7c6e7994b0790b5df968c4a829986b9029605e8d",
+        "build-info.txt": "096fca2e63ef0841ba47f079642e97f8b89b3f7a111de34b0fa6325c12e1a15f",
         "source.json": "ce8a2bb29e0b27e0688f99f058441d0425ae3ceddd62c89b9dd59568dceb34be"
       }
     },
@@ -45,6 +46,13 @@
         "source.json": "44d2c3e09f2a70b6a278e060c918706ef6a5031b7f468cb6f9a9ddbed4a8d7ae"
       }
     }
+  },
+  "containerd": {
+    "artifacts": ["trivy", "docker-compose"],
+    "version": "v2.4.2",
+    "sum": "h1:p6Qg+xbEz8lvwdhHDx0U469xENvp4LgGBx+E7djXkGw=",
+    "regression": "TestSetChildrenMappedLabelsMalformedDigest",
+    "advisory": "https://github.com/containerd/containerd/security/advisories/GHSA-vwhp-8p66-mq4f"
   },
   "grpc": {
     "artifacts": {

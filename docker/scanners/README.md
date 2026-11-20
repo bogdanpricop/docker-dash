@@ -8,7 +8,10 @@ The same artifact stage also builds Docker CLI 29.8.2 from its verified upstream
 module with Go 1.27.4 and pinned gRPC/telemetry updates. Its version is
 `29.8.2+dd.2`; `build-cli.sh` records its source and binary provenance separately.
 Compose 5.6.0 is also rebuilt from its verified upstream module, without source
-patches, using containerd 2.4.1 and x/crypto 0.57.0. Its version is `5.6.0+dd.2`.
+patches, using containerd 2.4.2 and x/crypto 0.57.0. Its version is `5.6.0+dd.3`.
+Trivy `0.75.0+dd.3` also uses containerd 2.4.2. Both builds include the
+malformed-digest correction for CVE-2026-95839; the Compose build exercises
+the upstream regression for that path before emitting the binary.
 `build-compose.sh` runs the upstream Compose lifecycle/API/CLI unit tests with
 the selected dependencies before compiling with the official `e2e` build tag.
 Its binary is installed at `/usr/libexec/docker/cli-plugins/docker-compose`;

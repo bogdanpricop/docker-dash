@@ -10,7 +10,10 @@ const metrics = require('../services/ai-compute-metrics');
 const policy = require('../services/provider-operations/policy');
 const audit = require('../services/audit');
 
-router.use(requireAuth, requireRole('admin'), extractHostId, requireHostAccessForMethod());
+router.use(requireAuth, requireRole('admin'));
+// Fleet discovery must work even when the sidebar selects an unrelated provider.
+router.get('/hosts', (_req, res) => res.set('Cache-Control', 'no-store').json(service.hosts()));
+router.use(extractHostId, requireHostAccessForMethod());
 router.use((req, res, next) => {
   const host = getDb().prepare('SELECT daemon_type FROM docker_hosts WHERE id=?').get(req.resolvedHostId);
   if (!host || !['docker', 'podman'].includes(host.daemon_type || 'docker')) return res.status(400).json({ error: 'Select a Docker host for AI Compute' });
