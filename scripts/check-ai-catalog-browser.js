@@ -29,9 +29,9 @@ async function main() {
       AIComputePage._activeJob = null;
       AIComputePage._catalog(models);
     }, entries);
-    assert.equal(await page.$$eval('[data-model-info]', e => e.length), 35);
-    assert.equal(await page.$$eval('[data-deploy]', e => e.length), 16);
-    assert.equal(await page.$$eval('[data-download]', e => e.length), 15);
+    assert.equal(await page.$$eval('[data-model-info]', e => e.length), entries.length);
+    assert.equal(await page.$$eval('[data-deploy]', e => e.length), 19);
+    assert.equal(await page.$$eval('[data-download]', e => e.length), 18);
     for (const entry of entries) {
       await page.click(`[data-model-info="${entry.id}"]`);
       await page.waitForSelector('#compute-model-info-close');
@@ -86,7 +86,7 @@ async function main() {
     await page.waitForFunction(() => !document.getElementById('compute-model-info-close'));
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     assert.deepEqual(errors, []);
-    console.log('AI catalog browser: all 35 dialogs, source attribution, keyboard/focus, active-job access, XSS/link protection and mobile layout passed.');
+    console.log(`AI catalog browser: all ${entries.length} dialogs, source attribution, keyboard/focus, active-job access, XSS/link protection and mobile layout passed.`);
   } finally { if (browser) await browser.close(); await new Promise(resolve => server.close(resolve)); }
 }
 
