@@ -7,7 +7,7 @@ jest.mock('../middleware/auth', () => ({
   requireAuth: (req, res, next) => req.user ? next() : res.status(401).json({ error: 'Authentication required' }),
   writeable: (_req, _res, next) => next(),
 }));
-jest.mock('../services/ai-compute', () => ({ inventory: jest.fn(), monitoring: jest.fn(), prepare: jest.fn(), execute: jest.fn() }));
+jest.mock('../services/ai-compute', () => ({ hosts: jest.fn(), inventory: jest.fn(), monitoring: jest.fn(), prepare: jest.fn(), execute: jest.fn() }));
 jest.mock('../services/ai-compute-metrics', () => ({ sample: jest.fn() }));
 jest.mock('../services/provider-operations/policy', () => ({ assertAllowed: jest.fn() }));
 jest.mock('../services/audit', () => ({ log: jest.fn() }));
@@ -26,7 +26,15 @@ beforeAll(() => {
   app.use('/api/ai-compute', require('../routes/ai-compute'));
 });
 afterAll(() => closeDb());
-beforeEach(() => { jest.clearAllMocks(); service.inventory.mockResolvedValue({ containers: [], hostId: host }); policy.assertAllowed.mockReset(); });
+beforeEach(() => { jest.clearAllMocks(); service.hosts.mockReturnValue([{ id: host, name: 'Compute', recommended: true }]); service.inventory.mockResolvedValue({ containers: [], hostId: host }); policy.assertAllowed.mockReset(); });
+test('AI host discovery is admin-only and independent of the sidebar provider', async () => {
+  expect((await request(app).get('/api/ai-compute/hosts')).status).toBe(401);
+  expect((await request(app).get('/api/ai-compute/hosts').set('x-test-role','viewer')).status).toBe(403);
+  const response = await request(app).get(`/api/ai-compute/hosts?hostId=${vm}`).set('x-test-role','admin');
+  expect(response.status).toBe(200); expect(response.body[0].id).toBe(host);
+  expect(response.headers['cache-control']).toBe('no-store');
+  expect(service.inventory).not.toHaveBeenCalled();
+});
 test('anonymous and non-admin users cannot inspect AI workloads', async () => {
   expect((await request(app).get(`/api/ai-compute/inventory?hostId=${host}`)).status).toBe(401);
   expect((await request(app).get(`/api/ai-compute/inventory?hostId=${host}`).set('x-test-role', 'operator')).status).toBe(403);

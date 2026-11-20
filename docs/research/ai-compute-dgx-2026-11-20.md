@@ -14,6 +14,9 @@ Scope imported from the conversation **“Semnificația NCM în IT”**: the fir
 
 ## Operational behavior
 
+* AI Compute has its own persistent device selector. It discovers active Docker/Podman endpoints without connecting to every host, prefers previously configured AI devices and works when the sidebar selects another Docker host or a different provider. All data, logs and operation plans remain scoped to the AI device. Credentials and saved SSH configuration are never returned by discovery.
+* An inference-only gateway is not a Docker/SSH management connection. A VPS instance needs a separately registered, verified host connection for DGX telemetry and management; private reverse SSH forwarding can provide this without exposing a public SSH port.
+
 * Viewing a host does not enable permanent polling. Explicit recording stores a sample per minute for 30 days. Charts retain missing-data gaps, show units and sample dates, and never invent historic data.
 * Inventory distinguishes container state, Docker health and an explicitly checked model API. Engine names and selected model flags are extracted without exposing environment variables, credentials, bind sources or SSH configuration. Only detected AI workloads can become profiles.
 * Starting, stopping, restarting, switching and deploying require a short-lived, administrator-owned preview. Per-host database locks prevent overlapping operations and interrupted jobs block new work until recovered. Container identity/configuration is rechecked before mutation.

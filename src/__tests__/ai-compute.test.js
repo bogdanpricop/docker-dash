@@ -38,6 +38,7 @@ afterAll(() => closeDb());
 beforeEach(() => {
   jest.clearAllMocks();
   db.exec('DELETE FROM ai_compute_jobs; DELETE FROM ai_compute_profiles; DELETE FROM ai_compute_hosts;');
+  db.exec('DELETE FROM ai_compute_samples;');
   containers = new Map(); calls = [];
   client = {
     info: async () => ({ Architecture: 'aarch64', MemTotal: 128 * GiB }),
@@ -68,6 +69,16 @@ test('inventory recognizes engines but excludes speech gateway and tunnel infras
   const result = await service.inventory(host);
   expect(result.containers.map(c => c.engine)).toEqual(['vllm', 'speech']);
   expect(JSON.stringify(result)).not.toContain('not-returned');
+});
+
+test('host discovery prioritizes configured AI devices without connecting or disclosing credentials', () => {
+  db.prepare('INSERT INTO ai_compute_hosts(host_id,monitoring,updated_at) VALUES (?,1,?)').run(host,new Date().toISOString());
+  db.prepare('UPDATE docker_hosts SET ssh_config=? WHERE id=?').run('private-credential-must-not-leak',host);
+  const result=service.hosts();
+  expect(result[0]).toMatchObject({ id: host, recommended: true, reason: 'Recording enabled', sshConfigured: true });
+  expect(JSON.stringify(result)).not.toContain('private-credential');
+  expect(docker.getDocker).not.toHaveBeenCalled();
+  db.prepare('UPDATE docker_hosts SET ssh_config=NULL WHERE id=?').run(host);
 });
 
 test('profiles are host-scoped and validate memory, ports and speech exclusion', async () => {

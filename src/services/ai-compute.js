@@ -19,6 +19,24 @@ const configurationFingerprint = c => {
 };
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 const engines = ['vllm', 'ollama', 'llama', 'strata', 'basalt', 'ncm', 'speech'];
+
+function hosts() {
+  const rows = getDb().prepare(`SELECT h.id,h.name,h.connection_type,
+    CASE WHEN h.ssh_config IS NOT NULL AND h.ssh_config<>'' THEN 1 ELSE 0 END AS ssh_configured,
+    COALESCE(a.monitoring,0) AS monitoring,
+    EXISTS(SELECT 1 FROM ai_compute_profiles p WHERE p.host_id=h.id) AS has_profiles,
+    (SELECT sample_json FROM ai_compute_samples s WHERE s.host_id=h.id ORDER BY bucket DESC LIMIT 1) AS sample
+    FROM docker_hosts h LEFT JOIN ai_compute_hosts a ON a.host_id=h.id
+    WHERE h.is_active=1 AND COALESCE(h.daemon_type,'docker') IN ('docker','podman')`).all();
+  const candidates = rows.map(row => {
+    let gpu = false;
+    try { gpu = Boolean(JSON.parse(row.sample)?.gpu); } catch { /* No successful sample yet. */ }
+    const rank = gpu ? 4 : row.monitoring ? 3 : row.has_profiles ? 2 : row.ssh_configured ? 1 : 0;
+    return { id: row.id, name: row.name, connectionType: row.connection_type, sshConfigured: Boolean(row.ssh_configured),
+      rank, reason: gpu ? 'GPU detected' : row.monitoring ? 'Recording enabled' : row.has_profiles ? 'AI profiles configured' : row.ssh_configured ? 'SSH configured' : 'Docker connection' };
+  }).sort((a,b) => b.rank-a.rank || a.name.localeCompare(b.name) || a.id-b.id);
+  return candidates.map(({ rank, ...host }, index) => ({ ...host, recommended: index === 0 && rank > 0 }));
+}
 async function stopContainer(container) {
   // Stay below the host client's 30s idle timeout, including SSH overhead.
   try { await container.stop({ t: 10 }); }
@@ -412,5 +430,5 @@ async function tick() {
   } finally { ticking = false; }
 }
 
-module.exports = { inventory, register, monitoring, readiness, cache, prepare, execute, jobs, getJob, rollback, tick,
+module.exports = { hosts, inventory, register, monitoring, readiness, cache, prepare, execute, jobs, getJob, rollback, tick,
   _internals: { engineOf, describe, fingerprint, run, restore } };

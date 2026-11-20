@@ -22,15 +22,20 @@ async function main() {
     await page.goto(base + '/smoke');
     for (const script of ['/lib/chart.umd.min.js', '/js/utils.js', '/js/components/modal.js', '/js/pages/ai-compute.js']) await page.addScriptTag({ url: base + script });
     await page.evaluate(async () => {
-      window.hostId = 9; window.submissions = [];
+      window.hostId = 0; window.submissions = []; window.computeRequests=[];
+      window.computeHosts=[{ id:9,name:'DGX Spark',recommended:true,reason:'GPU detected' },{ id:10,name:'Other host',recommended:false,reason:'SSH configured' }];
       window.App = { user: { role: 'admin' }, _hostSelectorHosts: [{ id: 9, name: 'DGX Spark' }, { id: 10, name: 'Other host' }] };
       window.i18n = { t: key => key };
       const c = { id: 'a'.repeat(64), name: 'foliantstudio-vllm', model: 'Qwen/Qwen3-4B', engine: 'vllm', state: 'running', memoryBytes: 24 * 1024 ** 3, profileId: 3, readyPort: 8000, exclusive: true };
       window.Api = {
         getHostId: () => window.hostId,
         get: async url => {
-          if (!url.includes(`hostId=${window.hostId}`)) throw new Error('Request crossed hosts');
-          if (url.includes('/inventory')) return { hostId: window.hostId, containers: [c], monitoring: false, architecture: 'aarch64' };
+          if(url==='/ai-compute/hosts')return window.computeHosts;
+          window.computeRequests.push(url);
+          const requested=Number(new URL(url,'http://test').searchParams.get('hostId'));
+          if(![9,10].includes(requested))throw new Error('Compute request did not select its own host');
+          if(url.includes('/containers/'))return {lines:['safe <img src=x onerror=alert(1)> log'],truncated:false};
+          if (url.includes('/inventory')) return { hostId: requested, containers: [c], monitoring: false, architecture: 'aarch64' };
           if (url.includes('/metrics')) return { sampledAt: new Date().toISOString(), cpus: 20, cpuPercent: 12, unified: true, memory: { totalBytes: 128 * 1024 ** 3, usedBytes: 45 * 1024 ** 3, availableBytes: 83 * 1024 ** 3 }, disk: { availableBytes: 3 * 1024 ** 4 }, gpu: { name: 'NVIDIA GB10', utilizationPercent: 2, temperatureC: 41 } };
           if (url.includes('/history')) return [0,1,2].map(i => ({ sampledAt: new Date(Date.now() - (2-i)*60000).toISOString(), cpuPercent: i * 5, memory: { usedBytes: 45 * 1024 ** 3 }, gpu: { utilizationPercent: i } }));
           if (url.includes('/jobs')) return [];
@@ -49,6 +54,16 @@ async function main() {
       await AIComputePage.render(document.getElementById('test'));
     });
     assert.match(await page.$eval('#compute-host', e => e.textContent), /DGX Spark.*Connected.*aarch64/);
+    assert.equal(await page.evaluate(()=>window.hostId),0);
+    await page.evaluate(async()=>{window.hostId=10;await AIComputePage.render(document.getElementById('test'));});
+    assert.equal(await page.$eval('#compute-target',e=>e.value),'9');
+    assert.equal(await page.evaluate(()=>window.hostId),10);
+    await page.click('[data-logs]');
+    await page.waitForSelector('#compute-logs-close');
+    assert.match(await page.$eval('#modal-content pre',e=>e.textContent),/<img/);
+    assert.equal(await page.$('#modal-content img'),null);
+    assert.equal(await page.evaluate(()=>computeRequests.filter(u=>u.includes('/containers/')).at(-1).endsWith('hostId=9')),true);
+    await page.click('#compute-logs-close');
     assert.match(await page.$eval('#compute-metrics', e => e.textContent), /Unified memory/);
     assert.equal(await page.$$eval('#compute-history canvas', nodes => nodes.length), 4);
     assert.equal(await page.evaluate(() => AIComputePage._charts[0].options.scales.x.type), 'linear');
@@ -71,13 +86,19 @@ async function main() {
     await page.$eval('#compute-filter', el => { el.value = ''; el.dispatchEvent(new Event('input')); });
     await page.click('[data-register]');
     await page.waitForSelector('#compute-form');
-    await page.evaluate(() => { window.hostId = 10; return AIComputePage.render(document.getElementById('test')); });
+    await page.evaluate(()=>{window.hostId=0;});
+    await page.select('#compute-target','10');
+    await page.waitForFunction(()=>document.querySelector('#compute-host').textContent.includes('Other host'));
     await page.click('#compute-form [type=submit]');
     await page.waitForFunction(() => document.querySelector('#compute-form-error').textContent.includes('host changed'));
     assert.equal(await page.evaluate(() => submissions.filter(s => s.url.includes('/profiles')).length), 0);
     await page.click('#compute-cancel');
     assert.match(await page.$eval('#compute-host', e => e.textContent), /Other host/);
     assert.equal(await page.$eval('#compute-range', e => e.value), '1');
+    assert.equal(await page.evaluate(()=>window.hostId),0);
+    await page.evaluate(async()=>{window.computeHosts=window.computeHosts.filter(h=>h.id!==10);window.hostId=111;await AIComputePage.render(document.getElementById('test'));});
+    assert.equal(await page.$eval('#compute-target',e=>e.value),'9');
+    assert.equal(await page.evaluate(()=>window.hostId),111);
     await page.evaluate(() => AIComputePage.destroy());
     assert.equal(await page.evaluate(() => AIComputePage._charts.length), 0);
     assert.deepEqual(errors, []);

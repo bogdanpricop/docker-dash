@@ -9,17 +9,31 @@ const AIComputePage = {
   async render(container) {
     this.destroy();
     this._container = container;
-    this._hostId = Api.getHostId();
     this._token = {};
     this._probes = new Map();
     const token = this._token;
+    if (App.user?.role !== 'admin') { container.innerHTML = '<p>AI Compute requires administrator access.</p>'; return; }
+    container.innerHTML = '<p role="status">Loading configured AI hosts…</p>';
+    try { this._hosts = await Api.get('/ai-compute/hosts'); }
+    catch (err) {
+      if (this._token === token) container.innerHTML = `<p role="alert">${this._e(err.message)}</p>`;
+      return;
+    }
+    if (this._token !== token) return;
+    const saved = Number(localStorage.getItem('dd-ai-compute-host'));
+    const target = this._hosts.find(h => h.id === saved) || this._hosts.find(h => h.recommended)
+      || this._hosts.find(h => h.id === Api.getHostId()) || this._hosts[0];
+    if (!target) { container.innerHTML = '<p>No active Docker hosts configured. <a href="#/hosts">Add a host</a> to use AI Compute.</p>'; return; }
+    this._hostId = target.id;
+    localStorage.setItem('dd-ai-compute-host', this._hostId);
     this._hours = Number(localStorage.getItem(`dd-ai-compute-range-${this._hostId}`)) || 1;
     if (![1, 24, 168, 720].includes(this._hours)) this._hours = 1;
     this._filter = localStorage.getItem(`dd-ai-compute-filter-${this._hostId}`) || '';
-    if (App.user?.role !== 'admin') { container.innerHTML = '<p>AI Compute requires administrator access.</p>'; return; }
     container.innerHTML = `<div class="page-header"><div><h2><i class="fas fa-microchip"></i> AI Compute</h2>
-      <div class="page-subtitle">DGX Spark · capacity, models and controlled engine switching</div></div>
-      <button type="button" class="btn btn-sm btn-secondary" id="compute-refresh">Refresh</button></div>
+      <div class="page-subtitle">Capacity, models and controlled engine switching · independent of the sidebar host</div></div>
+      <div class="page-actions"><label for="compute-target">AI host</label><select id="compute-target" class="form-control" style="width:auto;max-width:360px" title="AI Compute uses its own host selection">
+        ${this._hosts.map(h => `<option value="${h.id}" ${h.id === this._hostId ? 'selected' : ''}>${this._e(h.name)} · ${this._e(h.reason)}</option>`).join('')}</select>
+      <button type="button" class="btn btn-sm btn-secondary" id="compute-refresh">Refresh</button></div></div>
       <div class="stack-list-host" id="compute-host" role="status">Connecting to the selected host…</div>
       <div id="compute-error" role="alert"></div>
       <div id="compute-metrics" class="stat-cards" style="margin:16px 0"></div>
@@ -36,6 +50,10 @@ const AIComputePage = {
         <div id="compute-catalog" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px"></div></div></div>
       <div class="card" style="margin-top:16px"><div class="card-header"><h3>Operation history</h3></div><div class="card-body" id="compute-jobs" aria-live="polite"></div></div>`;
     container.querySelector('#compute-refresh').addEventListener('click', () => this._refresh());
+    container.querySelector('#compute-target').addEventListener('change', event => {
+      localStorage.setItem('dd-ai-compute-host', event.target.value);
+      this.render(container);
+    });
     container.querySelector('#compute-range').addEventListener('change', async event => {
       this._hours = Number(event.target.value);
       localStorage.setItem(`dd-ai-compute-range-${this._hostId}`, this._hours);
@@ -73,7 +91,7 @@ const AIComputePage = {
       if (token !== this._token) return;
       this._inventory = inventory;
       this._catalogEntries = catalog;
-      const host = App._hostSelectorHosts?.find(h => h.id === this._hostId || (!this._hostId && h.isDefault));
+      const host = this._hosts.find(h => h.id === this._hostId);
       this._container.querySelector('#compute-host').innerHTML = `<i class="fas fa-server"></i> Host <strong>${this._e(host?.name || inventory.hostName || inventory.hostId)}</strong> · Connected · ${this._e(inventory.architecture)} · Last sample ${this._e(new Date(sample.sampledAt).toLocaleString())}`;
       this._container.querySelector('#compute-error').innerHTML = sample.warning ? `<p class="text-warning">${this._e(sample.warning)}</p>` : '';
       this._container.querySelector('#compute-monitor').checked = inventory.monitoring;
@@ -85,7 +103,7 @@ const AIComputePage = {
     } catch (err) {
       if (token === this._token) {
         this._error(err);
-        const name = this._inventory?.hostName || App._hostSelectorHosts?.find(h => h.id === this._hostId)?.name || this._hostId;
+        const name = this._inventory?.hostName || this._hosts.find(h => h.id === this._hostId)?.name || this._hostId;
         this._container.querySelector('#compute-host').textContent = `Host ${name} · Connection unavailable · last successful values retained below`;
       }
     } finally { if (token === this._token) this._loading = false; }
@@ -131,7 +149,19 @@ const AIComputePage = {
       <td>${this._e(c.state)}<div class="text-muted text-sm">Health: ${this._e(c.health || 'No Docker healthcheck')}</div></td>
       <td>${this._bytes(c.memoryBytes)}<div class="text-muted text-sm">${c.profileId ? 'Configured reservation' : 'Estimated · review on registration'}</div></td>
       <td>${c.profileName ? `<div class="text-sm">${this._e(c.profileName)}</div>` : ''}<button type="button" class="btn btn-xs btn-secondary" data-register="${c.id}">${c.profileId ? 'Edit profile' : 'Register profile'}</button> <button type="button" class="btn btn-xs btn-secondary" data-probe="${c.id}">Check API</button> <button type="button" class="btn btn-xs btn-secondary" data-cache="${c.id}">Cached models</button><div id="probe-${c.id}" class="text-sm" role="status">${this._e(this._probes?.get(c.id) || 'API not checked')}</div></td>
-      <td><a class="btn btn-xs btn-secondary" href="#/containers/${c.id}/logs">Logs</a> ${c.profileId ? (c.state === 'running' ? ['stop','restart'] : ['start', ...(c.exclusive ? ['switch'] : [])]).map(action => `<button type="button" class="btn btn-xs btn-secondary" data-operation="${action}" data-profile="${c.profileId}">${action[0].toUpperCase()+action.slice(1)}</button>`).join(' ') : ''}</td></tr>`).join('')}</tbody></table>`;
+      <td><button type="button" class="btn btn-xs btn-secondary" data-logs="${c.id}">Logs</button> ${c.profileId ? (c.state === 'running' ? ['stop','restart'] : ['start', ...(c.exclusive ? ['switch'] : [])]).map(action => `<button type="button" class="btn btn-xs btn-secondary" data-operation="${action}" data-profile="${c.profileId}">${action[0].toUpperCase()+action.slice(1)}</button>`).join(' ') : ''}</td></tr>`).join('')}</tbody></table>`;
+    el.querySelectorAll('[data-logs]').forEach(b => b.addEventListener('click', async () => {
+      const token = this._token, hostId = this._hostId;
+      const c = rows.find(c => c.id === b.dataset.logs);
+      b.disabled = true;
+      try {
+        const result = await Api.get(`/containers/${c.id}/logs?tail=200&hostId=${hostId}`);
+        if (token !== this._token) return;
+        Modal.open(`<div class="modal-header"><h2>${this._e(c.name)} · Logs</h2></div><div class="modal-body"><p>Host: ${this._e(this._hosts.find(h => h.id === hostId)?.name)} · Last 200 lines${result.truncated ? ' · Truncated' : ''}</p><pre style="white-space:pre-wrap;overflow:auto;max-height:60vh">${this._e(result.lines.join('\n') || 'No log lines available.')}</pre></div><div class="modal-footer"><button type="button" class="btn btn-secondary" id="compute-logs-close">Close</button></div>`, { width: '900px' });
+        Modal._content.querySelector('#compute-logs-close').addEventListener('click', () => Modal.close());
+      } catch (err) { if (token === this._token) this._error(err); }
+      finally { b.disabled = false; }
+    }));
     el.querySelectorAll('[data-register]').forEach(b => b.addEventListener('click', () => this._register(b.dataset.register)));
     el.querySelectorAll('[data-operation]').forEach(b => b.addEventListener('click', () => this._preview({ action: b.dataset.operation, profileId: Number(b.dataset.profile) })));
     el.querySelectorAll('[data-cache]').forEach(b => b.addEventListener('click', async () => {

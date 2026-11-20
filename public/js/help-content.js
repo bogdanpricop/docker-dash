@@ -23,13 +23,13 @@
 
 const HelpContent = {
   'ai-compute': {
-    en: { title: 'AI Compute', icon: 'fa-microchip', intro: 'Manage AI engines on the selected Docker host using its existing verified SSH connection.',
+    en: { title: 'AI Compute', icon: 'fa-microchip', intro: 'Choose an AI host directly on this page, independently of the sidebar. Configured AI devices are suggested automatically and your choice is remembered. Connections reuse the host’s verified SSH credentials.',
       sections: [
         { icon: 'fa-chart-line', title: 'Real host history', body: 'Recording is opt-in and collects CPU, unified RAM, NVIDIA GPU and root disk data every minute for 30 days. An unavailable metric is never reported as zero. GB10 GPU memory is part of host RAM.' },
         { icon: 'fa-exchange-alt', title: 'Review before switching', body: 'Register a memory budget and API port for detected workloads. Switch previews the exact exclusive LLM containers to stop, preserves speech and gateways, checks free memory and verifies the new model API. Failed starts restore prior engines. Interrupted operations retain their evidence for explicit recovery.' },
         { icon: 'fa-cubes', title: 'Standard and experimental', body: 'Qwen recipes pin model revisions and use the NVIDIA ARM64 vLLM runtime. New APIs bind to host loopback and weights stay in a shared named volume. Strata, NCM and Basalt require qualification and are linked to their upstream projects; they are not advertised as tested automatic deployments.' },
       ], tip: 'Container running, a Docker healthcheck and a ready model API are different states. Use Check API and Logs to verify service readiness.' },
-    ro: { title: 'AI Compute', icon: 'fa-microchip', intro: 'Administrarea motoarelor AI de pe hostul Docker selectat, prin conexiunea SSH verificată existentă.',
+    ro: { title: 'AI Compute', icon: 'fa-microchip', intro: 'Alege dispozitivul AI direct în pagină, independent de sidebar. Dispozitivele AI configurate sunt propuse automat, iar alegerea este păstrată. Se reutilizează credențialele SSH verificate ale hostului.',
       sections: [
         { icon: 'fa-chart-line', title: 'Istoric real', body: 'Activează înregistrarea pentru măsurători CPU, RAM unificat, GPU NVIDIA și disc la fiecare minut, păstrate 30 de zile. Pe GB10 memoria GPU face parte din RAM; nu se adună separat.' },
         { icon: 'fa-exchange-alt', title: 'Schimbare cu confirmare', body: 'Înregistrează profilul cu buget de memorie și port API. Planul arată exact ce motoare LLM se opresc, păstrează speech și gateway-urile și verifică memoria disponibilă și API-ul nou. La eșec sunt repornite motoarele anterioare. Operațiunile întrerupte pot fi recuperate explicit.' },
