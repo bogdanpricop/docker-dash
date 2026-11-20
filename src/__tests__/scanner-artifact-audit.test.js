@@ -57,6 +57,14 @@ describe('installed scanner archive evidence', () => {
 });
 
 describe('artifact-specific provenance review', () => {
+  test('requires the patched containerd version and checksum in reviewed Compose builds', () => {
+    const info='scanner: go1.27.4\n\tdep\tgithub.com/containerd/containerd/v2\tv2.4.2\th1:patched\n';
+    const f=fixture('docker-compose',[],info);
+    f.lock.containerd={artifacts:['docker-compose'],version:'v2.4.2',sum:'h1:patched',regression:'TestSetChildrenMappedLabelsMalformedDigest'};
+    expect(assess('docker-compose',f).containerd.version).toBe('v2.4.2');
+    const old=fixture('docker-compose',[],info.replace('v2.4.2','v2.4.1'));old.lock.containerd=f.lock.containerd;
+    expect(()=>assess('docker-compose',old)).toThrow('containerd module');
+  });
   test('allows API/client packages and distinguishes ProtonMail OpenPGP', () => {
     const result = assess('grype', fixture());
     expect(result.engineImplementationPresent).toBe(false);

@@ -49,6 +49,12 @@ function assessArtifact(name, binary, metadata, lock = reviewed) {
   assert.deepEqual(openpgp, [], 'Deprecated OpenPGP package is compiled into this artifact');
   const result = { path: expected.path, binarySha256: binary.sha256, bytes: binary.bytes,
     metadataSha256: expected.metadata, compiledPackages: packages.length, deprecatedOpenpgpPresent: false };
+  if (lock.containerd?.artifacts.includes(name)) {
+    const dependency = lock.containerd;
+    assert.ok(info.includes('\tdep\tgithub.com/containerd/containerd/v2\t' + dependency.version + '\t' + dependency.sum + '\n'),
+      'containerd module does not match the malformed-digest regression build');
+    result.containerd = { version: dependency.version, sum: dependency.sum, regression: dependency.regression };
+  }
   if (name === 'grype') {
     const docker = packages.filter(p => /^(github\.com\/(docker\/docker|moby\/moby)(\/v2)?)(\/|$)/.test(p));
     assert.ok(docker.includes('github.com/moby/moby/client'));

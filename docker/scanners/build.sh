@@ -14,7 +14,7 @@ case "${1:-}" in
     module=github.com/aquasecurity/trivy
     version=v0.75.0
     checksum='h1:iOMkI0qX3Dfo+A6lznchBvtDD4ZSu+H9RBww1z5Qz58='
-    flags='-s -w -X github.com/aquasecurity/trivy/pkg/version/app.ver=0.75.0+dd.2'
+    flags='-s -w -X github.com/aquasecurity/trivy/pkg/version/app.ver=0.75.0+dd.3'
     export GOEXPERIMENT=jsonv2
     ;;
   *) echo 'Expected scanner name: grype or trivy' >&2; exit 1 ;;
@@ -38,6 +38,7 @@ if [ "$1" = trivy ]; then
   # migration upstream, so no local source overlay is required.
   go test -mod=readonly -p 2 "$module/pkg/x/json" "$module/pkg/iac/scanners/cloudformation/parser"
   go test -mod=readonly -p 2 google.golang.org/grpc/test -run 'Test/MissingAuthorityAndHostHeader' -count=1
+  go test -mod=readonly -p 2 github.com/containerd/containerd/v2/core/images -run TestSetChildrenMappedLabelsMalformedDigest -count=1
 fi
 go build -mod=readonly -p 2 -trimpath -buildvcs=false ${modfile:+-modfile="$modfile"} -ldflags "$flags" -o "/out/$1" "$module/cmd/$1"
 go list -mod=readonly ${modfile:+-modfile="$modfile"} -deps "$module/cmd/$1" > "/out/$1.packages.txt"
