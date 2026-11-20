@@ -224,8 +224,7 @@ const AIComputePage = {
       if (token !== this._token) return;
       if (inventoryGeneration === this._inventoryGeneration) this._inventory = inventory;
       this._catalogEntries = catalog;
-      const host = this._hosts.find(h => h.id === this._hostId);
-      this._container.querySelector('#compute-host').innerHTML = `<i class="fas fa-server"></i> Host <strong>${this._e(host?.name || inventory.hostName || inventory.hostId)}</strong> · Connected · ${this._e(inventory.architecture)} · Last sample ${this._e(new Date(sample.sampledAt).toLocaleString())}`;
+      this._hostLine(`Connected · ${inventory.architecture} · Last sample ${new Date(sample.sampledAt).toLocaleString()}`);
       this._container.querySelector('#compute-error').innerHTML = sample.warning ? `<p class="text-warning">${this._e(sample.warning)}</p>` : '';
       this._container.querySelector('#compute-monitor').checked = inventory.monitoring;
       this._metrics(sample);
@@ -236,10 +235,49 @@ const AIComputePage = {
     } catch (err) {
       if (token === this._token) {
         this._error(err);
-        const name = this._inventory?.hostName || this._hosts.find(h => h.id === this._hostId)?.name || this._hostId;
-        this._container.querySelector('#compute-host').textContent = `Host ${name} · Connection unavailable · last successful values retained below`;
+        this._hostLine('Connection unavailable · last successful values retained below');
       }
     } finally { if (token === this._token) this._loading = false; }
+  },
+  _hostLine(detail) {
+    const host = this._hosts.find(h => h.id === this._hostId), row = this._container.querySelector('#compute-host');
+    row.innerHTML = `<i class="fas fa-server" aria-hidden="true"></i> Host <strong>${this._e(host?.name || this._inventory?.hostName || this._hostId)}</strong>${host?.connectionType === 'ssh' ? ' <button type="button" id="compute-connection-info" class="btn btn-sm btn-ghost" style="padding:2px 5px;min-width:24px" title="Connection security information" aria-label="Connection security information" aria-haspopup="dialog"><i class="fas fa-info-circle" aria-hidden="true"></i></button>' : ''} · ${this._e(detail)}`;
+    row.querySelector('#compute-connection-info')?.addEventListener('click', () => this._connectionInfo());
+  },
+  async _connectionInfo() {
+    const token = this._token, hostId = this._hostId, button = this._container.querySelector('#compute-connection-info');
+    if (this._connectionLoading === token) return;
+    this._connectionLoading = token;
+    if (button) { button.disabled = true; button.setAttribute('aria-busy', 'true'); }
+    try {
+      const info = await Api.get(this._url('connection'));
+      if (token !== this._token || hostId !== this._hostId) return;
+      const record = info.deployment;
+      const list = values => `<ul style="padding-left:20px;margin:8px 0">${values.map(v => `<li style="margin:6px 0">${this._e(v)}</li>`).join('')}</ul>`;
+      const fields = [['SSH endpoint', `${info.endpoint || 'Unavailable'}:${info.port || '?'}`], ['Authentication', info.authentication],
+        ['Docker socket', info.socket], ['Pinned server fingerprint', info.fingerprint || 'Missing or invalid — connection is blocked until a trusted fingerprint is saved']];
+      Modal.open(`<div class="modal-header"><h3>${this._e(record?.title || 'SSH connection security')}</h3><button type="button" class="modal-close-btn" id="compute-connection-x" aria-label="Close dialog"><i class="fas fa-times" aria-hidden="true"></i></button></div>
+        <div class="modal-body" style="max-height:70vh;overflow:auto">
+          <p><strong>${this._e(info.name)}</strong> · Connection information for the selected AI host</p>
+          ${info.configurationAvailable ? `<dl style="display:grid;grid-template-columns:minmax(100px,1fr) minmax(0,2fr);gap:8px 16px">${fields.map(([label,value]) => `<dt class="text-muted">${this._e(label)}</dt><dd style="margin:0;overflow-wrap:anywhere">${this._e(value)}</dd>`).join('')}</dl>` : '<p class="text-warning">SSH configuration is unavailable. Check the host credentials and encryption key in Hosts.</p>'}
+          <h4 style="margin-top:18px">How the connection works</h4>
+          ${record ? list(record.route) : '<p>Docker Dash connects to the configured SSH endpoint and forwards the remote Docker Unix socket to a loopback-only listener inside the application container. A private reverse tunnel is only described here after its deployment has been inspected.</p>'}
+          <h4 style="margin-top:18px">Security controls</h4>
+          <p>SSH encrypts the connection. Docker Dash requires the saved SHA-256 server fingerprint to match before authentication; a missing or changed key blocks the connection. Login credentials stay on the server and are excluded from this response.</p>
+          ${record ? list(record.protections) : ''}
+          <h4 style="margin-top:18px">Access and availability</h4>
+          <p>Access to the Docker socket grants powerful host administration privileges. Limit dashboard administrator access and protect both endpoints. A private listener is not a substitute for host or network access controls.</p>
+          ${record?.operations?.length ? list(record.operations) : '<p>Docker Dash checks the SSH connection with keepalives and retries interrupted connections with backoff. Losing this connection interrupts monitoring and remote actions; existing workloads continue according to their own Docker policies.</p>'}
+          <p class="text-muted text-sm" style="margin-top:16px">${record ? `Deployment inspected: ${this._e(new Date(record.verifiedAt).toLocaleString())}. These are dated observations, not a continuous security audit.` : info.recordStatus === 'stale' ? 'The connection configuration changed after the last inspection. Previous deployment observations are hidden until they are checked again.' : 'No deployment inspection has been recorded for this connection.'}</p>
+          <a href="https://docs.docker.com/engine/security/protect-access/" target="_blank" rel="noopener noreferrer">Docker documentation: protect access to the daemon <i class="fas fa-external-link-alt" aria-hidden="true"></i></a>
+        </div><div class="modal-footer"><button type="button" class="btn btn-secondary" id="compute-connection-close">Close</button></div>`,
+      { width: '680px', onClose: () => { if (token === this._token) this._container.querySelector('#compute-connection-info')?.focus(); } });
+      for (const id of ['compute-connection-close', 'compute-connection-x']) document.getElementById(id).addEventListener('click', () => Modal.close());
+    } catch (err) { if (token === this._token) this._error(err); }
+    finally {
+      if (this._connectionLoading === token) this._connectionLoading = null;
+      if (button) { button.disabled = false; button.removeAttribute('aria-busy'); }
+    }
   },
   _metrics(sample) {
     const percent = value => Number.isFinite(value) ? value.toFixed(1) + '%' : 'Collecting…';

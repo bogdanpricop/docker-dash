@@ -16,6 +16,7 @@ const WhatsNewPage = {
   // moves those entries into a new numbered release.
   _releases: [
     { version: '8.96.50', date: '2026-11-20', title: 'Reviewed vision and embedding model catalog', changes: [
+      'AI Compute adds a connection information button with public SSH details and dated, configuration-bound private tunnel inspection notes. Credentials are excluded; changed connection identities hide old observations.',
       { type: 'feature', text: 'AI Compute adds pinned Ollama vision/embedding recipes, persistent CPU-only downloads, cache status and explicit links to separately reviewed newer model generations.' },
       { type: 'improvement', text: 'Model downloads use a separate resumable queue, retain partial files and show live progress without blocking Stop/Start of existing inference services.' },
       { type: 'security', text: 'Deploy verifies runtime architecture and model revision before stopping confirmed conflicts. Managed Ollama inference uses a read-only cache, non-root user and loopback API port; oversized Flash Next, incompatible Llama 3.2 artifacts and unqualified Moondream 3.1 kernels have explicit limits.' },
