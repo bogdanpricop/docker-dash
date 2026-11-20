@@ -224,6 +224,25 @@ async function main() {
     await page.waitForFunction(()=>document.querySelector('#compute-host').textContent.includes('DGX Spark'));
     assert.equal(await page.$eval('#compute-target',e=>e.value),'9');
     assert.equal(await page.evaluate(()=>window.hostId),111);
+    // Downloads have their own confirmation and leave live service controls usable.
+    await page.evaluate(() => {
+      AIComputePage._catalog([{ id:'embed',name:'Nomic embedding',model:'nomic-embed-text:v1.5',capability:'embedding',engine:'ollama',runtimeVersion:'0.40.16',source:'https://ollama.com/library/nomic-embed-text',downloadable:true,deployable:true,contextLengths:[2048],memoryBytes:3*1024**3,diskBytes:1024**3,cacheState:'not_downloaded' },
+        {id:'unavailable',name:'Photon',engine:'photon',source:'https://docs.moondream.ai',downloadable:true,deployable:true,runtimeAvailable:false,contextLengths:[4096]}]);
+    });
+    assert.equal(await page.$eval('[data-download="unavailable"]', e => e.disabled),true);
+    assert.equal(await page.$eval('[data-deploy="unavailable"]', e => e.disabled),true);
+    await page.click('[data-download="embed"]');
+    await page.waitForSelector('#modal-ok');
+    assert.match(await page.$eval('#modal-content',e=>e.textContent),/persistent cache.*does not load/s);
+    assert.equal(await page.$eval('#modal-ok',e=>e.textContent.trim()),'Download model');
+    await page.click('#modal-ok');
+    await page.waitForFunction(()=>AIComputePage._operation?.action==='download');
+    assert.equal(await page.$eval('[data-operation="stop"]',e=>e.disabled),false);
+    await page.evaluate(()=>{computeJobs[0].status='running';computeJobs[0].progress={message:'Downloading 42% <img src=x>'};});
+    await page.waitForFunction(()=>document.querySelector('#compute-operation').textContent.includes('Downloading 42%'),{timeout:4000});
+    assert.equal(await page.$('#compute-operation img'),null);
+    await page.evaluate(()=>{computeJobs[0].status='completed';});
+    await page.waitForFunction(()=>AIComputePage._operation?.status==='completed',{timeout:4000});
     await page.evaluate(() => { AIComputePage._watchOperation({ ...preparedPlan, id: 'destroy-job', status: 'queued' }); AIComputePage.destroy(); });
     assert.equal(await page.evaluate(() => AIComputePage._charts.length), 0);
     assert.equal(await page.evaluate(async () => { const n = jobReads.length; await new Promise(r => setTimeout(r, 2200)); return jobReads.length === n; }), true);

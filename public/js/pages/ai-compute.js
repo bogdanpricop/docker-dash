@@ -47,7 +47,7 @@ const AIComputePage = {
         <div id="compute-operation" role="status" aria-live="polite" aria-atomic="true" hidden style="margin:12px 16px;padding:12px;border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:6px"></div>
         <div class="card-body" id="compute-workloads" style="overflow:auto"></div></div>
       <div class="card" style="margin-top:16px"><div class="card-header"><h3>Model catalog</h3></div>
-        <div class="card-body"><p class="text-muted text-sm">Standard recipes use pinned model revisions, a reviewed NVIDIA ARM64 runtime and a shared model cache. Memory/disk budgets are estimates; live checks run before starting. APIs bind to host loopback.</p>
+        <div class="card-body"><p class="text-muted text-sm">Recipes pin model revisions and their serving runtime. Download prepares weights without starting inference; Plan deploy starts a service with a local API. Memory/disk budgets are estimates and checked before starting. Downloaded weights are retained after Stop.</p>
         <div id="compute-catalog" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px"></div></div></div>
       <div class="card" style="margin-top:16px"><div class="card-header"><h3>Operation history</h3></div><div class="card-body" id="compute-jobs" aria-live="polite"></div></div>`;
     container.querySelector('#compute-refresh').addEventListener('click', () => this.render(container));
@@ -86,11 +86,11 @@ const AIComputePage = {
     if (!el || !job) return;
     const pending = this._operationPending(), failed = ['failed', 'rolled_back', 'needs_review', 'submission_failed'].includes(job.status);
     const labels = { submitting: 'Submitting operation…', queued: 'Queued — waiting for the worker…',
-      running: { stop: 'Stopping service…', start: 'Starting service — waiting for its API to become ready…', restart: 'Restarting service — waiting for its API to become ready…', switch: 'Switching engines — waiting for the new API…', deploy: 'Deploying model — downloads and loading can take several minutes…' }[job.action] || 'Operation in progress…',
+      running: { stop: 'Stopping service…', start: 'Starting service — waiting for its API to become ready…', restart: 'Restarting service — waiting for its API to become ready…', switch: 'Switching engines — waiting for the new API…', deploy: 'Deploying model — downloads and loading can take several minutes…', download: 'Downloading model — inference services are unchanged…' }[job.action] || 'Operation in progress…',
       completed: 'Operation completed', failed: 'Operation failed', rolled_back: 'Operation failed — previous engines restored',
       needs_review: 'Operation needs review — check recovery options below', submission_failed: 'Operation could not be submitted' };
     const message = labels[job.status] || job.status;
-    const detail = [job.error, this._pollError || (this._syncingOperation ? 'Refreshing service state automatically…' : job.error ? '' : pending ? 'Checking automatically every 2 seconds. You can stay on this page.' : 'Service state has been refreshed.')].filter(Boolean).join(' ');
+    const detail = [job.error, this._pollError || (this._syncingOperation ? 'Refreshing service state automatically…' : job.error ? '' : pending ? job.progress?.message || 'Checking automatically every 2 seconds. You can stay on this page.' : job.action === 'download' ? 'Model cache verified and catalog refreshed. Ready for Plan deploy, subject to capacity checks.' : 'Service state has been refreshed.')].filter(Boolean).join(' ');
     const key = JSON.stringify([job.id, job.status, detail]);
     el.hidden = false;
     el.setAttribute('role', failed ? 'alert' : 'status');
@@ -120,11 +120,12 @@ const AIComputePage = {
     }
     const wasLocked = Boolean(this._activeJob);
     this._operation = job;
-    this._activeJob = this._operationPending() || job.status === 'needs_review' || this._syncingOperation ? job : null;
+    this._activeJob = job.action !== 'download' && (this._operationPending() || job.status === 'needs_review' || this._syncingOperation) ? job : (this._jobsData || []).find(row => row.id !== job.id && row.action !== 'download' && ['queued','running','needs_review'].includes(row.status));
     this._jobsData = [job, ...(this._jobsData || []).filter(row => row.id !== job.id)];
     this._operationFeedback();
     this._jobs(this._jobsData);
     if (previous?.id !== job.id || previous?.status !== job.status || wasLocked !== Boolean(this._activeJob)) this._workloads();
+    if (wasLocked !== Boolean(this._activeJob) && this._catalogEntries) this._catalog(this._catalogEntries);
   },
   _watchOperation(job) {
     this._setOperation(job);
@@ -139,6 +140,12 @@ const AIComputePage = {
     if (token !== this._token || generation !== this._inventoryGeneration) return;
     this._inventory = inventory;
     this._workloads();
+    if (['download', 'deploy'].includes(this._operation?.action)) {
+      const entries = await Api.request('GET', this._url('catalog'), null, { signal });
+      if (token !== this._token || generation !== this._inventoryGeneration) return;
+      this._catalogEntries = entries;
+      this._catalog(entries);
+    }
   },
   async _pollOperation(token, id) {
     this._operationTimer = null;
@@ -194,11 +201,11 @@ const AIComputePage = {
   },
   _receivedJobs(jobs) {
     this._jobsData = jobs;
-    const active = jobs.find(job => ['queued', 'running', 'needs_review'].includes(job.status));
+    const active = jobs.find(job => job.action !== 'download' && ['queued','running','needs_review'].includes(job.status)) || jobs.find(job => job.action === 'download' && job.status === 'running') || jobs.find(job => job.action === 'download' && job.status === 'queued');
     if (active && (!this._operation || (!this._operationPending() && active.id !== this._operation.id))) this._watchOperation(active);
     const recovered = jobs.find(job => job.id === this._operation?.id && job.status === 'rolled_back');
     if (this._operation?.status === 'needs_review' && recovered) this._setOperation(recovered);
-    this._activeJob = this._operationPending() || this._syncingOperation || this._operation?.status === 'needs_review' ? this._operation : active;
+    this._activeJob = this._operation?.action !== 'download' && (this._operationPending() || this._syncingOperation || this._operation?.status === 'needs_review') ? this._operation : jobs.find(job => job.action !== 'download' && ['queued','running','needs_review'].includes(job.status));
     if (this._operation) this._jobsData = [this._operation, ...jobs.filter(job => job.id !== this._operation.id)];
     this._jobs(this._jobsData);
   },
@@ -365,11 +372,24 @@ const AIComputePage = {
   },
   _catalog(entries) {
     const el = this._container.querySelector('#compute-catalog');
-    el.innerHTML = entries.map(entry => `<div class="card"><div class="card-body"><span class="badge ${entry.deployable ? 'badge-success' : 'badge-warning'}">${entry.deployable ? 'Standard recipe' : 'Experimental'}</span><h3>${this._e(entry.name)}</h3>
+    el.innerHTML = entries.map(entry => `<div class="card" id="compute-recipe-${this._e(entry.id)}"><div class="card-body"><span class="badge ${entry.deployable ? 'badge-success' : 'badge-warning'}">${entry.deployable ? 'Standard recipe' : 'Experimental'}</span> ${entry.capability ? `<span class="badge">${this._e(entry.capability)}</span>` : ''}<h3>${this._e(entry.name)}</h3>
+      <p class="text-sm">${this._e(entry.model || entry.name)}${entry.quantization ? ' · ' + this._e(entry.quantization) : ''}</p>
       <p class="text-sm">${entry.memoryBytes ? `${this._bytes(entry.memoryBytes)} memory · ${this._bytes(entry.diskBytes)} disk (estimates)` : 'Resources require qualification'}</p>
-      <p class="text-muted text-sm">${this._e(entry.reason || `${entry.license} · pinned weights · ARM64 NVIDIA`)}</p>
+      <p class="text-muted text-sm">${this._e(entry.reason || `${entry.license} · pinned weights · ${entry.runtimeVersion || 'ARM64 NVIDIA vLLM'}`)}</p>
+      ${entry.successorId ? `<p class="text-sm">Newer generation: <a href="#" data-successor="${this._e(entry.successorId)}">${this._e(entries.find(e => e.id === entry.successorId)?.name || entry.successorId)}</a>. Kept as a separate recipe.</p>` : ''}
+      ${entry.cacheState ? `<p class="text-sm" data-cache-state="${this._e(entry.id)}"><strong>${this._e({ downloaded: 'Downloaded · pinned revision verified', not_downloaded: 'Not downloaded', unavailable: 'Cache status unavailable' }[entry.cacheState])}</strong>${entry.cacheError ? '<br>' + this._e(entry.cacheError) : ''}</p>` : ''}
+      ${entry.verifiedAt ? `<p class="text-muted text-sm">Version checked ${this._e(entry.verifiedAt)} · <code title="${this._e(entry.revision)}">${this._e(entry.revision.slice(0, 19))}…</code></p>` : ''}
       <a href="${this._e(entry.source)}" target="_blank" rel="noopener noreferrer">Project / model card</a>
-      ${entry.deployable ? `<button type="button" class="btn btn-sm btn-primary" data-deploy="${entry.id}" style="margin-left:12px">Plan deploy</button>` : ''}</div></div>`).join('');
+      ${entry.downloadable ? `<button type="button" class="btn btn-sm btn-secondary" data-download="${this._e(entry.id)}" style="margin-left:12px" ${entry.cacheState === 'downloaded' || entry.runtimeAvailable === false || this._activeJob ? 'disabled' : ''}>${entry.cacheState === 'downloaded' ? 'Downloaded' : 'Download'}</button>` : ''}
+      ${entry.deployable ? `<button type="button" class="btn btn-sm btn-primary" data-deploy="${this._e(entry.id)}" style="margin-left:12px" ${entry.runtimeAvailable === false || this._activeJob ? 'disabled' : ''}>Plan deploy</button>` : ''}</div></div>`).join('');
+    el.querySelectorAll('[data-successor]').forEach(link => link.addEventListener('click', event => {
+      event.preventDefault();
+      document.getElementById('compute-recipe-' + link.dataset.successor)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }));
+    el.querySelectorAll('[data-download]').forEach(button => button.addEventListener('click', () => {
+      const entry = entries.find(e => e.id === button.dataset.download);
+      this._preview({ action: 'download', catalogId: entry.id });
+    }));
     el.querySelectorAll('[data-deploy]').forEach(b => b.addEventListener('click', () => {
       const entry = entries.find(e => e.id === b.dataset.deploy), token = this._token;
       this._form(`Deploy ${entry.name}`, `<p>The API is exposed on host loopback only. Review the exact containers to stop in the next step.</p>
@@ -390,10 +410,10 @@ const AIComputePage = {
       if (token !== this._token) throw new Error('Host changed. The plan was not submitted.');
       const plan = result.plan;
       const message = `<p><strong>${this._e(result.action.toUpperCase())} · ${this._e(plan.target.name)}</strong></p><p>Host: ${this._e(this._container.querySelector('#compute-host').textContent)}</p>
-        ${payload.action === 'stop' ? '<p>This stops the AI service and unloads all models it serves. Requests to this service will be interrupted until it is started again. Cached model files are retained.</p>' : `<p>Memory reservation: ${this._bytes(plan.target.memoryBytes)} · 4 GiB additional host reserve.</p>${payload.action === 'restart' ? '<p>Requests to this service will be interrupted while its models reload.</p>' : ''}`}
+        ${payload.action === 'download' ? `<p>Download ${this._bytes(plan.downloadBytes)} of pinned model files into the persistent cache. This does not load the model into GPU/RAM or stop inference services. Partial downloads can be resumed.</p>` : payload.action === 'stop' ? '<p>This stops the AI service and unloads all models it serves. Requests to this service will be interrupted until it is started again. Cached model files are retained.</p>' : `<p>Memory reservation: ${this._bytes(plan.target.memoryBytes)} · 4 GiB additional host reserve.</p>${payload.action === 'restart' ? '<p>Requests to this service will be interrupted while its models reload.</p>' : ''}`}
         <p>${plan.stop.length ? 'These engines will stop:' : 'No other engines will stop.'}</p><ul>${plan.stop.map(c => `<li>${this._e(c.name)} <code>${this._e(c.id.slice(0,12))}</code></li>`).join('')}</ul>
         <p>${payload.action === 'stop' ? 'The service stays stopped until you start it again.' : this._e(plan.warning)}</p><p class="text-muted text-sm">Plan expires ${this._e(new Date(plan.expiresAt).toLocaleTimeString())}. Other speech services and gateway containers are excluded from automatic conflict stopping.</p>`;
-      const label = { start: 'Start service', stop: 'Stop service', restart: 'Restart service' }[payload.action] || 'Execute plan';
+      const label = { start: 'Start service', stop: 'Stop service', restart: 'Restart service', download: 'Download model' }[payload.action] || 'Execute plan';
       if (await Modal.confirm(message, { title: 'Review AI operation', html: true, danger: plan.stop.length > 0 || ['stop','restart'].includes(payload.action), confirmText: label, width: '620px' })) {
         if (token !== this._token) throw new Error('Host changed. Create a fresh plan.');
         this._pollError = null;
@@ -423,7 +443,7 @@ const AIComputePage = {
   _jobs(jobs) {
     const el = this._container.querySelector('#compute-jobs');
     el.innerHTML = jobs.length ? jobs.map(job => `<div style="padding:10px 0;border-bottom:1px solid var(--border)"><strong>${this._e(job.action)} · ${this._e(job.plan.target.name)}</strong> <span class="badge">${this._e(job.status.replaceAll('_',' '))}</span>
-      <span class="text-muted text-sm">${this._e(new Date(job.updatedAt).toLocaleString())}</span>${job.error ? `<p class="text-danger">${this._e(job.error)}</p>` : ''}
+      <span class="text-muted text-sm">${this._e(new Date(job.updatedAt).toLocaleString())}</span>${job.progress?.message && ['queued','running'].includes(job.status) ? `<p class="text-sm">${this._e(job.progress.message)}</p>` : ''}${job.error ? `<p class="text-danger">${this._e(job.error)}</p>` : ''}
       ${job.status === 'needs_review' ? `<button type="button" class="btn btn-sm btn-secondary" data-rollback="${job.id}">Review and restore previous engines</button>` : ''}</div>`).join('') : '<p class="text-muted">No AI operations on this host yet.</p>';
     el.querySelectorAll('[data-rollback]').forEach(b => b.addEventListener('click', async () => {
       const token = this._token, url = this._url(`jobs/${b.dataset.rollback}/rollback`);

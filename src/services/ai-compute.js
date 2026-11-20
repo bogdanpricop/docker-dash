@@ -5,6 +5,8 @@ const { getDb } = require('../db');
 const docker = require('./docker');
 const metrics = require('./ai-compute-metrics');
 const catalog = require('./ai-compute-catalog');
+const ollama = require('./ai-compute-ollama');
+const photon = require('./ai-compute-photon');
 const policy = require('./provider-operations/policy');
 const audit = require('./audit');
 const config = require('../config');
@@ -18,7 +20,7 @@ const configurationFingerprint = c => {
   return crypto.createHash('sha256').update(JSON.stringify([c.Id, c.Image, c.Config, hostConfig])).digest('hex');
 };
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
-const engines = ['vllm', 'ollama', 'llama', 'strata', 'basalt', 'ncm', 'speech'];
+const engines = ['vllm', 'ollama', 'photon', 'llama', 'strata', 'basalt', 'ncm', 'speech'];
 
 function hosts() {
   const rows = getDb().prepare(`SELECT h.id,h.name,h.connection_type,
@@ -46,7 +48,7 @@ async function stopContainer(container) {
 function engineOf(c) {
   const hint = `${c.Name || c.Names?.[0] || ''} ${c.Config?.Image || c.Image || ''}`.toLowerCase();
   // Infrastructure and HTTP gateways are never candidates for engine switching.
-  if (/gateway|tunnel|speech-api/.test(hint)) return null;
+  if (/gateway|tunnel|speech-api/.test(hint) || (c.Config?.Labels || c.Labels)?.['docker-dash.ai-compute.role'] === 'cache') return null;
   const declared = c.Config?.Labels?.['docker-dash.ai-compute.engine'] || c.Labels?.['docker-dash.ai-compute.engine'];
   if (engines.includes(declared)) return declared;
   return engines.find(engine => hint.includes(engine === 'speech' ? 'speech-engine' : engine)) || null;
@@ -56,7 +58,7 @@ function describe(c, profile, totalMemory) {
   const cmd = [...(c.Config?.Entrypoint || []), ...(c.Config?.Cmd || [])];
   const arg = flag => { const at = cmd.indexOf(flag); return at >= 0 ? cmd[at + 1] : null; };
   const env = c.Config?.Env || [];
-  const model = arg('--model') || (cmd.includes('serve') ? cmd[cmd.indexOf('serve') + 1] : null)
+  const model = c.Config?.Labels?.['docker-dash.ai-compute.model'] || arg('--model') || (cmd.includes('serve') ? cmd[cmd.indexOf('serve') + 1] : null)
     || env.find(v => /^(MODEL_ID|VLLM_MODEL)=/.test(v))?.split('=').slice(1).join('=');
   const fraction = Number(arg('--gpu-memory-utilization'));
   const estimate = fraction > 0 && fraction <= 1 && totalMemory ? fraction * totalMemory : 0;
@@ -65,9 +67,9 @@ function describe(c, profile, totalMemory) {
     imageId: c.Image, state: c.State?.Status, health: c.State?.Health?.Status || null,
     engine, model: text(profile?.model || model) || null, profileId: profile?.id || null, profileName: profile?.name || null,
     memoryBytes: profile?.memory_bytes || Math.ceil(c.HostConfig?.Memory || estimate) || null,
-    exclusive: profile ? Boolean(profile.exclusive) : ['vllm', 'ollama', 'llama', 'strata', 'basalt'].includes(engine),
+    exclusive: profile ? Boolean(profile.exclusive) : c.Config?.Labels?.['docker-dash.ai-compute.capability'] === 'embedding' ? false : ['vllm', 'ollama', 'photon', 'llama', 'strata', 'basalt'].includes(engine),
     desiredRestartPolicy: profile ? JSON.parse(profile.restart_policy) : c.HostConfig?.RestartPolicy,
-    readyPort: profile ? profile.ready_port : Number(arg('--port')) || ({ vllm: 8000, ollama: 11434, llama: 8080, strata: 8080 }[engine] || null) };
+    readyPort: profile ? profile.ready_port : Number(arg('--port')) || ({ vllm: 8000, ollama: 11434, photon: 8000, llama: 8080, strata: 8080 }[engine] || null) };
 }
 
 async function inventory(hostId) {
@@ -144,6 +146,11 @@ async function cache(hostId, containerId) {
   const state = await inventory(hostId);
   const c = state.containers.find(c => c.id === containerId && c.state === 'running');
   if (!c) fail('Choose a running AI workload to inspect its model cache');
+  if (c.engine === 'photon') {
+    const recipe = catalog.entries.find(e => e.engine === 'photon');
+    return { containerId, checkedAt: now(), models: await photon.state(docker.getDocker(hostId), recipe) ? [{ model: recipe.model, state: 'verified downloaded artifacts', cachedRevisions: [recipe.revision] }] : [], note: 'Downloaded artifacts are separate from a ready inference API.' };
+  }
+  if (c.engine === 'ollama') return { containerId, checkedAt: now(), models: ollama.parseList(await ollama.exec(docker.getDocker(hostId).getContainer(c.id), ['ollama', 'list'])).map(m => ({ model: m.name, state: 'downloaded model', cachedRevisions: [m.digest] })), note: 'Downloaded models are separate from resident models; Check API verifies the selected model is loaded.' };
   const script = `import os,json,itertools
 roots=[os.path.join(os.environ.get('HF_HOME','/root/.cache/huggingface'),'hub'),'/models/hub','/root/.cache/huggingface/hub']
 models={}
@@ -174,6 +181,10 @@ async function readiness(hostId, containerId, port, engine) {
   const client = docker.getDocker(hostId), container = client.getContainer(containerId);
   const state = await container.inspect();
   if (!state.State?.Running) return { ready: false, detail: 'Container is not running', checkedAt: now() };
+  if (engine === 'ollama' && port === 11434) {
+    try { return await ollama.probe(container); }
+    catch (error) { return { ready: false, detail: text(error.message, 500), checkedAt: now() }; }
+  }
   if (!port) return { ready: state.State?.Health?.Status === 'healthy', detail: state.State?.Health?.Status || 'No API probe or Docker healthcheck configured', checkedAt: now() };
   if (!Number.isInteger(port) || port < 1 || port > 65535) fail('Invalid API port');
   const path = engine === 'ollama' ? '/api/tags' : '/v1/models';
@@ -189,9 +200,26 @@ function job(row) {
   if (!row) fail('Operation not found', 404);
   return { id: row.id, hostId: row.host_id, action: row.action, status: row.status, plan: JSON.parse(row.plan_json),
     stopped: JSON.parse(row.stopped_json), createdContainer: row.created_container, error: row.error,
-    createdAt: row.created_at, updatedAt: row.updated_at };
+    progress: JSON.parse(row.progress_json || '{}'), createdAt: row.created_at, updatedAt: row.updated_at };
 }
-function jobs(hostId) { return getDb().prepare('SELECT * FROM ai_compute_jobs WHERE host_id=? ORDER BY created_at DESC LIMIT 20').all(hostId).map(job); }
+async function catalogForHost(hostId) {
+  let client;
+  try { client = docker.getDocker(hostId); }
+  catch (error) { return catalog.entries.map(entry => ({ ...entry, cacheState: entry.downloadable ? 'unavailable' : undefined, cacheError: entry.downloadable ? text(error.message, 300) : undefined })); }
+  let models = [], cacheError = null;
+  try { models = await ollama.states(client); }
+  catch (error) { cacheError = text(error.message, 300); }
+  return Promise.all(catalog.entries.map(async entry => {
+    if (entry.engine === 'ollama') return { ...entry,
+      cacheState: cacheError ? 'unavailable' : models.some(m => m.name === entry.alias && entry.revision.startsWith('sha256:' + m.digest)) ? 'downloaded' : 'not_downloaded', cacheError };
+    if (entry.engine !== 'photon') return entry;
+    try {
+      await client.getImage(entry.runtime).inspect();
+      return { ...entry, runtimeAvailable: true, cacheState: await photon.state(client, entry) ? 'downloaded' : 'not_downloaded' };
+    } catch { return { ...entry, cacheState: 'unavailable', cacheError: 'The pinned model-download runtime has not been pulled on this host yet.' }; }
+  }));
+}
+function jobs(hostId) { return getDb().prepare("SELECT * FROM ai_compute_jobs WHERE host_id=? ORDER BY CASE WHEN status IN ('queued','running','needs_review') THEN 0 ELSE 1 END,created_at DESC LIMIT 40").all(hostId).map(job); }
 function getJob(hostId, id) { return job(getDb().prepare('SELECT * FROM ai_compute_jobs WHERE host_id=? AND id=?').get(hostId, id)); }
 function allowed(hostId, userId, creating = false) {
   policy.assertAllowed({ providerType: 'docker', hostId });
@@ -207,20 +235,21 @@ const auditJob = (row, action, details = {}) => audit.log({ userId: row.user_id,
 
 async function prepare(hostId, body, user) {
   const action = body.action;
-  if (!['start', 'stop', 'restart', 'switch', 'deploy'].includes(action)) fail('Invalid operation');
-  allowed(hostId, user.id, action === 'deploy');
+  if (!['start', 'stop', 'restart', 'switch', 'deploy', 'download'].includes(action)) fail('Invalid operation');
+  allowed(hostId, user.id, ['deploy', 'download'].includes(action));
   const client = docker.getDocker(hostId);
   const state = await inventory(hostId);
   let target, recipe;
-  if (action === 'deploy') {
-    recipe = catalog.entries.find(e => e.id === body.catalogId && e.deployable);
-    if (!recipe || !recipe.contextLengths.includes(Number(body.contextLength))) fail('Select a standard recipe and supported context length');
-    if (!['aarch64', 'arm64'].includes(state.architecture)) fail('These Spark recipes require an ARM64 host');
+  if (['deploy', 'download'].includes(action)) {
+    recipe = catalog.entries.find(e => e.id === body.catalogId && (action === 'download' ? e.downloadable : e.deployable));
+    if (!recipe || (action === 'deploy' && !recipe.contextLengths.includes(Number(body.contextLength)))) fail('Select a standard recipe and supported context length');
+    const architecture = { aarch64: 'arm64', x86_64: 'amd64' }[state.architecture] || state.architecture;
+    if (!(recipe.architectures || ['arm64']).includes(architecture)) fail('This recipe requires a compatible host architecture (ARM64 for Spark vLLM recipes)');
     const port = Number(body.port);
-    if (!Number.isInteger(port) || port < 1024 || port > 65535) fail('Choose a loopback port between 1024 and 65535');
-    target = { name: `dd-ai-${recipe.id}-${crypto.randomBytes(3).toString('hex')}`, engine: recipe.engine, model: recipe.model,
-      memoryBytes: recipe.memoryBytes + Math.max(0, Number(body.contextLength) / 4096 - 1) * 2 * catalog.GiB,
-      exclusive: true, readyPort: 8000 };
+    if (action === 'deploy' && (!Number.isInteger(port) || port < 1024 || port > 65535)) fail('Choose a loopback port between 1024 and 65535');
+    target = { name: action === 'download' ? recipe.name : `dd-ai-${recipe.id}-${crypto.randomBytes(3).toString('hex')}`, engine: recipe.engine, model: recipe.model,
+      memoryBytes: action === 'download' ? 0 : recipe.memoryBytes + Math.max(0, Number(body.contextLength) / 4096 - 1) * 2 * catalog.GiB,
+      exclusive: action !== 'download' && (recipe.exclusive ?? true), readyPort: recipe.engine === 'ollama' ? 11434 : 8000 };
   } else {
     target = state.containers.find(c => c.profileId === Number(body.profileId));
     if (!target) fail('Register a profile for the selected workload first');
@@ -246,8 +275,9 @@ async function prepare(hostId, body, user) {
   if (starts && target.memoryBytes + 4 * catalog.GiB > sample.memory.availableBytes + reclaimable) fail('Insufficient estimated memory including the 4 GiB host reserve', 409);
   if (recipe && (!sample.cacheDisk || sample.cacheDisk.availableBytes < recipe.diskBytes)) fail('Cannot verify sufficient free space on the Docker model-cache filesystem', 409);
   const plan = { target, snapshots, stop: conflicts.map(c => ({ id: c.id, name: c.name, memoryBytes: c.memoryBytes })),
-    recipeId: recipe?.id, contextLength: recipe ? Number(body.contextLength) : undefined, port: recipe ? Number(body.port) : undefined,
-    estimated: true, sampledAt: sample.sampledAt, warning: 'Memory and disk budgets are estimates. Weight downloads may take several minutes. Failed starts restore the previous running engines. Model caches are retained.',
+    recipeId: recipe?.id, recipeRevision: recipe?.revision, runtime: recipe?.runtime, downloadBytes: recipe?.downloadBytes,
+    contextLength: recipe && action === 'deploy' ? Number(body.contextLength) : undefined, port: recipe && action === 'deploy' ? Number(body.port) : undefined,
+    estimated: true, sampledAt: sample.sampledAt, warning: action === 'download' ? 'Only the CPU cache service may start. Inference and other services are unchanged. Verified files are reused; partial files are retained on interruption.' : 'Memory and disk budgets are estimates. Weight downloads may take several minutes. Failed starts restore the previous running engines. Model caches are retained.',
     expiresAt: new Date(Date.now() + 600000).toISOString() };
   const id = crypto.randomUUID(), at = now();
   getDb().prepare('INSERT INTO ai_compute_jobs(id,host_id,user_id,action,status,plan_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)')
@@ -259,12 +289,12 @@ async function prepare(hostId, body, user) {
 function execute(hostId, id, user) {
   const db = getDb(), row = db.prepare('SELECT * FROM ai_compute_jobs WHERE id=? AND host_id=?').get(id, hostId);
   const operation = job(row);
-  allowed(hostId, user.id, row.action === 'deploy');
+  allowed(hostId, user.id, ['deploy', 'download'].includes(row.action));
   if (row.user_id !== user.id || Date.parse(operation.plan.expiresAt) < Date.now()) fail('This plan expired or belongs to another administrator', 409);
   try {
     const changed = db.prepare("UPDATE ai_compute_jobs SET status='queued',updated_at=? WHERE id=? AND status='prepared'").run(now(), id);
     if (!changed.changes) fail('This plan has already been submitted', 409);
-  } catch (err) { if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') fail('Another operation is active on this host', 409); throw err; }
+  } catch (err) { if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') fail(row.action === 'download' ? 'This model download is already queued or running' : 'Another operation is active on this host', 409); throw err; }
   auditJob(row, 'ai_compute_execute');
   return getJob(hostId, id);
 }
@@ -307,7 +337,11 @@ async function run(row) {
   const db = getDb(), plan = JSON.parse(row.plan_json);
   let client;
   const touch = () => db.prepare('UPDATE ai_compute_jobs SET updated_at=? WHERE id=?').run(now(), row.id);
-  const check = () => allowed(row.host_id, row.user_id, row.action === 'deploy');
+  const check = () => allowed(row.host_id, row.user_id, ['deploy', 'download'].includes(row.action));
+  const progress = message => {
+    check();
+    db.prepare('UPDATE ai_compute_jobs SET progress_json=?,updated_at=? WHERE id=?').run(JSON.stringify({ message: text(message, 500) }), now(), row.id);
+  };
   let mutated = false;
   const heartbeat = setInterval(touch, 10000);
   heartbeat.unref();
@@ -319,12 +353,23 @@ async function run(row) {
     }
     // Image download and architecture checks happen before any existing engine is stopped.
     let imageId;
-    if (row.action === 'deploy') {
+    if (['deploy', 'download'].includes(row.action)) {
       const recipe = catalog.entries.find(e => e.id === plan.recipeId);
+      if (!recipe || (plan.recipeRevision && recipe.revision !== plan.recipeRevision) || (plan.runtime && recipe.runtime !== plan.runtime)) fail('The catalog recipe changed after this preview. Create a new plan.', 409);
+      progress('Preparing the pinned runtime image.');
       await docker.pullImage(recipe.runtime, row.host_id);
       const image = await client.getImage(recipe.runtime).inspect();
-      if (image.Architecture !== 'arm64') fail('The selected image is not ARM64 compatible', 409);
+      const hostArchitecture = (await client.info()).Architecture;
+      const architecture = { aarch64: 'arm64', x86_64: 'amd64' }[hostArchitecture] || hostArchitecture;
+      if (image.Architecture !== architecture) fail('The selected image is not compatible with the host architecture (ARM64 on Spark)', 409);
       imageId = image.Id; touch(); check();
+      if (recipe.engine === 'ollama') await ollama.download(client, recipe, imageId, check, progress);
+      if (recipe.engine === 'photon') await photon.download(client, recipe, imageId, check, progress);
+      if (row.action === 'download') {
+        db.prepare("UPDATE ai_compute_jobs SET status='completed',updated_at=? WHERE id=?").run(now(), row.id);
+        auditJob(row, 'ai_compute_downloaded', { catalogId: recipe.id, revision: recipe.revision });
+        return;
+      }
     }
     const currentInventory = await inventory(row.host_id);
     const expectedConflicts = plan.stop.map(c => c.id).sort().join(',');
@@ -333,6 +378,7 @@ async function run(row) {
     if (actualConflicts !== expectedConflicts) fail('The running LLM inventory changed after the preview. Create a new plan.', 409);
     const stopIds = [...plan.stop.map(c => c.id), ...(['stop', 'restart'].includes(row.action) && plan.target.state === 'running' ? [plan.target.id] : [])];
     for (const id of stopIds) {
+      progress('Stopping the confirmed conflicting service.');
       check();
       const snapshot = plan.snapshots.find(s => s.id === id);
       if (fingerprint(await client.getContainer(id).inspect()) !== snapshot.fingerprint) fail('An engine changed while preparing the switch', 409);
@@ -365,7 +411,7 @@ async function run(row) {
       if (row.action === 'deploy') {
         const recipe = catalog.entries.find(e => e.id === plan.recipeId);
         const share = Math.max(0.05, Math.min(0.8, plan.target.memoryBytes / sample.memory.totalBytes));
-        const container = await client.createContainer({ name: plan.target.name, Image: imageId,
+        const options = recipe.engine === 'ollama' ? ollama.createOptions(recipe, plan, imageId, row.id) : { name: plan.target.name, Image: imageId,
           Cmd: ['vllm', 'serve', recipe.model, '--revision', recipe.revision, '--tokenizer-revision', recipe.revision,
             '--served-model-name', recipe.id, '--host', '0.0.0.0', '--port', '8000', '--load-format', 'safetensors',
             '--max-model-len', String(plan.contextLength), '--max-num-seqs', '4', '--gpu-memory-utilization', share.toFixed(3), '--attention-backend', 'TRITON_ATTN'],
@@ -376,12 +422,13 @@ async function run(row) {
             DeviceRequests: [{ Driver: '', Count: -1, Capabilities: [['gpu']] }], ShmSize: catalog.GiB,
             Mounts: [{ Type: 'volume', Source: 'docker-dash-ai-model-cache', Target: '/models' }],
             PortBindings: { '8000/tcp': [{ HostIp: '127.0.0.1', HostPort: String(plan.port) }] },
-            LogConfig: { Type: 'json-file', Config: { 'max-size': '10m', 'max-file': '3' } } } });
+            LogConfig: { Type: 'json-file', Config: { 'max-size': '10m', 'max-file': '3' } } } };
+        const container = await client.createContainer(options);
         targetId = container.id;
         db.prepare('UPDATE ai_compute_jobs SET created_container=?,updated_at=? WHERE id=?').run(targetId, now(), row.id);
         mutated = true;
         db.prepare(`INSERT INTO ai_compute_profiles(host_id,container_id,name,engine,model,memory_bytes,ready_port,exclusive,created_by,created_at,restart_policy)
-          VALUES (?,?,?,?,?,?,?,1,?,?,?)`).run(row.host_id, targetId, plan.target.name, 'vllm', recipe.model, plan.target.memoryBytes, 8000, row.user_id, now(), JSON.stringify({ Name: 'unless-stopped' }));
+          VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(row.host_id, targetId, plan.target.name, recipe.engine, recipe.model, plan.target.memoryBytes, plan.target.readyPort, Number(plan.target.exclusive), row.user_id, now(), JSON.stringify({ Name: 'unless-stopped' }));
       }
       const c = client.getContainer(targetId), current = await c.inspect();
       mutated = true;
@@ -390,6 +437,9 @@ async function run(row) {
         if (original) await c.update({ RestartPolicy: plan.target.desiredRestartPolicy || original.restartPolicy });
         await c.start();
       }
+      const recipeId = current.Config?.Labels?.['docker-dash.ai-compute.catalog'] || plan.recipeId;
+      const managedRecipe = catalog.entries.find(e => e.id === recipeId && e.engine === 'ollama');
+      if (managedRecipe) await ollama.warm(c, managedRecipe, progress);
       let ready = false;
       for (let attempt = 0; attempt < 180; attempt++) {
         check(); touch();
@@ -422,13 +472,26 @@ async function tick() {
   try {
     const db = getDb();
     // Never replay a partially completed switch after a crash or lose its rollback evidence.
-    db.prepare("UPDATE ai_compute_jobs SET status='needs_review',error='Interrupted operation. Review and restore the previous engines before proceeding.' WHERE status='running' AND updated_at < ?")
+    db.prepare("UPDATE ai_compute_jobs SET status='failed',error='Download interrupted. Cached partial files are retained; prepare a new download plan to resume.' WHERE action='download' AND status='running' AND updated_at < ?")
       .run(new Date(Date.now() - 1800000).toISOString());
-    const row = db.prepare("SELECT * FROM ai_compute_jobs WHERE status='queued' ORDER BY created_at LIMIT 1").get();
+    db.prepare("UPDATE ai_compute_jobs SET status='needs_review',error='Interrupted operation. Review and restore the previous engines before proceeding.' WHERE action!='download' AND status='running' AND updated_at < ?")
+      .run(new Date(Date.now() - 1800000).toISOString());
+    const row = db.prepare("SELECT * FROM ai_compute_jobs WHERE action!='download' AND status='queued' ORDER BY created_at LIMIT 1").get();
     if (row && db.prepare("UPDATE ai_compute_jobs SET status='running',updated_at=? WHERE id=? AND status='queued'").run(now(), row.id).changes) await run(row);
     db.prepare("DELETE FROM ai_compute_jobs WHERE status='prepared' AND created_at < ?").run(new Date(Date.now() - 86400000).toISOString());
   } finally { ticking = false; }
 }
 
-module.exports = { hosts, inventory, register, monitoring, readiness, cache, prepare, execute, jobs, getJob, rollback, tick,
+let downloading = false;
+async function downloadTick() {
+  if (downloading) return;
+  downloading = true;
+  try {
+    const db = getDb();
+    const row = db.prepare("SELECT * FROM ai_compute_jobs j WHERE action='download' AND status='queued' AND NOT EXISTS(SELECT 1 FROM ai_compute_jobs active WHERE active.host_id=j.host_id AND active.action='download' AND active.status='running') ORDER BY created_at LIMIT 1").get();
+    if (row && db.prepare("UPDATE ai_compute_jobs SET status='running',updated_at=? WHERE id=? AND status='queued'").run(now(), row.id).changes) await run(row);
+  } finally { downloading = false; }
+}
+
+module.exports = { hosts, inventory, register, monitoring, readiness, cache, catalogForHost, prepare, execute, jobs, getJob, rollback, tick, downloadTick,
   _internals: { engineOf, describe, fingerprint, run, restore } };

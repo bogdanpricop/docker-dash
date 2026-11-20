@@ -770,6 +770,9 @@ function startAll() {
   const computeTimer = setInterval(_m('ai-compute-operations', () => require('../services/ai-compute').tick()), 5000);
   computeTimer.unref();
   jobs.push({ stop: () => clearInterval(computeTimer) });
+  const computeDownloadTimer = setInterval(_m('ai-compute-downloads', () => require('../services/ai-compute').downloadTick()), 5000);
+  computeDownloadTimer.unref();
+  jobs.push({ stop: () => clearInterval(computeDownloadTimer) });
 
   log.info('Background jobs started');
 

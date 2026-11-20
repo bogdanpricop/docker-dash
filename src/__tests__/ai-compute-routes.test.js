@@ -7,7 +7,7 @@ jest.mock('../middleware/auth', () => ({
   requireAuth: (req, res, next) => req.user ? next() : res.status(401).json({ error: 'Authentication required' }),
   writeable: (_req, _res, next) => next(),
 }));
-jest.mock('../services/ai-compute', () => ({ hosts: jest.fn(), inventory: jest.fn(), getJob: jest.fn(), monitoring: jest.fn(), prepare: jest.fn(), execute: jest.fn() }));
+jest.mock('../services/ai-compute', () => ({ hosts: jest.fn(), inventory: jest.fn(), catalogForHost: jest.fn(), getJob: jest.fn(), monitoring: jest.fn(), prepare: jest.fn(), execute: jest.fn() }));
 jest.mock('../services/ai-compute-metrics', () => ({ sample: jest.fn() }));
 jest.mock('../services/provider-operations/policy', () => ({ assertAllowed: jest.fn() }));
 jest.mock('../services/audit', () => ({ log: jest.fn() }));
@@ -45,6 +45,14 @@ test('admin reads are scoped to validated Docker host and prohibit response cach
   expect(response.status).toBe(200); expect(response.headers['cache-control']).toBe('no-store');
   expect(service.inventory).toHaveBeenCalledWith(host);
   expect(response.body.hostName).toBe('Compute');
+});
+
+test('catalog cache status is private, administrator-only and uses the validated host', async () => {
+  service.catalogForHost.mockResolvedValue([{ id: 'model', cacheState: 'downloaded' }]);
+  expect((await request(app).get(`/api/ai-compute/catalog?hostId=${host}`).set('x-test-role', 'viewer')).status).toBe(403);
+  const response = await request(app).get(`/api/ai-compute/catalog?hostId=${host}`).set('x-test-role', 'admin');
+  expect(response.status).toBe(200); expect(response.headers['cache-control']).toBe('no-store');
+  expect(response.body[0].cacheState).toBe('downloaded'); expect(service.catalogForHost).toHaveBeenCalledWith(host);
 });
 test('malformed, conflicting and non-Docker host selections are rejected before service access', async () => {
   for (const suffix of ['hostId=NaN', `hostId=${vm}`, 'hostId=999999']) {

@@ -31,7 +31,7 @@ const change = (req, action, details) => {
 };
 
 router.get('/inventory', handle(async req => ({ ...await service.inventory(hostId(req)), hostName: req.hostName })));
-router.get('/catalog', handle(() => require('../services/ai-compute-catalog').entries));
+router.get('/catalog', handle(req => service.catalogForHost(hostId(req))));
 router.get('/metrics', handle(req => metrics.sample(hostId(req))));
 router.get('/history', handle(req => metrics.history(hostId(req), req.query.hours || 1)));
 router.get('/jobs', handle(req => service.jobs(hostId(req))));
