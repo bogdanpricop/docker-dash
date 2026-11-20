@@ -1,0 +1,508 @@
+[
+  {
+    "id": "paddleocr-vl16",
+    "name": "PaddleOCR-VL 1.6",
+    "model": "PaddlePaddle/PaddleOCR-VL-1.6",
+    "engine": "paddleocr",
+    "capability": "document-ocr",
+    "tier": "planned",
+    "integrationRequired": true,
+    "deployable": false,
+    "downloadable": false,
+    "license": "apache-2.0",
+    "source": "https://huggingface.co/PaddlePaddle/PaddleOCR-VL-1.6",
+    "sourceRevision": "132c45f52c0a26ed5a6b2f6bd8e3985794cc27dd",
+    "sourceCheckedAt": "2026-11-20",
+    "reason": "Needs a document-processing service and a reviewed ARM64/GB10 runtime before managed download or deployment.",
+    "details": {
+      "problem": "Convert scanned invoices, delivery notes and technical PDFs into searchable text and structured tables.",
+      "integration": [
+        "Needs a document-processing service and a reviewed ARM64/GB10 runtime before managed download or deployment.",
+        "Combine document layout detection with the recognition model; expose bounded file uploads and JSON/Markdown results.",
+        "Test tables, rotations, scans and Romanian documents against representative source files."
+      ],
+      "summary": "PaddlePaddle's compact document model recognizes text and document elements including tables, charts, formulas and seals.",
+      "notes": [
+        "A model API alone does not provide a complete PDF ingestion or document management application."
+      ],
+      "sources": [
+        {
+          "label": "Official model card",
+          "url": "https://huggingface.co/PaddlePaddle/PaddleOCR-VL-1.6"
+        }
+      ],
+      "reviewedAt": "2026-11-20"
+    }
+  },
+  {
+    "id": "qwen3-reranker06b",
+    "name": "Qwen3-Reranker 0.6B",
+    "model": "Qwen/Qwen3-Reranker-0.6B",
+    "engine": "reranker",
+    "capability": "reranking",
+    "tier": "planned",
+    "integrationRequired": true,
+    "deployable": false,
+    "downloadable": false,
+    "license": "apache-2.0",
+    "source": "https://huggingface.co/Qwen/Qwen3-Reranker-0.6B",
+    "sourceRevision": "e61197ed45024b0ed8a2d74b80b4d909f1255473",
+    "sourceCheckedAt": "2026-11-20",
+    "reason": "Needs a ranking endpoint and a qualified runtime; it is not interchangeable with an embedding API.",
+    "details": {
+      "problem": "Move the most relevant passages to the top of internal document search results before generating an answer.",
+      "integration": [
+        "Needs a ranking endpoint and a qualified runtime; it is not interchangeable with an embedding API.",
+        "Send a question and a bounded candidate set from the existing Nomic/vector search, then keep the highest-scoring passages.",
+        "Measure retrieval quality and latency using representative queries."
+      ],
+      "summary": "Qwen's small multilingual reranker assigns relevance scores to query/document pairs.",
+      "notes": [
+        "It complements the existing embeddings; it does not store documents or generate answers."
+      ],
+      "sources": [
+        {
+          "label": "Official model card",
+          "url": "https://huggingface.co/Qwen/Qwen3-Reranker-0.6B"
+        }
+      ],
+      "reviewedAt": "2026-11-20"
+    }
+  },
+  {
+    "id": "qwen3-embedding4b",
+    "name": "Qwen3-Embedding 4B",
+    "model": "Qwen/Qwen3-Embedding-4B",
+    "engine": "ollama",
+    "capability": "embedding",
+    "tier": "planned",
+    "integrationRequired": true,
+    "deployable": false,
+    "downloadable": false,
+    "license": "apache-2.0",
+    "source": "https://ollama.com/library/qwen3-embedding:4b",
+    "sourceRevision": "5cf2132abc99cad020ac570b19d031efec650f2b",
+    "sourceCheckedAt": "2026-11-20",
+    "reason": "Needs a pinned Ollama manifest and a native embedding smoke test before managed download or deployment.",
+    "details": {
+      "problem": "Find procedures, tickets, technical manuals and code by meaning across languages.",
+      "integration": [
+        "Needs a pinned Ollama manifest and a native embedding smoke test before managed download or deployment.",
+        "Compare retrieval quality with Nomic before migrating; store document and query vectors in a compatible vector index.",
+        "A change of model or vector dimensions requires a separate index or re-embedding."
+      ],
+      "summary": "Qwen's multilingual text embedding family supports semantic retrieval, clustering and configurable vector dimensions.",
+      "notes": [],
+      "sources": [
+        {
+          "label": "Official model card",
+          "url": "https://huggingface.co/Qwen/Qwen3-Embedding-4B"
+        },
+        {
+          "label": "Ollama library",
+          "url": "https://ollama.com/library/qwen3-embedding:4b"
+        }
+      ],
+      "reviewedAt": "2026-11-20"
+    }
+  },
+  {
+    "id": "qwen3-coder-next",
+    "name": "Qwen3-Coder-Next · Q4",
+    "model": "Qwen/Qwen3-Coder-Next",
+    "engine": "ollama",
+    "capability": "coding",
+    "tier": "planned",
+    "integrationRequired": true,
+    "deployable": false,
+    "downloadable": false,
+    "license": "apache-2.0",
+    "source": "https://ollama.com/library/qwen3-coder-next:q4_K_M",
+    "sourceRevision": "a7fbcb5c0e12d62a448eaa0e260346bf5dcc0feb",
+    "sourceCheckedAt": "2026-11-20",
+    "reason": "Needs a pinned Ollama artifact, ARM64/GB10 inference qualification and measured memory/context budgets.",
+    "details": {
+      "problem": "Assist with code changes, tests, scripts and Docker Compose/configuration reviews while keeping the repository local.",
+      "integration": [
+        "Needs a pinned Ollama artifact, ARM64/GB10 inference qualification and measured memory/context budgets.",
+        "Connect a coding client to a local model API; review generated patches and any tool execution separately.",
+        "The Ollama Q4 files are about 52 GB; runtime and context memory are additional."
+      ],
+      "summary": "A coding-focused hybrid MoE model with 80B total and 3B active parameters per token, designed for coding-agent workflows.",
+      "notes": [
+        "Advertised maximum context is not a tested safe context budget on this Spark."
+      ],
+      "sources": [
+        {
+          "label": "Official model card",
+          "url": "https://huggingface.co/Qwen/Qwen3-Coder-Next"
+        },
+        {
+          "label": "Ollama library",
+          "url": "https://ollama.com/library/qwen3-coder-next:q4_K_M"
+        }
+      ],
+      "reviewedAt": "2026-11-20"
+    }
+  },
+  {
+    "id": "chronos2",
+    "name": "Chronos-2",
+    "model": "amazon/chronos-2",
+    "engine": "chronos",
+    "capability": "forecasting",
+    "tier": "planned",
+    "integrationRequired": true,
+    "deployable": false,
+    "downloadable": false,
+    "license": "apache-2.0",
+    "source": "https://huggingface.co/amazon/chronos-2",
+    "sourceRevision": "29ec3766d36d6f73f0696f85560a422f50e8498c",
+    "sourceCheckedAt": "2026-11-20",
+    "reason": "Needs a numeric forecasting service and a qualified runtime before managed deployment.",
+    "details": {
+      "problem": "Estimate future disk usage, resource demand or activity from historical measurements.",
+      "integration": [
+        "Needs a numeric forecasting service and a qualified runtime before managed deployment.",
+        "Supply timestamped histories at consistent intervals, together with missing-data handling and optional related measurements.",
+        "Backtest prediction intervals against held-out data and simple trend/seasonal baselines before enabling alerts."
+      ],
+      "summary": "Amazon's pretrained time-series model supports univariate, multivariate and covariate-informed probabilistic forecasts.",
+      "notes": [
+        "Forecasts depend on data quality; this catalog entry does not change existing Docker Dash alert rules."
+      ],
+      "sources": [
+        {
+          "label": "Official model card",
+          "url": "https://huggingface.co/amazon/chronos-2"
+        }
+      ],
+      "reviewedAt": "2026-11-20"
+    }
+  },
+  {
+    "id": "embeddinggemma2",
+    "name": "EmbeddingGemma 2",
+    "model": "google/embeddinggemma-2",
+    "engine": "multimodal-embedding",
+    "capability": "multimodal-search",
+    "tier": "planned",
+    "integrationRequired": true,
+    "deployable": false,
+    "downloadable": false,
+    "license": "apache-2.0",
+    "source": "https://huggingface.co/google/embeddinggemma-2",
+    "sourceRevision": "f9972ac22e696a105c482202646979e33e4b5a1e",
+    "sourceCheckedAt": "2026-11-20",
+    "reason": "Needs a multimodal embedding service, a compatible index and ARM64/GB10 qualification.",
+    "details": {
+      "problem": "Search product images, text, audio and video using a shared semantic index.",
+      "integration": [
+        "Needs a multimodal embedding service, a compatible index and ARM64/GB10 qualification.",
+        "Load only required encoders and prepare media with the source's sampling and instruction conventions.",
+        "Use one model/version and matching dimensions for stored vectors and queries."
+      ],
+      "summary": "Google's compact multilingual embedding model maps text, images, video and audio into a shared vector space.",
+      "notes": [
+        "This produces search vectors, not generated images or spoken audio."
+      ],
+      "sources": [
+        {
+          "label": "Official model card",
+          "url": "https://huggingface.co/google/embeddinggemma-2"
+        }
+      ],
+      "reviewedAt": "2026-11-20"
+    }
+  },
+  {
+    "id": "translategemma12b",
+    "name": "TranslateGemma 12B",
+    "model": "google/translategemma-12b-it",
+    "engine": "ollama",
+    "capability": "translation",
+    "tier": "planned",
+    "integrationRequired": true,
+    "deployable": false,
+    "downloadable": false,
+    "license": "gemma",
+    "source": "https://ollama.com/library/translategemma:12b",
+    "sourceRevision": "d1b225e1caa17f1ddc7e62065d8637d0923f34e2",
+    "sourceCheckedAt": "2026-11-20",
+    "reason": "Needs a pinned Ollama artifact and a translation smoke test before managed download or deployment.",
+    "details": {
+      "problem": "Translate product descriptions, procedures and technical instructions locally, including Romanian.",
+      "integration": [
+        "Needs a pinned Ollama artifact and a translation smoke test before managed download or deployment.",
+        "Use the dedicated translation template with explicit source/target languages; review technical terminology and preserve required formatting.",
+        "Check the Gemma terms and any source download access requirements."
+      ],
+      "summary": "Google's Gemma-based translation model specializes in multilingual text translation and text extraction/translation from images.",
+      "notes": [],
+      "sources": [
+        {
+          "label": "Official model card",
+          "url": "https://huggingface.co/google/translategemma-12b-it"
+        },
+        {
+          "label": "Ollama library",
+          "url": "https://ollama.com/library/translategemma:12b"
+        }
+      ],
+      "reviewedAt": "2026-11-20"
+    }
+  },
+  {
+    "id": "gliner2-large",
+    "name": "GLiNER2 Large v1",
+    "model": "fastino/gliner2-large-v1",
+    "engine": "gliner2",
+    "capability": "structured-extraction",
+    "tier": "planned",
+    "integrationRequired": true,
+    "deployable": false,
+    "downloadable": false,
+    "license": "apache-2.0",
+    "source": "https://huggingface.co/fastino/gliner2-large-v1",
+    "sourceRevision": "d7aa8a2850d175a9227ff80358ea380723d03ad2",
+    "sourceCheckedAt": "2026-11-20",
+    "reason": "Needs a schema-based extraction endpoint; CPU operation and Romanian accuracy require local validation.",
+    "details": {
+      "problem": "Extract companies, people, products and other defined fields, or classify incoming requests into a structured schema.",
+      "integration": [
+        "Needs a schema-based extraction endpoint; CPU operation and Romanian accuracy require local validation.",
+        "Define field labels, expected structures and validation rules, then evaluate confidence and extraction errors.",
+        "Integrate accepted results with the receiving business application."
+      ],
+      "summary": "Fastino's GLiNER2 combines entity/relation extraction, structured extraction and text classification in a compact model.",
+      "notes": [
+        "Do not assume validated Romanian support or guaranteed detection of every personal-data field."
+      ],
+      "sources": [
+        {
+          "label": "Official model card",
+          "url": "https://huggingface.co/fastino/gliner2-large-v1"
+        }
+      ],
+      "reviewedAt": "2026-11-20"
+    }
+  },
+  {
+    "id": "omnisql7b",
+    "name": "OmniSQL 7B",
+    "model": "seeklhy/OmniSQL-7B",
+    "engine": "vllm",
+    "capability": "text-to-sql",
+    "tier": "planned",
+    "integrationRequired": true,
+    "deployable": false,
+    "downloadable": false,
+    "license": "apache-2.0",
+    "source": "https://huggingface.co/seeklhy/OmniSQL-7B",
+    "sourceRevision": "af4eed67f561bbeea555c017dae4b38b93bac2eb",
+    "sourceCheckedAt": "2026-11-20",
+    "reason": "Needs a pinned serving recipe and tests for the actual database dialect before managed deployment.",
+    "details": {
+      "problem": "Draft SQL queries from business questions using the supplied database schema.",
+      "integration": [
+        "Needs a pinned serving recipe and tests for the actual database dialect before managed deployment.",
+        "Supply relevant schema information and validate generated SQL; connect through a read-only database account with limits.",
+        "Evaluate joins, filters and aggregates on representative questions before returning business reports."
+      ],
+      "summary": "An open text-to-SQL model trained on a large synthetic SQL corpus and established text-to-SQL datasets.",
+      "notes": [
+        "SQL generation does not guarantee a correct business answer or authorize automatic query execution."
+      ],
+      "sources": [
+        {
+          "label": "Official model card",
+          "url": "https://huggingface.co/seeklhy/OmniSQL-7B"
+        }
+      ],
+      "reviewedAt": "2026-11-20"
+    }
+  },
+  {
+    "id": "sam3",
+    "name": "SAM 3",
+    "model": "facebook/sam3",
+    "engine": "sam3",
+    "capability": "segmentation",
+    "tier": "planned",
+    "integrationRequired": true,
+    "deployable": false,
+    "downloadable": false,
+    "license": "See Meta model license and access terms",
+    "source": "https://huggingface.co/facebook/sam3",
+    "sourceRevision": "3c879f39826c281e95690f02c7821c4de09afae7",
+    "sourceCheckedAt": "2026-11-20",
+    "reason": "Needs Meta model access/license acceptance and a dedicated segmentation runtime qualified on ARM64/GB10.",
+    "details": {
+      "problem": "Create object masks and regions of interest for product, packaging or label images and videos.",
+      "integration": [
+        "Needs Meta model access/license acceptance and a dedicated segmentation runtime qualified on ARM64/GB10.",
+        "Expose image/video inputs plus text, point or box prompts, and return masks with source coordinates.",
+        "Evaluate on representative product images before using results in an inspection workflow."
+      ],
+      "summary": "Meta's promptable model segments concepts in images and video and supports mask generation and tracking.",
+      "notes": [
+        "Segmentation alone is not a validated print-defect detector."
+      ],
+      "sources": [
+        {
+          "label": "Official model card",
+          "url": "https://huggingface.co/facebook/sam3"
+        }
+      ],
+      "reviewedAt": "2026-11-20"
+    }
+  },
+  {
+    "id": "flux2-klein4b",
+    "name": "FLUX.2 [klein] 4B",
+    "model": "black-forest-labs/FLUX.2-klein-4B",
+    "engine": "diffusers",
+    "capability": "text-to-image",
+    "tier": "planned",
+    "integrationRequired": true,
+    "deployable": false,
+    "downloadable": false,
+    "license": "apache-2.0",
+    "source": "https://huggingface.co/black-forest-labs/FLUX.2-klein-4B",
+    "sourceRevision": "e7b7dc27f91deacad38e78976d1f2b499d76a294",
+    "sourceCheckedAt": "2026-11-20",
+    "reason": "Needs a dedicated image-generation service and a reviewed Diffusers/ComfyUI runtime qualified on ARM64/GB10.",
+    "details": {
+      "problem": "Generate concept visuals, backgrounds and product presentation drafts from written descriptions.",
+      "integration": [
+        "Needs a dedicated image-generation service and a reviewed Diffusers/ComfyUI runtime qualified on ARM64/GB10.",
+        "Prepare the complete pipeline and encoders; expose bounded resolution, seed and step controls with downloadable image output.",
+        "Measure actual memory and latency on the Spark before offering a deployment recipe."
+      ],
+      "summary": "Black Forest Labs' compact distilled model supports text-to-image generation and reference-based image editing.",
+      "notes": [
+        "The 4B checkpoint declares Apache-2.0; other FLUX sizes/checkpoints can have different terms.",
+        "Rendered text and product details need review before use in production artwork."
+      ],
+      "sources": [
+        {
+          "label": "Official model card",
+          "url": "https://huggingface.co/black-forest-labs/FLUX.2-klein-4B"
+        }
+      ],
+      "reviewedAt": "2026-11-20"
+    }
+  },
+  {
+    "id": "z-image-turbo",
+    "name": "Z-Image-Turbo",
+    "model": "Tongyi-MAI/Z-Image-Turbo",
+    "engine": "diffusers",
+    "capability": "text-to-image",
+    "tier": "planned",
+    "integrationRequired": true,
+    "deployable": false,
+    "downloadable": false,
+    "license": "apache-2.0",
+    "source": "https://huggingface.co/Tongyi-MAI/Z-Image-Turbo",
+    "sourceRevision": "f332072aa78be7aecdf3ee76d5c247082da564a6",
+    "sourceCheckedAt": "2026-11-20",
+    "reason": "Needs a dedicated image-generation service and a pinned, qualified Diffusers runtime for ARM64/GB10.",
+    "details": {
+      "problem": "Produce photographic-style illustrations and visual concepts from text with a short generation pipeline.",
+      "integration": [
+        "Needs a dedicated image-generation service and a pinned, qualified Diffusers runtime for ARM64/GB10.",
+        "Cache the transformer, text encoder and VAE together; provide prompt, resolution, seed and bounded output retention.",
+        "Validate memory, latency and image quality on the actual GPU."
+      ],
+      "summary": "Tongyi's distilled 6B diffusion model targets efficient text-to-image generation and English/Chinese text rendering.",
+      "notes": [
+        "Published speed and memory examples use other GPUs; they are not Spark performance guarantees.",
+        "Romanian text rendering is not a declared capability."
+      ],
+      "sources": [
+        {
+          "label": "Official model card",
+          "url": "https://huggingface.co/Tongyi-MAI/Z-Image-Turbo"
+        }
+      ],
+      "reviewedAt": "2026-11-20"
+    }
+  },
+  {
+    "id": "qwen3-tts17b",
+    "name": "Qwen3-TTS · 1.7B CustomVoice",
+    "model": "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
+    "engine": "qwen-tts",
+    "capability": "text-to-speech",
+    "tier": "planned",
+    "integrationRequired": true,
+    "deployable": false,
+    "downloadable": false,
+    "license": "apache-2.0",
+    "source": "https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
+    "sourceRevision": "0c0e3051f131929182e2c023b9537f8b1c68adfe",
+    "sourceCheckedAt": "2026-11-20",
+    "reason": "Needs a dedicated audio-generation service and qualified Qwen-TTS runtime before managed download or deployment.",
+    "details": {
+      "problem": "Create spoken instructions, announcements and narration from text in the model's declared languages.",
+      "integration": [
+        "Needs a dedicated audio-generation service and qualified Qwen-TTS runtime before managed download or deployment.",
+        "Cache the model and its speech tokenizer, then expose text, language and supported voice/style settings with WAV or streaming output.",
+        "Check pronunciation and synthesis latency with representative content."
+      ],
+      "summary": "Qwen's speech model offers predefined voices, instruction-based speaking styles and streaming synthesis.",
+      "notes": [
+        "Declared languages: Chinese, English, Japanese, Korean, German, French, Russian, Portuguese, Spanish and Italian.",
+        "Romanian is not among the declared supported languages; use the separate Romanian Piper entry for that requirement."
+      ],
+      "sources": [
+        {
+          "label": "Official model card",
+          "url": "https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
+        }
+      ],
+      "reviewedAt": "2026-11-20"
+    }
+  },
+  {
+    "id": "piper-ro-mihai",
+    "name": "Piper · Romanian Mihai (medium)",
+    "model": "rhasspy/piper-voices",
+    "engine": "piper",
+    "capability": "text-to-speech",
+    "tier": "planned",
+    "integrationRequired": true,
+    "deployable": false,
+    "downloadable": false,
+    "license": "mit",
+    "source": "https://huggingface.co/rhasspy/piper-voices/tree/42301ec547bc2939386cf0ae9f9050ca05b1d3af/ro/ro_RO/mihai/medium",
+    "sourceRevision": "42301ec547bc2939386cf0ae9f9050ca05b1d3af",
+    "sourceCheckedAt": "2026-11-20",
+    "reason": "Needs a Piper 1.5+ audio service and an ARM64 CPU synthesis test before managed download or deployment.",
+    "details": {
+      "problem": "Read Romanian notifications, instructions and short narration locally with a small single-speaker voice.",
+      "integration": [
+        "Needs a Piper 1.5+ audio service and an ARM64 CPU synthesis test before managed download or deployment.",
+        "Use ro/ro_RO/mihai/medium/ro_RO-mihai-medium.onnx together with its JSON configuration; expose bounded text and WAV output.",
+        "Review the voice repository/dataset terms and the runtime's separate license when distributing the service."
+      ],
+      "summary": "The official Mihai medium voice targets Romanian (ro_RO), one speaker and 22,050 Hz audio.",
+      "notes": [
+        "The voice card identifies the training dataset as CC0; the repository declares MIT. The Piper runtime has separate licensing.",
+        "This voice does not require an LLM chat API or GPU; pronunciation quality still needs application-specific testing."
+      ],
+      "sources": [
+        {
+          "label": "Official model card",
+          "url": "https://huggingface.co/rhasspy/piper-voices"
+        },
+        {
+          "label": "Romanian voice card",
+          "url": "https://huggingface.co/rhasspy/piper-voices/blob/42301ec547bc2939386cf0ae9f9050ca05b1d3af/ro/ro_RO/mihai/medium/MODEL_CARD"
+        }
+      ],
+      "reviewedAt": "2026-11-20"
+    }
+  }
+]

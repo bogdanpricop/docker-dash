@@ -1,0 +1,359 @@
+{
+  "qwen3-4b": {
+    "problem": "Summarize internal text, draft replies and answer questions using documents supplied by a client application.",
+    "summary": "Qwen3-4B is a general-purpose text model in the Qwen3 dense family.",
+    "integration": [
+      "The existing vLLM recipe serves a local model API; connect a chat or document-search application to use it.",
+      "For answers grounded in internal documents, add retrieval, source references and representative quality tests."
+    ],
+    "notes": [
+      "The recipe's context and memory budgets are estimates, checked again before execution."
+    ],
+    "sources": [
+      {
+        "label": "Official model card",
+        "url": "https://huggingface.co/Qwen/Qwen3-4B"
+      }
+    ],
+    "reviewedAt": "2026-11-20"
+  },
+  "qwen3-8b": {
+    "problem": "Summarize internal text, draft replies and answer questions using documents supplied by a client application.",
+    "summary": "Qwen3-8B is a general-purpose text model in the Qwen3 dense family.",
+    "integration": [
+      "The existing vLLM recipe serves a local model API; connect a chat or document-search application to use it.",
+      "For answers grounded in internal documents, add retrieval, source references and representative quality tests."
+    ],
+    "notes": [
+      "The recipe's context and memory budgets are estimates, checked again before execution."
+    ],
+    "sources": [
+      {
+        "label": "Official model card",
+        "url": "https://huggingface.co/Qwen/Qwen3-8B"
+      }
+    ],
+    "reviewedAt": "2026-11-20"
+  },
+  "qwen3-14b": {
+    "problem": "Summarize internal text, draft replies and answer questions using documents supplied by a client application.",
+    "summary": "Qwen3-14B is a general-purpose text model in the Qwen3 dense family.",
+    "integration": [
+      "The existing vLLM recipe serves a local model API; connect a chat or document-search application to use it.",
+      "For answers grounded in internal documents, add retrieval, source references and representative quality tests."
+    ],
+    "notes": [
+      "The recipe's context and memory budgets are estimates, checked again before execution."
+    ],
+    "sources": [
+      {
+        "label": "Official model card",
+        "url": "https://huggingface.co/Qwen/Qwen3-14B"
+      }
+    ],
+    "reviewedAt": "2026-11-20"
+  },
+  "ollama-nomic-embed-text": {
+    "problem": "Retrieve relevant internal documents by meaning and group similar text across a search collection.",
+    "summary": "Nomic Embed Text v1.5 converts text into vectors for retrieval and similarity tasks.",
+    "integration": [
+      "Use the existing pinned Ollama recipe and connect a client to its embedding API.",
+      "Add a vector index with consistent document/query preprocessing; compare results on real searches."
+    ],
+    "notes": [],
+    "sources": [
+      {
+        "label": "Source model card",
+        "url": "https://ollama.com/library/nomic-embed-text"
+      }
+    ],
+    "reviewedAt": "2026-11-20"
+  },
+  "ollama-nomic-embed-text-v2-moe": {
+    "problem": "Retrieve relevant internal documents by meaning and group similar text across a search collection.",
+    "summary": "Nomic Embed Text v2 MoE converts text into vectors for retrieval and similarity tasks.",
+    "integration": [
+      "Use the existing pinned Ollama recipe and connect a client to its embedding API.",
+      "Add a vector index with consistent document/query preprocessing; compare results on real searches."
+    ],
+    "notes": [
+      "The reviewed recipe has a 512-token context; split longer documents before indexing."
+    ],
+    "sources": [
+      {
+        "label": "Source model card",
+        "url": "https://ollama.com/library/nomic-embed-text-v2-moe"
+      }
+    ],
+    "reviewedAt": "2026-11-20"
+  },
+  "ollama-granite3-2-vision": {
+    "problem": "Inspect supplied images, describe their content and assist with questions about product photos or document pages.",
+    "summary": "Granite 3.2 Vision 2B is a vision-language model that combines image inputs with text instructions.",
+    "integration": [
+      "Use the existing pinned Ollama recipe and connect a client to its inference API.",
+      "Add a bounded image upload workflow and evaluate outputs against representative source images."
+    ],
+    "notes": [],
+    "sources": [
+      {
+        "label": "Source model card",
+        "url": "https://ollama.com/library/granite3.2-vision"
+      }
+    ],
+    "reviewedAt": "2026-11-20"
+  },
+  "ollama-llama3-2-vision": {
+    "problem": "Inspect supplied images, describe their content and assist with questions about product photos or document pages.",
+    "summary": "Llama 3.2 Vision 11B is a vision-language model that combines image inputs with text instructions.",
+    "integration": [
+      "Use the existing pinned Ollama recipe and connect a client to its inference API.",
+      "Add a bounded image upload workflow and evaluate outputs against representative source images."
+    ],
+    "notes": [
+      "The current official Llama 3.2 GGUF uses mllama, which Ollama 0.40.16's llama-server cannot load (unknown model architecture). Downloads are retained; deployment requires a compatible artifact/runtime qualification. Llama 4 Scout remains a separate recipe."
+    ],
+    "sources": [
+      {
+        "label": "Source model card",
+        "url": "https://ollama.com/library/llama3.2-vision"
+      }
+    ],
+    "reviewedAt": "2026-11-20"
+  },
+  "ollama-llava": {
+    "problem": "Inspect supplied images, describe their content and assist with questions about product photos or document pages.",
+    "summary": "LLaVA 1.6 7B is a vision-language model that combines image inputs with text instructions.",
+    "integration": [
+      "Use the existing pinned Ollama recipe and connect a client to its inference API.",
+      "Add a bounded image upload workflow and evaluate outputs against representative source images."
+    ],
+    "notes": [],
+    "sources": [
+      {
+        "label": "Source model card",
+        "url": "https://ollama.com/library/llava"
+      }
+    ],
+    "reviewedAt": "2026-11-20"
+  },
+  "ollama-minicpm-v": {
+    "problem": "Inspect supplied images, describe their content and assist with questions about product photos or document pages.",
+    "summary": "MiniCPM-V 2.6 8B is a vision-language model that combines image inputs with text instructions.",
+    "integration": [
+      "Use the existing pinned Ollama recipe and connect a client to its inference API.",
+      "Add a bounded image upload workflow and evaluate outputs against representative source images."
+    ],
+    "notes": [],
+    "sources": [
+      {
+        "label": "Source model card",
+        "url": "https://ollama.com/library/minicpm-v"
+      }
+    ],
+    "reviewedAt": "2026-11-20"
+  },
+  "ollama-minicpm-v4-6": {
+    "problem": "Inspect supplied images, describe their content and assist with questions about product photos or document pages.",
+    "summary": "MiniCPM-V 4.6 1B is a vision-language model that combines image inputs with text instructions.",
+    "integration": [
+      "Use the existing pinned Ollama recipe and connect a client to its inference API.",
+      "Add a bounded image upload workflow and evaluate outputs against representative source images."
+    ],
+    "notes": [],
+    "sources": [
+      {
+        "label": "Source model card",
+        "url": "https://ollama.com/library/minicpm-v4.6"
+      }
+    ],
+    "reviewedAt": "2026-11-20"
+  },
+  "ollama-moondream": {
+    "problem": "Inspect supplied images, describe their content and assist with questions about product photos or document pages.",
+    "summary": "Moondream 2 is a vision-language model that combines image inputs with text instructions.",
+    "integration": [
+      "Use the existing pinned Ollama recipe and connect a client to its inference API.",
+      "Add a bounded image upload workflow and evaluate outputs against representative source images."
+    ],
+    "notes": [],
+    "sources": [
+      {
+        "label": "Source model card",
+        "url": "https://ollama.com/library/moondream"
+      }
+    ],
+    "reviewedAt": "2026-11-20"
+  },
+  "ollama-qwen2-5vl": {
+    "problem": "Inspect supplied images, describe their content and assist with questions about product photos or document pages.",
+    "summary": "Qwen2.5 VL 7B is a vision-language model that combines image inputs with text instructions.",
+    "integration": [
+      "Use the existing pinned Ollama recipe and connect a client to its inference API.",
+      "Add a bounded image upload workflow and evaluate outputs against representative source images."
+    ],
+    "notes": [],
+    "sources": [
+      {
+        "label": "Source model card",
+        "url": "https://ollama.com/library/qwen2.5vl"
+      }
+    ],
+    "reviewedAt": "2026-11-20"
+  },
+  "ollama-qwen3-vl": {
+    "problem": "Inspect supplied images, describe their content and assist with questions about product photos or document pages.",
+    "summary": "Qwen3 VL 8B is a vision-language model that combines image inputs with text instructions.",
+    "integration": [
+      "Use the existing pinned Ollama recipe and connect a client to its inference API.",
+      "Add a bounded image upload workflow and evaluate outputs against representative source images."
+    ],
+    "notes": [],
+    "sources": [
+      {
+        "label": "Source model card",
+        "url": "https://ollama.com/library/qwen3-vl"
+      }
+    ],
+    "reviewedAt": "2026-11-20"
+  },
+  "ollama-qwen3-8": {
+    "problem": "Inspect supplied images, describe their content and assist with questions about product photos or document pages.",
+    "summary": "Qwen3.8 27B is a vision-language model that combines image inputs with text instructions.",
+    "integration": [
+      "Use the existing pinned Ollama recipe and connect a client to its inference API.",
+      "Add a bounded image upload workflow and evaluate outputs against representative source images."
+    ],
+    "notes": [],
+    "sources": [
+      {
+        "label": "Source model card",
+        "url": "https://ollama.com/library/qwen3.8"
+      }
+    ],
+    "reviewedAt": "2026-11-20"
+  },
+  "ollama-llama4": {
+    "problem": "Inspect supplied images, describe their content and assist with questions about product photos or document pages.",
+    "summary": "Llama 4 Scout is a vision-language model that combines image inputs with text instructions.",
+    "integration": [
+      "Use the existing pinned Ollama recipe and connect a client to its inference API.",
+      "Add a bounded image upload workflow and evaluate outputs against representative source images."
+    ],
+    "notes": [],
+    "sources": [
+      {
+        "label": "Source model card",
+        "url": "https://ollama.com/library/llama4"
+      }
+    ],
+    "reviewedAt": "2026-11-20"
+  },
+  "ollama-qwen3-8-flash-next": {
+    "problem": "Inspect supplied images, describe their content and assist with questions about product photos or document pages.",
+    "summary": "Qwen3.8 Flash Next Q4_K_M is a vision-language model that combines image inputs with text instructions.",
+    "integration": [
+      "Use the existing pinned Ollama recipe and connect a client to its inference API.",
+      "Add a bounded image upload workflow and evaluate outputs against representative source images."
+    ],
+    "notes": [
+      "The Linux GGUF is 120 GB. This quantization needs more RAM than a 128 GB Spark safely provides; downloading is allowed, deployment is capacity-checked. MLX variants are not Linux/CUDA replacements.",
+      "The reviewed Q4 memory budget exceeds this Spark's safe capacity. Downloaded files do not imply that inference can start."
+    ],
+    "sources": [
+      {
+        "label": "Source model card",
+        "url": "https://ollama.com/library/qwen3.8-flash-next"
+      }
+    ],
+    "reviewedAt": "2026-11-20"
+  },
+  "ollama-granite-vision-4-1-4b-gguf": {
+    "problem": "Inspect supplied images, describe their content and assist with questions about product photos or document pages.",
+    "summary": "Granite Vision 4.1 4B is a vision-language model that combines image inputs with text instructions.",
+    "integration": [
+      "Use the existing pinned Ollama recipe and connect a client to its inference API.",
+      "Add a bounded image upload workflow and evaluate outputs against representative source images."
+    ],
+    "notes": [],
+    "sources": [
+      {
+        "label": "Source model card",
+        "url": "https://huggingface.co/ibm-granite/granite-vision-4.1-4b-GGUF"
+      }
+    ],
+    "reviewedAt": "2026-11-20"
+  },
+  "photon-moondream31": {
+    "problem": "Prepare the latest Moondream vision weights for future image-understanding workflows.",
+    "summary": "Moondream 3.1 is a newer vision-language model distributed with a dedicated tokenizer.",
+    "integration": [
+      "The existing action downloads verified artifacts only. Inference requires a compatible Photon kernel/runtime.",
+      "Add image input and application-specific tests after GB10 runtime qualification."
+    ],
+    "notes": [
+      "The official FP8 MoE kernels failed qualification on GB10/SM121; managed deployment is unavailable."
+    ],
+    "sources": [
+      {
+        "label": "Official model card",
+        "url": "https://huggingface.co/moondream/moondream3.1-9B-A2B"
+      }
+    ],
+    "reviewedAt": "2026-11-20"
+  },
+  "strata-qwen38": {
+    "problem": "Evaluate whether a smaller quantization can serve the large Qwen Flash Next family within Spark memory.",
+    "summary": "Strata-DGX-Spark is a community ARM64 CUDA inference project for a specialized quantized workload.",
+    "integration": [
+      "Review the fork, build an isolated ARM64 CUDA image and verify every model artifact.",
+      "Measure correctness, memory and API readiness before registering a workload profile."
+    ],
+    "notes": [
+      "This remains an experimental integration, not a managed deployment recipe."
+    ],
+    "sources": [
+      {
+        "label": "Community implementation and attribution",
+        "url": "https://github.com/shi3z/Strata-DGX-Spark"
+      }
+    ],
+    "reviewedAt": "2026-11-20"
+  },
+  "ncm-tinystories": {
+    "problem": "Research and compare an experimental model architecture on a bounded text-generation workload.",
+    "summary": "NCM is a research project with published code and evaluation checkpoints.",
+    "integration": [
+      "Review the code/checkpoints and build a qualified CUDA runtime.",
+      "Use a reproducible TinyStories evaluation before considering a production service."
+    ],
+    "notes": [
+      "A research workload does not provide an established business service by itself."
+    ],
+    "sources": [
+      {
+        "label": "Original research project",
+        "url": "https://github.com/HazyResearch/ncm"
+      }
+    ],
+    "reviewedAt": "2026-11-20"
+  },
+  "basalt": {
+    "problem": "Explore an alternative inference runtime after verifying platform compatibility.",
+    "summary": "Basalt is an alternative inference project with platform-specific build requirements.",
+    "integration": [
+      "Review the upstream build targets, dependencies and model support.",
+      "An ARM64/GB10 port and native qualification are required before registration."
+    ],
+    "notes": [
+      "The upstream x86-64/SM120 build is not qualified for this Spark."
+    ],
+    "sources": [
+      {
+        "label": "Upstream project",
+        "url": "https://github.com/jesdga95/basalt"
+      }
+    ],
+    "reviewedAt": "2026-11-20"
+  }
+}

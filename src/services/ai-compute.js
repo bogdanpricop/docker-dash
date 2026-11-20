@@ -207,6 +207,7 @@ async function catalogForHost(hostId) {
   try { models = await ollama.states(client); }
   catch (error) { cacheError = text(error.message, 300); }
   return Promise.all(catalog.entries.map(async entry => {
+    if (entry.integrationRequired) return entry;
     if (entry.engine === 'ollama') return { ...entry,
       cacheState: cacheError ? 'unavailable' : models.some(m => m.name === entry.alias && entry.revision.startsWith('sha256:' + m.digest)) ? 'downloaded' : 'not_downloaded', cacheError };
     if (entry.engine !== 'photon') return entry;
