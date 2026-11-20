@@ -1,4 +1,58 @@
 {
+  "ollama-gemma3-4b": {
+    "problem": "Draft short replies, summarize notes and interpret screenshots with a smaller model footprint.",
+    "summary": "Google Gemma 3 4B accepts text and images and generates text. This recipe pins the official Ollama Q4_K_M artifact, including its vision projector.",
+    "integration": [
+      "Download the verified weights, then review Plan deploy for the selected host and any running-model conflicts.",
+      "Connect a client to the deployed Ollama API. Image workflows must explicitly upload images and handle retention; API Gateway text tools require a reviewed model configuration."
+    ],
+    "notes": [
+      "This model interprets images; it does not generate them.",
+      "The recipe offers 4K, 8K and 16K context budgets. Its 10 GiB memory estimate includes headroom and is checked against the host before deployment.",
+      "Review the Gemma Terms of Use. Catalog availability does not automatically download, start or select a model for API Gateway."
+    ],
+    "sources": [
+      { "label": "Official Ollama model and license", "url": "https://ollama.com/library/gemma3:4b" },
+      { "label": "Google model card", "url": "https://huggingface.co/google/gemma-3-4b-it" }
+    ],
+    "reviewedAt": "2026-11-20"
+  },
+  "ollama-gemma3-12b": {
+    "problem": "Structure multilingual notes, rewrite documents and extract information from supplied images with a medium-sized model.",
+    "summary": "Google Gemma 3 12B accepts text and images and generates text. This recipe pins the official Ollama Q4_K_M artifact, including its vision projector.",
+    "integration": [
+      "Download the verified weights, then review Plan deploy for the selected host and any running-model conflicts.",
+      "Connect a client to the deployed Ollama API. Benchmark representative notes and image inputs before selecting this model for an application."
+    ],
+    "notes": [
+      "This model interprets images; it does not generate them.",
+      "The recipe offers 4K, 8K and 16K context budgets. Its 22 GiB memory estimate includes headroom and is checked against the host before deployment.",
+      "Review the Gemma Terms of Use. Catalog availability does not automatically download, start or select a model for API Gateway."
+    ],
+    "sources": [
+      { "label": "Official Ollama model and license", "url": "https://ollama.com/library/gemma3:12b" },
+      { "label": "Google model card", "url": "https://huggingface.co/google/gemma-3-12b-it" }
+    ],
+    "reviewedAt": "2026-11-20"
+  },
+  "ollama-gemma3-27b": {
+    "problem": "Analyze idea notes, draft detailed briefs and interpret supplied document images with the larger Gemma 3 variant.",
+    "summary": "Google Gemma 3 27B accepts text and images and generates text. This recipe pins the official Ollama Q4_K_M artifact, including its vision projector.",
+    "integration": [
+      "Download the verified weights, then review Plan deploy for the selected host and any running-model conflicts.",
+      "Connect a client to the deployed Ollama API. Text tools need a reviewed structured-output integration; image workflows need explicit upload and retention controls."
+    ],
+    "notes": [
+      "This model interprets images; it does not generate them.",
+      "The recipe offers 4K, 8K and 16K context budgets. Its 40 GiB memory estimate includes headroom and is checked against the host before deployment.",
+      "Review the Gemma Terms of Use. Catalog availability does not automatically download, start or select a model for API Gateway."
+    ],
+    "sources": [
+      { "label": "Official Ollama model and license", "url": "https://ollama.com/library/gemma3:27b" },
+      { "label": "Google model card", "url": "https://huggingface.co/google/gemma-3-27b-it" }
+    ],
+    "reviewedAt": "2026-11-20"
+  },
   "qwen3-4b": {
     "problem": "Summarize internal text, draft replies and answer questions using documents supplied by a client application.",
     "summary": "Qwen3-4B is a general-purpose text model in the Qwen3 dense family.",

@@ -15,6 +15,16 @@ is a separate choice: it does not silently replace the requested model.
 | MiniCPM-V | 2.6 / 8B | MiniCPM-V 4.6 / 1B |
 | Moondream | Moondream 2 / 1.8B in Ollama | Official Moondream 3.1 / 9B A2B, download-only |
 | Qwen2.5-VL | 7B | Qwen3-VL 8B and Qwen3.8 27B, separate recipes |
+| Gemma 3 | 4B, 12B and 27B Q4_K_M, each with its vision projector | Explicit Gemma 3 recipes; no automatic substitution with another generation |
+
+Gemma 3 recipes pin the complete registry manifests verified on 20 November
+2026. Downloads are approximately 3.35, 8.16 and 17.41 GB; conservative memory
+budgets are 10, 22 and 40 GiB for the offered 4K/8K/16K contexts. These are
+planning estimates, not measured workload peaks. The information dialogs link
+the [official Ollama family](https://ollama.com/library/gemma3) and each Google
+model card, describe text/image use cases and identify the Gemma license.
+Adding these recipes does not download weights, start inference, change the
+Gateway text model or claim end-to-end qualification of a new application.
 
 Sources: [Ollama library](https://ollama.com/library),
 [Ollama 0.40.16](https://github.com/ollama/ollama/releases/tag/v0.40.16),

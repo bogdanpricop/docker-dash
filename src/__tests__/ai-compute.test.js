@@ -73,7 +73,7 @@ beforeEach(() => {
 
 test('requested Ollama families have distinct immutable artifacts and explicit runtime eligibility', () => {
   const entries = catalog.entries.filter(e => e.engine === 'ollama' && !e.integrationRequired);
-  expect(entries).toHaveLength(14);
+  expect(entries).toHaveLength(17);
   expect(new Set(entries.map(e => e.id)).size).toBe(entries.length);
   for (const e of entries) {
     expect(e.downloadable).toBe(true);
@@ -83,7 +83,7 @@ test('requested Ollama families have distinct immutable artifacts and explicit r
     expect(e.model).not.toMatch(/mlx/i);
   }
   expect(entries.find(e => e.id === 'ollama-moondream').successorId).toBe('photon-moondream31');
-  expect(entries.filter(e => e.deployable)).toHaveLength(13);
+  expect(entries.filter(e => e.deployable)).toHaveLength(16);
   expect(entries.find(e => e.id === 'ollama-llama3-2-vision')).toMatchObject({ deployable: false, reason: expect.stringContaining('mllama') });
 });
 

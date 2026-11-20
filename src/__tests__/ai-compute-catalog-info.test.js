@@ -3,7 +3,7 @@
 const { entries } = require('../services/ai-compute-catalog');
 
 test('all catalog entries have readable use cases, integration steps and attributed source summaries', () => {
-  expect(entries).toHaveLength(35);
+  expect(entries).toHaveLength(38);
   expect(new Set(entries.map(e => e.id)).size).toBe(entries.length);
   for (const entry of entries) {
     expect(entry.id).toMatch(/^[a-z0-9-]+$/);
