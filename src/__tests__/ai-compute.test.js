@@ -99,6 +99,27 @@ test('a normal start cannot silently stop a running LLM', async () => {
   expect(calls).toEqual([]);
 });
 
+test('reviewed stop unloads only its service without needing GPU metrics and retains restart policy for start', async () => {
+  const target = makeContainer('current-vllm', 'vllm', true);
+  const speech = makeContainer('dgx-speech-engine', 'speech', true);
+  await service.register(host, { containerId: target.Id, name: 'Qwen', memoryGiB: 24, readyPort: 8000, exclusive: true }, user);
+  const id = (await service.inventory(host)).containers.find(c => c.id === target.Id).profileId;
+  metrics.sample.mockResolvedValue({ sampledAt: new Date().toISOString(), memory: null, gpu: null });
+  const op = await service.prepare(host, { action: 'stop', profileId: id }, user);
+  expect(calls).toEqual([]);
+  service.execute(host, op.id, user); await service.tick();
+  expect(service.getJob(host, op.id).status).toBe('completed');
+  expect(target.State.Running).toBe(false); expect(speech.State.Running).toBe(true);
+  expect(target.HostConfig.RestartPolicy.Name).toBe('no');
+  expect(service.getJob(host, op.id).stopped[0].restartPolicy.Name).toBe('unless-stopped');
+  metrics.sample.mockResolvedValue({ sampledAt: new Date().toISOString(), memory: { availableBytes: 80 * GiB }, gpu: { name: 'NVIDIA GB10' } });
+  const start = await service.prepare(host, { action: 'start', profileId: id }, user);
+  service.execute(host, start.id, user); await service.tick();
+  expect(service.getJob(host, start.id).status).toBe('completed');
+  expect(target.State.Running).toBe(true);
+  expect(target.HostConfig.RestartPolicy.Name).toBe('unless-stopped');
+});
+
 test('switch preview lists exact LLM conflicts, preserving speech and leaving containers untouched', async () => {
   const old = makeContainer('current-vllm', 'vllm', true);
   makeContainer('dgx-speech-engine', 'speech', true);
