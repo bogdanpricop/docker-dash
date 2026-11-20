@@ -180,7 +180,7 @@ const AIComputePage = {
       if (token !== this._token || this._operation?.id !== id) return;
       if (this._operation.status === 'submission_failed') { retry = false; return; }
       retry = ![401, 403, 404].includes(err.status);
-      delay = Math.max(2000, Math.min(60000, Number(err.body?.retryAfter || 0) * 1000));
+      delay = Math.max(2000, Math.min(60000, (Number(err.body?.retryAfter) || 0) * 1000));
       this._pollError = `${this._syncingOperation ? 'Could not refresh service state' : 'Could not check operation status'}: ${err.name === 'AbortError' ? 'The request timed out' : err.message}. ${retry ? 'Retrying automatically; the last confirmed state is retained.' : 'Status monitoring stopped. Check access and refresh this page.'}`;
       this._operationFeedback();
     } finally {

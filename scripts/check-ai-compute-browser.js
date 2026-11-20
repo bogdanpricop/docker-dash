@@ -49,7 +49,7 @@ async function main() {
           if (url.includes('/history')) return [0,1,2].map(i => ({ sampledAt: new Date(Date.now() - (2-i)*60000).toISOString(), cpuPercent: i * 5, memory: { usedBytes: 45 * 1024 ** 3 }, gpu: { utilizationPercent: i } }));
           if (url.includes('/jobs/')) {
             window.jobReads.push({ url, at: performance.now() });
-            if (window.failNextJob) { window.failNextJob = false; throw Object.assign(new Error('Temporary status connection outage'), { status: 503 }); }
+            if (window.failNextJob) { window.failNextJob = false; throw Object.assign(new Error('Temporary status connection outage'), { status: 503, body: { retryAfter: 'invalid' } }); }
             const id = new URL(url, 'http://test').pathname.split('/').at(-1);
             const job = structuredClone(window.computeJobs.find(job => job.id === id && job.hostId === requested));
             if (window.deferJob) await new Promise(resolve => { window.resolveJob = resolve; });
