@@ -16,6 +16,7 @@ const WhatsNewPage = {
   // moves those entries into a new numbered release.
   _releases: [
     { version: '8.96.49', date: '2026-11-20', title: 'AI Compute and guarded DGX engine switching', changes: [
+      { type: 'fix', text: 'AI operations show immediate progress, check status every two seconds independently of host metrics, automatically refresh service state and report detailed failures with safe connection retries.' },
       { type: 'fix', text: 'Start, Stop and Restart are visible for detected AI services before profile registration, with guided first-use setup, explicit service-wide interruption warnings and operation/state guards.' },
       { type: 'fix', text: 'AI Compute selects and remembers its own device independently of the sidebar, suggests configured AI hosts and keeps log requests on the correct host.' },
       { type: 'security', text: 'The container uses the Node.js 24.22.3 security release and requires Alpine OpenSSL 3.5.9-r1 backports, resolving the November runtime findings without weakening vulnerability gates.' },

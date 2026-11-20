@@ -7,7 +7,7 @@ jest.mock('../middleware/auth', () => ({
   requireAuth: (req, res, next) => req.user ? next() : res.status(401).json({ error: 'Authentication required' }),
   writeable: (_req, _res, next) => next(),
 }));
-jest.mock('../services/ai-compute', () => ({ hosts: jest.fn(), inventory: jest.fn(), monitoring: jest.fn(), prepare: jest.fn(), execute: jest.fn() }));
+jest.mock('../services/ai-compute', () => ({ hosts: jest.fn(), inventory: jest.fn(), getJob: jest.fn(), monitoring: jest.fn(), prepare: jest.fn(), execute: jest.fn() }));
 jest.mock('../services/ai-compute-metrics', () => ({ sample: jest.fn() }));
 jest.mock('../services/provider-operations/policy', () => ({ assertAllowed: jest.fn() }));
 jest.mock('../services/audit', () => ({ log: jest.fn() }));
@@ -63,4 +63,23 @@ test('plans always use the server-validated host, not a host in the request body
   const response = await request(app).post(`/api/ai-compute/plans?hostId=${host}`).set('x-test-role', 'admin').send({ action: 'stop', hostId: vm });
   expect(response.status).toBe(200);
   expect(service.prepare.mock.calls[0][0]).toBe(host);
+});
+
+test('single operation status is admin-only, host-scoped and independent of metrics and inventory', async () => {
+  service.getJob.mockReturnValue({ id: 'operation', status: 'running' });
+  expect((await request(app).get(`/api/ai-compute/jobs/operation?hostId=${host}`)).status).toBe(401);
+  expect((await request(app).get(`/api/ai-compute/jobs/operation?hostId=${host}`).set('x-test-role', 'operator')).status).toBe(403);
+  const response = await request(app).get(`/api/ai-compute/jobs/operation?hostId=${host}`).set('x-test-role', 'admin');
+  expect(response.status).toBe(200); expect(response.body.status).toBe('running');
+  expect(response.headers['cache-control']).toBe('no-store');
+  expect(service.getJob).toHaveBeenCalledWith(host, 'operation');
+  expect(service.inventory).not.toHaveBeenCalled();
+  expect(require('../services/ai-compute-metrics').sample).not.toHaveBeenCalled();
+});
+
+test('a missing operation on the selected host returns 404 without exposing another host', async () => {
+  service.getJob.mockImplementation(() => { throw Object.assign(new Error('Operation not found'), { status: 404 }); });
+  const response = await request(app).get(`/api/ai-compute/jobs/other-host-operation?hostId=${host}`).set('x-test-role', 'admin');
+  expect(response.status).toBe(404);
+  expect(service.getJob).toHaveBeenCalledWith(host, 'other-host-operation');
 });

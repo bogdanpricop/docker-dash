@@ -35,6 +35,7 @@ router.get('/catalog', handle(() => require('../services/ai-compute-catalog').en
 router.get('/metrics', handle(req => metrics.sample(hostId(req))));
 router.get('/history', handle(req => metrics.history(hostId(req), req.query.hours || 1)));
 router.get('/jobs', handle(req => service.jobs(hostId(req))));
+router.get('/jobs/:id', handle(req => service.getJob(hostId(req), req.params.id)));
 router.post('/monitoring', writeable, handle(req => {
   change(req, 'ai_compute_monitoring', { enabled: req.body.enabled });
   return service.monitoring(hostId(req), req.body.enabled);
