@@ -3424,6 +3424,7 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _unreleased: [
     { type: 'fix', text: 'Firewall detection skips backends that are not installed instead of asking them for a sudo password. Detection continues to the installed backend, for example UFW.' },
+    { type: 'security', text: 'The November OpenSSL CVEs were reviewed against the production image: the vulnerable QUIC, CMS and DANE code paths are not reachable through any image consumer, and the exceptions are time-boxed until Alpine ships the fixed package.' },
   ],
 
   // ─── Render ──────────────────────────────────────

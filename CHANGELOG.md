@@ -4,6 +4,10 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Review the November OpenSSL CVEs against the apk packages in the production
+  image and record time-boxed `vulnerable_code_not_present` gate exceptions
+  (expire 2026-12-20) with the evidence in
+  [docs/audits/2026-11-21-openssl-november-cves.md](docs/audits/2026-11-21-openssl-november-cves.md).
 - Skip firewall backends that are not installed before any sudo escalation,
   so detection continues to the installed backend (for example UFW) instead
   of stalling on a sudo password prompt.
