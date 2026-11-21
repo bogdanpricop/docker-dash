@@ -7,8 +7,18 @@ const { evaluateReports, validatePolicy } = require('./gate-image-vulnerabilitie
 
 const actualPolicy = JSON.parse(fs.readFileSync(path.join(__dirname, '../docker/scanners/image-vulnerability-policy.json'), 'utf8'));
 validatePolicy(actualPolicy, new Date().toISOString().slice(0, 10));
-assert.equal(actualPolicy.exceptions.length, 3);
-assert.ok(actualPolicy.exceptions.every(exception => exception.id === 'GO-2026-5932'));
+assert.equal(actualPolicy.exceptions.length, 18);
+// 3 reviewed scanner-binary rules + 5 November OpenSSL CVEs x 3 apk packages
+// (docs/audits/2026-11-21-openssl-november-cves.md), time-boxed to 2026-12-20.
+const reviewedIds = new Set(['GO-2026-5932', 'CVE-2026-107493', 'CVE-2026-107494',
+  'CVE-2026-124709', 'CVE-2026-121482', 'CVE-2026-84786']);
+assert.ok(actualPolicy.exceptions.every(exception => reviewedIds.has(exception.id)));
+assert.equal(actualPolicy.exceptions.filter(exception => exception.id === 'GO-2026-5932').length, 3);
+const opensslRules = actualPolicy.exceptions.filter(exception => exception.scanner === 'grype');
+assert.equal(opensslRules.length, 15);
+assert.ok(opensslRules.every(exception => exception.packageVersion === '3.5.9-r1'
+  && exception.expiresOn === '2026-12-20'
+  && exception.justification === 'vulnerable_code_not_present'));
 assert.equal(actualPolicy.exceptions.some((exception) => exception.id === 'CVE-2026-85091'), false);
 
 const rule = { scanner: 'trivy', id: 'CVE-test', severity: 'HIGH', target: 'usr/local/bin/tool',
