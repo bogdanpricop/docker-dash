@@ -1,17 +1,160 @@
 # Changelog
 
-## DGX operations — 2026-11-17
-
-- Summarize Security batch runs with prioritized images and scanner evidence.
-- Diagnose container health using a redacted preview and cited DGX findings.
-- Queue persisted post-deployment comparisons of previous/current image scans with manual review.
-- Show selected-host GPU/temperature/unified memory and configured DGX gateway availability.
-- Document DGX Spark SSH fingerprint and socat setup.
-
-
 All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
+
+## [8.96.52] - 2026-11-20 — Gemma 3 model catalog
+
+- Add Gemma 3 4B, 12B and 27B to the AI Compute catalog with pinned Ollama
+  Q4_K_M artifacts, image projectors, Download and Plan deploy.
+- Explain use cases, integration, memory/context budgets and the Gemma license
+  in information dialogs. Adding a catalog entry does not change running
+  models or API Gateway configuration.
+
+## [8.96.51] - 2026-11-20 — Model explanations and specialist catalog
+
+- Add an information dialog to every AI Compute model card with concrete use
+  cases, integration requirements, source summaries, limitations and
+  attributed links.
+- Add 14 specialist catalog entries for OCR, reranking, coding, forecasting,
+  multimodal search, translation, extraction, SQL, segmentation, FLUX/Z-Image
+  generation and Qwen/Piper speech synthesis, including a Romanian voice.
+- Mark specialist entries as Integration required and keep their source
+  references separate from qualified serving artifacts.
+
+## [8.96.50] - 2026-11-20 — Reviewed vision and embedding model catalog
+
+- Add a connection information button with public SSH details and dated,
+  configuration-bound private tunnel inspection notes. Credentials are
+  excluded; changed connection identities hide old observations.
+- Add pinned Ollama vision/embedding recipes, persistent CPU-only downloads,
+  cache status and explicit links to separately reviewed newer model
+  generations.
+- Run model downloads on a separate resumable queue that retains partial
+  files and shows live progress without blocking Stop/Start of existing
+  inference services.
+- Verify runtime architecture and model revision on deploy before stopping
+  confirmed conflicts. Managed Ollama inference uses a read-only cache,
+  non-root user and loopback API port.
+
+## [8.96.49] - 2026-11-20 — AI Compute and guarded DGX engine switching
+
+- Add AI Compute: inventory existing inference and speech workloads on the
+  selected Docker host, separate container state from API readiness and
+  inspect cached model revisions.
+- Show immediate progress for AI operations, check status every two seconds,
+  refresh service state automatically and report detailed failures with safe
+  connection retries.
+- Expose Start, Stop and Restart for detected AI services before profile
+  registration, with guided first-use setup and explicit service-wide
+  interruption warnings.
+- Record opt-in minute-by-minute CPU, unified RAM, NVIDIA GPU and disk
+  history with 1-hour, 24-hour, 7-day and 30-day charts.
+- Verify live resource budgets and container identities in administrator-owned
+  operation previews before switching engines, with per-host locks, retained
+  restart policies and durable recovery for existing workloads.
+- Pin standard ARM64 Qwen3 recipes to model revisions with shared model caches
+  and loopback APIs; Strata, NCM and Basalt have attributed experimental
+  entries with qualification requirements.
+- Summarize Security batch runs with prioritized images and scanner evidence.
+- Diagnose container health using a redacted preview and cited DGX findings.
+- Queue persisted post-deployment comparisons of previous/current image scans
+  with manual review.
+- Show selected-host GPU/temperature/unified memory and configured DGX
+  gateway availability. Document the DGX Spark SSH fingerprint and socat
+  setup.
+- Use the Node.js 24.22.3 security release and require Alpine OpenSSL
+  3.5.9-r1 backports in the container image.
+
+## [8.96.48] - 2026-11-14 — DGX Spark pilot and navigable vulnerability reports
+
+### DGX Spark pilot — 2026-11-16
+
+- Configure an internal HTTPS gateway in **Settings → AI → DGX Spark**.
+- In **Security → Triage**, use **Analyze with DGX** to prioritize findings and
+  review proposed fixes for an image or a full Compose stack.
+- Review suggested Compose or Dockerfile diffs and copy recommendations and
+  Linux commands. Deployment commands require a candidate that passes both
+  Trivy and Grype checks and are available for manual execution.
+
+### Vulnerability reports
+
+- Review coverage and priority fixes first, jump to images through a linked
+  index, and expand findings with links to public advisories and Docker Dash.
+- Combine duplicate occurrences, prioritize severe findings within the
+  attachment limit, and download the redesigned HTML from past runs.
+
+## [8.96.47] - 2026-11-14 — Detailed security emails and channel routing
+
+- Attach a detailed, per-image HTML report to scheduled vulnerability emails,
+  including CVEs, severity, installed versions and published fixes.
+- Choose whether a notification channel receives routine alerts, scheduled
+  scan reports, or both.
+
+## [8.96.46] - 2026-11-14 — Inventory sorting and secondary volumes
+
+- Sort Stacks, Images, Volumes and Security tables from the column headers.
+- Show volumes associated only with secondary stacks on demand. Keep shared
+  volumes and volumes with no stack association visible.
+
+## [8.96.45] - 2026-11-13 — Scheduled security scans and secondary stacks
+
+- Schedule image vulnerability scans and CIS benchmarks per Docker host.
+  Review run history, available fixes, incomplete scans and notification delivery.
+- Keep the Stacks search field wider than the status filter. Use the same
+  secondary-stack toggle across Stacks, Containers, Images, Security and Log Explorer.
+
+## [8.96.44] - 2026-11-13 — Jest dependency security
+
+- Fix CVE-2026-93753 in the object merge used by Jest configuration. Keep the
+  current Jest runner and require a clean npm audit for all dependencies.
+
+## [8.96.43] - 2026-11-13 — Security across Git, Docker and diagnostics
+
+- Keep Git webhook credentials and environment overrides out of stack metadata.
+  Reserve raw files, diffs and secret settings for administrators and check
+  stack and deployment-target grants before remote requests.
+- Scope diagnostic sessions and container metrics to the current user's
+  access. Match historical data by host and immutable subject identity.
+- Validate registry origins and image references. Bind credentials to the
+  selected registry and enforce Docker host access for image pushes.
+- Apply the write policy consistently across administrative actions. Restrict
+  estate-wide Blueprint documents and Copilot briefings to administrators.
+- Validate external links and neutralize formulas in CSV downloads. Bound
+  container file previews and validate upload names and contents.
+
+## [8.96.42] - 2026-11-12 — Webhook, log and HTTP security
+
+- Protect API responses against caching, redact webhook tokens from request
+  logs, strip prototype keys from nested request bodies and allow passkeys
+  within the application's own origin.
+- Rate-limit webhook receivers before parsing. Authenticate Git and automation
+  deliveries with the received JSON bytes, enforce the automation size limit
+  while parsing and constrain the CSRF exemptions to actual receiver URLs.
+- Encrypt saved outgoing webhook endpoints, signing secrets and headers.
+  Validate destinations and headers, reject redirects, bound delivery response
+  time and size, test only the selected webhook and cancel stale retries.
+  Configure the final provider URL directly when a destination redirects.
+- Bound individual and grouped log snapshots. Run regex matching in
+  time-limited workers and report truncated snapshots in the UI.
+- Apply a process limit to the application container.
+
+## [8.96.41] - 2026-11-12 — Pinned pages and secure image refresh
+
+- Pin and reorder sidebar pages per account across browsers. Thanks to
+  [@noone-silent](https://github.com/noone-silent) for the
+  [original implementation](https://github.com/bogdanpricop/docker-dash/pull/15).
+- Keep release versions separate from browser cache invalidation and detect
+  frontend updates in open tabs between releases. Thanks to
+  [@noone-silent](https://github.com/noone-silent) for the
+  [release-scoped versioning proposal and implementation](https://github.com/bogdanpricop/docker-dash/pull/16).
+- Give every provider compliance evidence export its own verifiable identity.
+  Thanks to [@noone-silent](https://github.com/noone-silent) for the fix
+  included in both submissions.
+
+- Refresh the Go toolchain, Grype, Git and OpenSSH. Patch the scanner archive
+  reader to reject negative member sizes.
 
 - Sort the Stacks table by CPU or RAM and open linked Docker networks and
   volumes. Compact the toolbar and mark expanded stacks with a side accent.
@@ -164,95 +307,6 @@ All notable changes to Docker Dash are documented here.
   SCIM-managed users/groups; reject local-account/team adoption and unmanaged group
   members. Commit mutations, mapping changes and HTTP audit together; remove group
   ownership mappings on deletion. [Evidence and compatibility](docs/audits/2026-09-20-scim-security.md).
-
-## [8.96.48] - 2026-11-14 — DGX Spark pilot and navigable vulnerability reports
-
-### DGX Spark pilot — 2026-11-16
-
-- Configure an internal HTTPS gateway in **Settings → AI → DGX Spark**.
-- In **Security → Triage**, use **Analyze with DGX** to prioritize findings and
-  review proposed fixes for an image or a full Compose stack.
-- Review suggested Compose or Dockerfile diffs and copy recommendations and
-  Linux commands. Deployment commands require a candidate that passes both
-  Trivy and Grype checks and are available for manual execution.
-
-### Vulnerability reports
-
-- Review coverage and priority fixes first, jump to images through a linked
-  index, and expand findings with links to public advisories and Docker Dash.
-- Combine duplicate occurrences, prioritize severe findings within the
-  attachment limit, and download the redesigned HTML from past runs.
-
-## [8.96.47] - 2026-11-14 — Detailed security emails and channel routing
-
-- Attach a detailed, per-image HTML report to scheduled vulnerability emails,
-  including CVEs, severity, installed versions and published fixes.
-- Choose whether a notification channel receives routine alerts, scheduled
-  scan reports, or both.
-
-## [8.96.46] - 2026-11-14 — Inventory sorting and secondary volumes
-
-- Sort Stacks, Images, Volumes and Security tables from the column headers.
-- Show volumes associated only with secondary stacks on demand. Keep shared
-  volumes and volumes with no stack association visible.
-
-## [8.96.45] - 2026-11-13 — Scheduled security scans and secondary stacks
-
-- Schedule image vulnerability scans and CIS benchmarks per Docker host.
-  Review run history, available fixes, incomplete scans and notification delivery.
-- Keep the Stacks search field wider than the status filter. Use the same
-  secondary-stack toggle across Stacks, Containers, Images, Security and Log Explorer.
-
-## [8.96.44] - 2026-11-13 — Jest dependency security
-
-- Fix CVE-2026-93753 in the object merge used by Jest configuration. Keep the
-  current Jest runner and require a clean npm audit for all dependencies.
-
-## [8.96.43] - 2026-11-13 — Security across Git, Docker and diagnostics
-
-- Keep Git webhook credentials and environment overrides out of stack metadata.
-  Reserve raw files, diffs and secret settings for administrators and check
-  stack and deployment-target grants before remote requests.
-- Scope diagnostic sessions and container metrics to the current user's
-  access. Match historical data by host and immutable subject identity.
-- Validate registry origins and image references. Bind credentials to the
-  selected registry and enforce Docker host access for image pushes.
-- Apply the write policy consistently across administrative actions. Restrict
-  estate-wide Blueprint documents and Copilot briefings to administrators.
-- Validate external links and neutralize formulas in CSV downloads. Bound
-  container file previews and validate upload names and contents.
-
-## [8.96.42] - 2026-11-12 — Webhook, log and HTTP security
-
-- Protect API responses against caching, redact webhook tokens from request
-  logs, strip prototype keys from nested request bodies and allow passkeys
-  within the application's own origin.
-- Rate-limit webhook receivers before parsing. Authenticate Git and automation
-  deliveries with the received JSON bytes, enforce the automation size limit
-  while parsing and constrain the CSRF exemptions to actual receiver URLs.
-- Encrypt saved outgoing webhook endpoints, signing secrets and headers.
-  Validate destinations and headers, reject redirects, bound delivery response
-  time and size, test only the selected webhook and cancel stale retries.
-  Configure the final provider URL directly when a destination redirects.
-- Bound individual and grouped log snapshots. Run regex matching in
-  time-limited workers and report truncated snapshots in the UI.
-- Apply a process limit to the application container.
-
-## [8.96.41] - 2026-11-12 — Pinned pages and secure image refresh
-
-- Pin and reorder sidebar pages per account across browsers. Thanks to
-  [@noone-silent](https://github.com/noone-silent) for the
-  [original implementation](https://github.com/bogdanpricop/docker-dash/pull/15).
-- Keep release versions separate from browser cache invalidation and detect
-  frontend updates in open tabs between releases. Thanks to
-  [@noone-silent](https://github.com/noone-silent) for the
-  [release-scoped versioning proposal and implementation](https://github.com/bogdanpricop/docker-dash/pull/16).
-- Give every provider compliance evidence export its own verifiable identity.
-  Thanks to [@noone-silent](https://github.com/noone-silent) for the fix
-  included in both submissions.
-
-- Refresh the Go toolchain, Grype, Git and OpenSSH. Patch the scanner archive
-  reader to reject negative member sizes.
 
 ## [8.96.40] - 2026-11-12 — Secondary stacks
 
