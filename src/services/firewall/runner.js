@@ -35,6 +35,9 @@ function psEncode(script) { return Buffer.from(script, 'utf16le').toString('base
 function _sshFirewallCommand(bin, argv, sudoPassword) {
   const inner = toShellCommand(bin, argv);
   const path = 'export PATH=/usr/sbin:/sbin:/usr/local/sbin:$PATH; ';
+  // A missing optional backend must not trigger a sudo password conversation.
+  // Detection can then continue to the installed backend (for example UFW).
+  const available = `if ! command -v ${toShellCommand(bin, [])} >/dev/null 2>&1; then printf '%s\\n' 'Firewall backend not installed' >&2; exit 127; fi; `;
   // IMPORTANT: do NOT probe with `sudo -n true` — a sudoers rule scoped to the
   // firewall binaries (NOPASSWD: /usr/sbin/iptables …) does NOT allow `true`,
   // so the probe would wrongly conclude sudo is unavailable. Escalate on the
@@ -44,12 +47,12 @@ function _sshFirewallCommand(bin, argv, sudoPassword) {
     // never a process argument). Works whether sudo requires a password or is
     // NOPASSWD-scoped (then the piped password is simply unused).
     const pw = String(sudoPassword).replace(/'/g, `'\\''`);
-    return path + `printf '%s\\n' '${pw}' | sudo -S -p '' ${inner}`;
+    return path + available + `printf '%s\\n' '${pw}' | sudo -S -p '' ${inner}`;
   }
   // No stored password: use sudo when available (works for a root SSH user AND
   // for a user with NOPASSWD sudo scoped to the firewall binaries); fall back to
   // direct execution (covers a root SSH user that has no sudo installed).
-  return path + `if command -v sudo >/dev/null 2>&1; then sudo -n ${inner}; else ${inner}; fi`;
+  return path + available + `if command -v sudo >/dev/null 2>&1; then sudo -n ${inner}; else ${inner}; fi`;
 }
 
 // Run a list of {bin, argv} commands in order. Stops at the first non-zero exit.

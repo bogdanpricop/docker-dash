@@ -28,6 +28,15 @@ describe('firewall runner — agent request options (mTLS)', () => {
 });
 
 describe('firewall runner — SSH firewall command wrapper', () => {
+  test('rejects a missing backend before either sudo escalation path', () => {
+    for (const password of [undefined, 'test-password']) {
+      const cmd = _internals._sshFirewallCommand('firewall-cmd', ['--state'], password);
+      const check = cmd.indexOf("command -v 'firewall-cmd'");
+      expect(check).toBeGreaterThanOrEqual(0);
+      expect(cmd.indexOf('exit 127')).toBeGreaterThan(check);
+      expect(cmd.indexOf('sudo -')).toBeGreaterThan(cmd.indexOf('exit 127'));
+    }
+  });
   test('adds /usr/sbin to PATH and runs sudo -n on the real binary (no bad probe)', () => {
     const cmd = _internals._sshFirewallCommand('iptables', ['-S']);
     expect(cmd).toContain('PATH=/usr/sbin:/sbin:/usr/local/sbin:$PATH');

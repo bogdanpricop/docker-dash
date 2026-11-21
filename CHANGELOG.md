@@ -4,6 +4,10 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Skip firewall backends that are not installed before any sudo escalation,
+  so detection continues to the installed backend (for example UFW) instead
+  of stalling on a sudo password prompt.
+
 ## [8.96.52] - 2026-11-20 — Gemma 3 model catalog
 
 - Add Gemma 3 4B, 12B and 27B to the AI Compute catalog with pinned Ollama
